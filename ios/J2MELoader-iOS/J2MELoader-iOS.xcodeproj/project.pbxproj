@@ -325,6 +325,8 @@
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
+					"$(SRCROOT)/J2MELoader-iOS",
+					"$(SRCROOT)/J2MELoader-iOS/Bridge",
 					"$(SRCROOT)/J2MELoader-iOS/Audio",
 					"$(SRCROOT)/J2MELoader-iOS/Audio/eas",
 					"$(SRCROOT)/J2MELoader-iOS/Core",
@@ -358,6 +360,8 @@
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
+					"$(SRCROOT)/J2MELoader-iOS",
+					"$(SRCROOT)/J2MELoader-iOS/Bridge",
 					"$(SRCROOT)/J2MELoader-iOS/Audio",
 					"$(SRCROOT)/J2MELoader-iOS/Audio/eas",
 					"$(SRCROOT)/J2MELoader-iOS/Core",
@@ -402,6 +406,14 @@
 				SWIFT_OBJC_BRIDGING_HEADER = "J2MELoader-iOS/Bridge/J2MELoader-iOS-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/J2MELoader-iOS",
+					"$(SRCROOT)/J2MELoader-iOS/Bridge",
+					"$(SRCROOT)/J2MELoader-iOS/Audio",
+					"$(SRCROOT)/J2MELoader-iOS/Audio/eas",
+					"$(SRCROOT)/J2MELoader-iOS/Core",
+				);
 			};
 			name = Debug;
 		};
@@ -435,6 +447,14 @@
 				SWIFT_OBJC_BRIDGING_HEADER = "J2MELoader-iOS/Bridge/J2MELoader-iOS-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/J2MELoader-iOS",
+					"$(SRCROOT)/J2MELoader-iOS/Bridge",
+					"$(SRCROOT)/J2MELoader-iOS/Audio",
+					"$(SRCROOT)/J2MELoader-iOS/Audio/eas",
+					"$(SRCROOT)/J2MELoader-iOS/Core",
+				);
 			};
 			name = Release;
 		};
