@@ -1,4 +1,4 @@
-﻿#ifndef LCDUI_DISPLAY_H
+#ifndef LCDUI_DISPLAY_H
 #define LCDUI_DISPLAY_H
 
 #include <cstdint>
@@ -20,6 +20,9 @@ public:
 
     void resize(int width, int height);
     void clear(uint32_t color = 0xFFFFFFFF);
+
+    void setColor(uint32_t color) { m_currentColor = color; }
+    uint32_t getColor() const { return m_currentColor; }
 
     void setClip(int x, int y, int w, int h);
     void clipRect(int x, int y, int w, int h);
@@ -48,6 +51,7 @@ public:
 private:
     int m_width;
     int m_height;
+    uint32_t m_currentColor = 0xFF000000;
     std::vector<uint32_t> m_buffer;
     ClipRect m_clip;
     std::mutex m_mutex;
