@@ -1,4 +1,4 @@
-﻿#include "lcdui_display.h"
+#include "lcdui_display.h"
 #include <cmath>
 #include <algorithm>
 #include <cstring>
@@ -181,6 +181,66 @@ void LcduiDisplay::drawChar(char c, int x, int y, uint32_t color) {
             }
         }
     }
+}
+
+void LcduiDisplay::drawRegion(const uint32_t* srcPixels, int srcW, int srcH, int x_src, int y_src, int width, int height, int transform, int x_dest, int y_dest, int anchor) {
+    if (!srcPixels || srcW <= 0 || srcH <= 0 || width <= 0 || height <= 0) return;
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    int destW = (transform == 5 || transform == 6 || transform == 1 || transform == 3) ? height : width;
+    int destH = (transform == 5 || transform == 6 || transform == 1 || transform == 3) ? width : height;
+
+    int dx = x_dest;
+    int dy = y_dest;
+
+    if (anchor & 1) dx -= destW / 2; // HCENTER
+    else if (anchor & 8) dx -= destW; // RIGHT
+
+    if (anchor & 2) dy -= destH / 2; // VCENTER
+    else if (anchor & 32) dy -= destH; // BOTTOM
+
+    for (int r = 0; r < height; ++r) {
+        for (int c = 0; c < width; ++c) {
+            int sx = x_src + c;
+            int sy = y_src + r;
+            if (sx < 0 || sx >= srcW || sy < 0 || sy >= srcH) continue;
+
+            uint32_t pixel = srcPixels[sy * srcW + sx];
+            if ((pixel >> 24) == 0) continue;
+
+            int targetX = dx + c;
+            int targetY = dy + r;
+
+            switch (transform) {
+            case 1: targetX = dx + (height - 1 - r); targetY = dy + c; break;
+            case 2: targetX = dx + (width - 1 - c); targetY = dy + (height - 1 - r); break;
+            case 3: targetX = dx + r; targetY = dy + (width - 1 - c); break;
+            case 4: targetX = dx + (width - 1 - c); targetY = dy + r; break;
+            case 5: targetX = dx + (height - 1 - r); targetY = dy + (width - 1 - c); break;
+            case 6: targetX = dx + c; targetY = dy + (height - 1 - r); break;
+            case 7: targetX = dx + r; targetY = dy + c; break;
+            default: break;
+            }
+
+            setPixelUnsafe(targetX, targetY, pixel);
+        }
+    }
+}
+
+void LcduiDisplay::drawRoundRect(int x, int y, int w, int h, int arcWidth, int arcHeight, uint32_t color) {
+    drawRect(x, y, w, h, color);
+}
+
+void LcduiDisplay::fillRoundRect(int x, int y, int w, int h, int arcWidth, int arcHeight, uint32_t color) {
+    fillRect(x, y, w, h, color);
+}
+
+void LcduiDisplay::drawArc(int x, int y, int w, int h, int startAngle, int arcAngle, uint32_t color) {
+    drawRect(x, y, w, h, color);
+}
+
+void LcduiDisplay::fillArc(int x, int y, int w, int h, int startAngle, int arcAngle, uint32_t color) {
+    fillRect(x, y, w, h, color);
 }
 
 void LcduiDisplay::drawString(const std::string& text, int x, int y, int anchor, uint32_t color) {
