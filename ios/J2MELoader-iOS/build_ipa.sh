@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 set -e
 
 echo "=== Building J2ME-Loader for iOS (.IPA) ==="
@@ -14,13 +14,14 @@ xcodebuild clean archive \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGN_IDENTITY="" \
+  AD_HOC_CODE_SIGNING_ALLOWED=YES \
   PROVISIONING_PROFILE=""
 
 # 2. Package Payload directory
 echo "[2/3] Packaging Payload folder..."
 rm -rf build/Payload build/J2MELoader-iOS.ipa
 mkdir -p build/Payload
-cp -R build/J2MELoader-iOS.xcarchive/Products/Applications/J2MELoader-iOS.app build/Payload/
+cp -R build/J2MELoader-iOS.xcarchive/Products/Applications/*.app build/Payload/
 
 # 3. Zip to .ipa
 echo "[3/3] Creating .ipa package..."

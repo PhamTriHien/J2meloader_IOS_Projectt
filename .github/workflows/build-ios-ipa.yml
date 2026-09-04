@@ -1,4 +1,4 @@
-﻿name: Build iOS IPA
+name: Build iOS IPA
 
 on:
   push:
@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-ipa:
@@ -20,43 +23,13 @@ jobs:
         with:
           xcode-version: '15.4'
 
-      - name: Build App
+      - name: Build and Package IPA
         run: |
           if [ -d "ios/J2MELoader-iOS" ]; then
             cd ios/J2MELoader-iOS
           fi
-          
-          mkdir -p build/Release-iphoneos
-          
-          echo "Starting xcodebuild..."
-          set -o pipefail
-          xcodebuild build \
-            -project J2MELoader-iOS.xcodeproj \
-            -target J2MELoader-iOS \
-            -configuration Release \
-            -sdk iphoneos \
-            -arch arm64 \
-            CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphoneos" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES 2>&1 | tee xcodebuild.log || {
-              echo "=== BUILD FAILED. RELEVANT ERRORS: ==="
-              grep -E "(error:|fatal error:|BUILD FAILED|\*\* BUILD FAILED \*\*)" xcodebuild.log -B 2 -A 4 || tail -n 50 xcodebuild.log
-              exit 1
-            }
-
-      - name: Package Payload to IPA
-        run: |
-          if [ -d "ios/J2MELoader-iOS" ]; then
-            cd ios/J2MELoader-iOS
-          fi
-          
-          mkdir -p build/Payload
-          cp -R build/Release-iphoneos/J2MELoader-iOS.app build/Payload/
-          cd build
-          zip -r -y J2MELoader-iOS.ipa Payload
-          echo "IPA created successfully at $(pwd)/J2MELoader-iOS.ipa"
+          chmod +x build_ipa.sh
+          ./build_ipa.sh
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
@@ -65,3 +38,33 @@ jobs:
           path: |
             build/J2MELoader-iOS.ipa
             ios/J2MELoader-iOS/build/J2MELoader-iOS.ipa
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        with:
+          tag_name: v1.8.2-ios
+          name: "J2ME-Loader iOS v1.8.2 Full Native Release"
+          body: |
+            ## J2ME-Loader for iOS & iPadOS (Native Port v1.8.2)
+            
+            ### Features
+            - **Pure Swift + Metal LCDUI Rendering Engine**: High performance 60 FPS hardware accelerated graphics with custom CRT Scanlines & Nokia LCD Subpixel Grid shaders.
+            - **Full J2ME / MIDP 2.0 Subsystems**:
+              - MIDlet lifecycle management (JAD/JAR parsing, RMS Record Management System flash memory storage)
+              - Micro3D v3 (JSR-184 & MBAC/TRA 3D model engine) & M3G Mobile 3D Graphics
+              - GameCanvas (Sprites, TiledLayers, LayerManager, pixel-level collision detection)
+              - Sonivox EAS MIDI engine & CoreAudio tone synthesizer
+              - Complete configurable retro on-screen virtual keypad + Gamepad/MFi Bluetooth controller remapping
+            
+            ### Installation Instructions
+            1. Download `J2MELoader-iOS.ipa` attached below.
+            2. Install via **TrollStore**, **Sideloadly**, **AltStore**, **Scarlet**, or **Feather**.
+            3. Tap the `+` button in the app to import any `.jar` or `.jad` game file.
+          files: |
+            build/J2MELoader-iOS.ipa
+            ios/J2MELoader-iOS/build/J2MELoader-iOS.ipa
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
