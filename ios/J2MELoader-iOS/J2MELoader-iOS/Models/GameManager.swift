@@ -1,4 +1,4 @@
-﻿import Foundation
+import Foundation
 import SwiftUI
 import Combine
 
@@ -68,10 +68,10 @@ public class GameManager: ObservableObject {
             
             // Extract manifest metadata via J2MEBridge
             let meta = J2MEBridge.parseJarManifest(targetURL.path)
-            let title = meta["MIDlet-Name"] as? String ?? sourceURL.deletingPathExtension().lastPathComponent
-            let vendor = meta["MIDlet-Vendor"] as? String ?? "Unknown Vendor"
-            let version = meta["MIDlet-Version"] as? String ?? "1.0.0"
-            let midlet1 = meta["MIDlet-1"] as? String ?? ""
+            let title = meta["MIDlet-Name"] ?? sourceURL.deletingPathExtension().lastPathComponent
+            let vendor = meta["MIDlet-Vendor"] ?? "Unknown Vendor"
+            let version = meta["MIDlet-Version"] ?? "1.0.0"
+            let midlet1 = meta["MIDlet-1"] ?? ""
             
             // Parse main class: format is "Name, /icon.png, com.package.Main"
             var mainClass = ""

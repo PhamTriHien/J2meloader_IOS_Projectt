@@ -34,19 +34,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES > xcodebuild.log 2>&1 || {
-              echo "=== XCODEBUILD FAILED ==="
-              tail -n 250 xcodebuild.log
-              exit 1
-            }
-          echo "Build finished successfully."
-
-      - name: Upload Build Log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xcodebuild-log
-          path: xcodebuild.log
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
       - name: Package Payload to IPA
         run: |
