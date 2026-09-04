@@ -368,7 +368,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
     if (className == "java/lang/System") {
         if (methodName == "currentTimeMillis") {
             auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-            outResult = JavaValue((int32_t)now);
+            outResult = JavaValue((int64_t)now);
             return true;
         }
         if (methodName == "arraycopy" && args.size() >= 5) {
@@ -866,8 +866,22 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         if (methodName == "charWidth") { outResult = JavaValue(7); return true; }
     }
 
-    if (className.find("Canvas") != std::string::npos) {
-        if (methodName == "repaint" || methodName == "flushGraphics" || methodName == "serviceRepaints") return true;
+    if (className.find("Canvas") != std::string::npos || className.find("Displayable") != std::string::npos) {
+        if (methodName == "repaint" || methodName == "flushGraphics" || methodName == "serviceRepaints") {
+            if (display) {
+                uint32_t cRef = args.size() >= 1 ? args[0].asRef() : 0;
+                JavaObject* cObj = getObject(cRef);
+                std::shared_ptr<ClassFile> cCls = nullptr;
+                if (cObj && !cObj->className.empty()) {
+                    cCls = findOrLoadClass(cObj->className, m_activeJar);
+                }
+                if (cCls && cRef != 0) {
+                    uint32_t gRef = allocObject("javax/microedition/lcdui/Graphics");
+                    executeMethod(cCls, "paint", "(Ljavax/microedition/lcdui/Graphics;)V", { JavaValue(cRef, true), JavaValue(gRef, true) }, display);
+                }
+            }
+            return true;
+        }
         if (methodName == "getWidth") { outResult = JavaValue(display ? display->getWidth() : 240); return true; }
         if (methodName == "getHeight") { outResult = JavaValue(display ? display->getHeight() : 320); return true; }
         if (methodName == "isDoubleBuffered") { outResult = JavaValue(1); return true; }
@@ -875,6 +889,14 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         if (methodName == "hasPointerMotionEvents") { outResult = JavaValue(1); return true; }
         if (methodName == "hasRepeatEvents") { outResult = JavaValue(1); return true; }
         if (methodName == "setFullScreenMode") return true;
+        if (methodName == "getGraphics") {
+            outResult = JavaValue(allocObject("javax/microedition/lcdui/Graphics"), true);
+            return true;
+        }
+        if (methodName == "getKeyStates") {
+            outResult = JavaValue(0);
+            return true;
+        }
         if (methodName == "getGameAction") {
             int code = args.size() >= 2 ? args[1].asInt() : 0;
             int action = 0;
@@ -901,9 +923,9 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
 
     if (className == "java/lang/Class") {
         if (methodName == "getResourceAsStream") {
-            std::string path = getString(args[1].asRef());
-            if (m_activeJar) {
-                if (!path.empty() && path[0] == '/') path.erase(0, 1);
+            std::string path = args.size() >= 2 ? getString(args[1].asRef()) : "";
+            if (m_activeJar && !path.empty()) {
+                if (path[0] == '/') path.erase(0, 1);
                 std::vector<uint8_t> bytes;
                 if (m_activeJar->extractEntry(path, bytes)) {
                     uint32_t isRef = allocObject("java/io/ByteArrayInputStream");
@@ -924,12 +946,229 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
     }
 
+    if (className == "java/io/InputStream" || className == "java/io/ByteArrayInputStream" || className == "java/io/DataInputStream") {
+        if (methodName == "<init>") {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (obj && args.size() >= 2 && args[1].type == JavaValue::OBJ_REF) {
+                JavaArray* arr = getArray(args[1].asRef());
+                if (arr) {
+                    obj->fields["buf"] = args[1];
+                    obj->fields["pos"] = JavaValue(0);
+                } else {
+                    JavaObject* innerStream = getObject(args[1].asRef());
+                    if (innerStream) {
+                        obj->fields["buf"] = innerStream->fields["buf"];
+                        obj->fields["pos"] = innerStream->fields["pos"];
+                    }
+                }
+            }
+            return true;
+        }
+        if (methodName == "read") {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (!obj) { outResult = JavaValue(-1); return true; }
+            JavaArray* arr = getArray(obj->fields["buf"].asRef());
+            int pos = obj->fields["pos"].asInt();
+            if (arr && pos >= 0 && pos < (int)arr->byteData.size()) {
+                if (args.size() == 1) {
+                    outResult = JavaValue((int32_t)(uint8_t)arr->byteData[pos]);
+                    obj->fields["pos"] = JavaValue(pos + 1);
+                } else if (args.size() == 2) {
+                    JavaArray* dst = getArray(args[1].asRef());
+                    int len = dst ? (int)dst->byteData.size() : 0;
+                    int available = (int)arr->byteData.size() - pos;
+                    int count = std::min(len, available);
+                    if (count <= 0) { outResult = JavaValue(-1); return true; }
+                    for (int i = 0; i < count; ++i) dst->byteData[i] = arr->byteData[pos + i];
+                    obj->fields["pos"] = JavaValue(pos + count);
+                    outResult = JavaValue(count);
+                } else if (args.size() >= 4) {
+                    JavaArray* dst = getArray(args[1].asRef());
+                    int off = args[2].asInt(), len = args[3].asInt();
+                    int available = (int)arr->byteData.size() - pos;
+                    int count = std::min(len, available);
+                    if (count <= 0) { outResult = JavaValue(-1); return true; }
+                    if (dst) {
+                        for (int i = 0; i < count; ++i) {
+                            if (off + i < (int)dst->byteData.size()) dst->byteData[off + i] = arr->byteData[pos + i];
+                        }
+                    }
+                    obj->fields["pos"] = JavaValue(pos + count);
+                    outResult = JavaValue(count);
+                }
+            } else {
+                outResult = JavaValue(-1);
+            }
+            return true;
+        }
+        if (methodName == "readByte" || methodName == "readUnsignedByte") {
+            JavaObject* obj = getObject(args[0].asRef());
+            JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
+            int pos = obj ? obj->fields["pos"].asInt() : 0;
+            if (arr && pos >= 0 && pos < (int)arr->byteData.size()) {
+                uint8_t b = arr->byteData[pos];
+                obj->fields["pos"] = JavaValue(pos + 1);
+                outResult = JavaValue(methodName == "readByte" ? (int32_t)(int8_t)b : (int32_t)b);
+            } else {
+                outResult = JavaValue(0);
+            }
+            return true;
+        }
+        if (methodName == "readBoolean") {
+            JavaObject* obj = getObject(args[0].asRef());
+            JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
+            int pos = obj ? obj->fields["pos"].asInt() : 0;
+            if (arr && pos >= 0 && pos < (int)arr->byteData.size()) {
+                uint8_t b = arr->byteData[pos];
+                obj->fields["pos"] = JavaValue(pos + 1);
+                outResult = JavaValue(b != 0 ? 1 : 0);
+            } else {
+                outResult = JavaValue(0);
+            }
+            return true;
+        }
+        if (methodName == "readShort" || methodName == "readUnsignedShort") {
+            JavaObject* obj = getObject(args[0].asRef());
+            JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
+            int pos = obj ? obj->fields["pos"].asInt() : 0;
+            if (arr && pos + 1 < (int)arr->byteData.size()) {
+                uint16_t s = ((uint16_t)arr->byteData[pos] << 8) | arr->byteData[pos + 1];
+                obj->fields["pos"] = JavaValue(pos + 2);
+                outResult = JavaValue(methodName == "readShort" ? (int32_t)(int16_t)s : (int32_t)s);
+            } else {
+                outResult = JavaValue(0);
+            }
+            return true;
+        }
+        if (methodName == "readInt") {
+            JavaObject* obj = getObject(args[0].asRef());
+            JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
+            int pos = obj ? obj->fields["pos"].asInt() : 0;
+            if (arr && pos + 3 < (int)arr->byteData.size()) {
+                int32_t val = ((int32_t)arr->byteData[pos] << 24) |
+                              ((int32_t)arr->byteData[pos + 1] << 16) |
+                              ((int32_t)arr->byteData[pos + 2] << 8) |
+                              ((int32_t)arr->byteData[pos + 3]);
+                obj->fields["pos"] = JavaValue(pos + 4);
+                outResult = JavaValue(val);
+            } else {
+                outResult = JavaValue(0);
+            }
+            return true;
+        }
+        if (methodName == "readLong") {
+            JavaObject* obj = getObject(args[0].asRef());
+            JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
+            int pos = obj ? obj->fields["pos"].asInt() : 0;
+            if (arr && pos + 7 < (int)arr->byteData.size()) {
+                int64_t val = 0;
+                for (int i = 0; i < 8; ++i) val = (val << 8) | arr->byteData[pos + i];
+                obj->fields["pos"] = JavaValue(pos + 8);
+                outResult = JavaValue(val);
+            } else {
+                outResult = JavaValue((int64_t)0);
+            }
+            return true;
+        }
+        if (methodName == "readUTF") {
+            JavaObject* obj = getObject(args[0].asRef());
+            JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
+            int pos = obj ? obj->fields["pos"].asInt() : 0;
+            if (arr && pos + 1 < (int)arr->byteData.size()) {
+                uint16_t len = ((uint16_t)arr->byteData[pos] << 8) | arr->byteData[pos + 1];
+                pos += 2;
+                std::string s = "";
+                if (pos + len <= (int)arr->byteData.size()) {
+                    s = std::string((char*)(arr->byteData.data() + pos), len);
+                    pos += len;
+                }
+                obj->fields["pos"] = JavaValue(pos);
+                outResult = JavaValue(createString(s), true);
+            } else {
+                outResult = JavaValue(createString(""), true);
+            }
+            return true;
+        }
+        if (methodName == "readFully" && args.size() >= 2) {
+            JavaObject* obj = getObject(args[0].asRef());
+            JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
+            int pos = obj ? obj->fields["pos"].asInt() : 0;
+            JavaArray* dst = getArray(args[1].asRef());
+            int off = args.size() >= 4 ? args[2].asInt() : 0;
+            int len = args.size() >= 4 ? args[3].asInt() : (dst ? (int)dst->byteData.size() : 0);
+            if (arr && dst) {
+                int count = std::min(len, (int)arr->byteData.size() - pos);
+                for (int i = 0; i < count; ++i) {
+                    if (off + i < (int)dst->byteData.size() && pos + i < (int)arr->byteData.size()) {
+                        dst->byteData[off + i] = arr->byteData[pos + i];
+                    }
+                }
+                obj->fields["pos"] = JavaValue(pos + count);
+            }
+            return true;
+        }
+        if (methodName == "skip" || methodName == "skipBytes") {
+            JavaObject* obj = getObject(args[0].asRef());
+            int64_t n = args.size() >= 2 ? args[1].asLong() : 0;
+            if (obj && n > 0) {
+                int pos = obj->fields["pos"].asInt();
+                obj->fields["pos"] = JavaValue(pos + (int)n);
+            }
+            outResult = JavaValue(n);
+            return true;
+        }
+        if (methodName == "available") {
+            JavaObject* obj = getObject(args[0].asRef());
+            JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
+            int pos = obj ? obj->fields["pos"].asInt() : 0;
+            int avail = arr ? std::max(0, (int)arr->byteData.size() - pos) : 0;
+            outResult = JavaValue(avail);
+            return true;
+        }
+        if (methodName == "close") return true;
+    }
+
     if (className == "java/lang/Thread") {
+        if (methodName == "<init>") {
+            if (args.size() >= 2 && args[1].type == JavaValue::OBJ_REF) {
+                JavaObject* tObj = getObject(args[0].asRef());
+                if (tObj) tObj->fields["target"] = args[1];
+            }
+            return true;
+        }
         if (methodName == "currentThread") {
             outResult = JavaValue(allocObject("java/lang/Thread"), true);
             return true;
         }
-        if (methodName == "sleep" || methodName == "yield" || methodName == "start") return true;
+        if (methodName == "sleep") {
+            int64_t ms = args.size() >= 1 ? args[0].asLong() : 10;
+            if (ms > 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(std::min<int64_t>(ms, 500)));
+            }
+            return true;
+        }
+        if (methodName == "yield") {
+            std::this_thread::yield();
+            return true;
+        }
+        if (methodName == "start") {
+            if (args.size() >= 1 && args[0].asRef() != 0) {
+                uint32_t tRef = args[0].asRef();
+                JavaObject* tObj = getObject(tRef);
+                uint32_t rRef = tRef;
+                if (tObj && tObj->fields.find("target") != tObj->fields.end() && tObj->fields["target"].asRef() != 0) {
+                    rRef = tObj->fields["target"].asRef();
+                }
+                JavaObject* rObj = getObject(rRef);
+                if (rObj && !rObj->className.empty()) {
+                    auto rCls = findOrLoadClass(rObj->className, m_activeJar);
+                    if (rCls) {
+                        JvmInterpreter::getInstance().registerRunnable(rRef, rCls);
+                    }
+                }
+            }
+            return true;
+        }
     }
 
     if (className == "javax/microedition/rms/RecordStore") {
@@ -1211,7 +1450,7 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         }
         case OP_SWAP: { JavaValue v1 = frame.pop(); JavaValue v2 = frame.pop(); frame.push(v1); frame.push(v2); break; }
 
-        // Math
+        // Integer Math
         case OP_IADD: { int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); frame.push(JavaValue(a + b)); break; }
         case OP_ISUB: { int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); frame.push(JavaValue(a - b)); break; }
         case OP_IMUL: { int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); frame.push(JavaValue(a * b)); break; }
@@ -1231,12 +1470,79 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             break;
         }
 
+        // Long Math
+        case OP_LADD: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(a + b)); break; }
+        case OP_LSUB: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(a - b)); break; }
+        case OP_LMUL: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(a * b)); break; }
+        case OP_LDIV: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(b != 0 ? a / b : 0)); break; }
+        case OP_LREM: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(b != 0 ? a % b : 0)); break; }
+        case OP_LNEG: { frame.push(JavaValue(-frame.pop().asLong())); break; }
+        case OP_LSHL: { int32_t b = frame.pop().asInt(); int64_t a = frame.pop().asLong(); frame.push(JavaValue(a << (b & 0x3F))); break; }
+        case OP_LSHR: { int32_t b = frame.pop().asInt(); int64_t a = frame.pop().asLong(); frame.push(JavaValue(a >> (b & 0x3F))); break; }
+        case OP_LUSHR: { int32_t b = frame.pop().asInt(); uint64_t a = (uint64_t)frame.pop().asLong(); frame.push(JavaValue((int64_t)(a >> (b & 0x3F)))); break; }
+        case OP_LAND: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(a & b)); break; }
+        case OP_LOR: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(a | b)); break; }
+        case OP_LXOR: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(a ^ b)); break; }
+
+        // Float & Double Math
+        case OP_FADD: { float b = frame.pop().asFloat(), a = frame.pop().asFloat(); frame.push(JavaValue(a + b)); break; }
+        case OP_FSUB: { float b = frame.pop().asFloat(), a = frame.pop().asFloat(); frame.push(JavaValue(a - b)); break; }
+        case OP_FMUL: { float b = frame.pop().asFloat(), a = frame.pop().asFloat(); frame.push(JavaValue(a * b)); break; }
+        case OP_FDIV: { float b = frame.pop().asFloat(), a = frame.pop().asFloat(); frame.push(JavaValue(b != 0 ? a / b : 0.0f)); break; }
+        case OP_FNEG: { frame.push(JavaValue(-frame.pop().asFloat())); break; }
+        case OP_DADD: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(a + b)); break; }
+        case OP_DSUB: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(a - b)); break; }
+        case OP_DMUL: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(a * b)); break; }
+        case OP_DDIV: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(b != 0 ? a / b : 0.0)); break; }
+        case OP_DNEG: { frame.push(JavaValue(-frame.pop().asDouble())); break; }
+
         // Conversions
         case OP_I2B: { int32_t v = frame.pop().asInt(); frame.push(JavaValue((int32_t)(int8_t)v)); break; }
         case OP_I2C: { int32_t v = frame.pop().asInt(); frame.push(JavaValue((int32_t)(uint16_t)v)); break; }
         case OP_I2S: { int32_t v = frame.pop().asInt(); frame.push(JavaValue((int32_t)(int16_t)v)); break; }
         case OP_I2L: { int32_t v = frame.pop().asInt(); frame.push(JavaValue((int64_t)v)); break; }
+        case OP_I2F: { frame.push(JavaValue((float)frame.pop().asInt())); break; }
+        case OP_I2D: { frame.push(JavaValue((double)frame.pop().asInt())); break; }
         case OP_L2I: { frame.push(JavaValue(frame.pop().asInt())); break; }
+        case OP_L2F: { frame.push(JavaValue((float)frame.pop().asLong())); break; }
+        case OP_L2D: { frame.push(JavaValue((double)frame.pop().asLong())); break; }
+        case OP_F2I: { frame.push(JavaValue((int32_t)frame.pop().asFloat())); break; }
+        case OP_F2L: { frame.push(JavaValue((int64_t)frame.pop().asFloat())); break; }
+        case OP_F2D: { frame.push(JavaValue((double)frame.pop().asFloat())); break; }
+        case OP_D2I: { frame.push(JavaValue((int32_t)frame.pop().asDouble())); break; }
+        case OP_D2L: { frame.push(JavaValue((int64_t)frame.pop().asDouble())); break; }
+        case OP_D2F: { frame.push(JavaValue((float)frame.pop().asDouble())); break; }
+
+        // Comparisons
+        case OP_LCMP: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(a > b ? 1 : (a < b ? -1 : 0))); break; }
+        case OP_FCMPL:
+        case OP_FCMPG: { float b = frame.pop().asFloat(), a = frame.pop().asFloat(); frame.push(JavaValue(a > b ? 1 : (a < b ? -1 : 0))); break; }
+        case OP_DCMPL:
+        case OP_DCMPG: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(a > b ? 1 : (a < b ? -1 : 0))); break; }
+
+        case OP_ARRAYLENGTH: {
+            uint32_t ref = frame.pop().asRef();
+            JavaArray* arr = getArray(ref);
+            frame.push(JavaValue(arr ? arr->length() : 0));
+            break;
+        }
+
+        case OP_WIDE: {
+            uint8_t wideOp = code[frame.pc++];
+            uint16_t idx = (code[frame.pc] << 8) | code[frame.pc + 1];
+            frame.pc += 2;
+            if (wideOp == OP_ILOAD || wideOp == OP_FLOAD || wideOp == OP_ALOAD || wideOp == OP_LLOAD || wideOp == OP_DLOAD) {
+                frame.push(idx < frame.locals.size() ? frame.locals[idx] : JavaValue(0));
+            } else if (wideOp == OP_ISTORE || wideOp == OP_FSTORE || wideOp == OP_ASTORE || wideOp == OP_LSTORE || wideOp == OP_DSTORE) {
+                if (idx >= frame.locals.size()) frame.locals.resize(idx + 1, JavaValue(0));
+                frame.locals[idx] = frame.pop();
+            } else if (wideOp == OP_IINC) {
+                int16_t constVal = (int16_t)((code[frame.pc] << 8) | code[frame.pc + 1]);
+                frame.pc += 2;
+                if (idx < frame.locals.size()) frame.locals[idx] = JavaValue(frame.locals[idx].asInt() + constVal);
+            }
+            break;
+        }
 
         // Field operations
         case OP_GETSTATIC: {

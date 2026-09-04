@@ -5,7 +5,7 @@
 #include <sstream>
 
 JvmInterpreter::JvmInterpreter()
-    : m_soundEnabled(true), m_running(false), m_paused(false) {
+    : m_soundEnabled(true), m_running(false), m_paused(false), m_runnableRunning(false) {
     m_display = std::make_unique<LcduiDisplay>(240, 320);
     m_jarLoader = std::make_unique<JarLoader>();
 }
@@ -60,6 +60,10 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
         }
     }
 
+    m_runnableRunning = false;
+    m_running = true;
+    m_paused = false;
+
     if (!targetClass.empty()) {
         std::replace(targetClass.begin(), targetClass.end(), '.', '/');
         m_midletClass = jvm.findOrLoadClass(targetClass, m_jarLoader.get());
@@ -71,9 +75,6 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
             jvm.executeMethod(m_midletClass, "startApp", "()V", { JavaValue(m_midletRef, true) }, m_display.get());
         }
     }
-    
-    m_running = true;
-    m_paused = false;
 
     // Start background emulation thread
     m_workerThread = std::thread(&JvmInterpreter::executionLoop, this);
@@ -87,6 +88,10 @@ void JvmInterpreter::shutdown() {
             jvm.executeMethod(m_midletClass, "destroyApp", "(Z)V", { JavaValue(m_midletRef, true), JavaValue(1) }, m_display.get());
         }
         m_running = false;
+        m_runnableRunning = false;
+        if (m_gameThread.joinable()) {
+            m_gameThread.detach();
+        }
         if (m_workerThread.joinable()) {
             m_workerThread.join();
         }
@@ -94,8 +99,10 @@ void JvmInterpreter::shutdown() {
     m_jarLoader->close();
     m_midletClass = nullptr;
     m_canvasClass = nullptr;
+    m_runnableClass = nullptr;
     m_midletRef = 0;
     m_canvasRef = 0;
+    m_runnableRef = 0;
 }
 
 void JvmInterpreter::pause() {
@@ -163,6 +170,27 @@ void JvmInterpreter::processEvents() {
     }
 }
 
+void JvmInterpreter::registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> cls) {
+    m_runnableRef = ref;
+    m_runnableClass = cls;
+    startRunnableThread();
+}
+
+void JvmInterpreter::startRunnableThread() {
+    if (m_runnableRunning) return;
+    if (m_runnableClass && m_runnableRef != 0) {
+        m_runnableRunning = true;
+        if (m_gameThread.joinable()) {
+            m_gameThread.detach();
+        }
+        m_gameThread = std::thread([this]() {
+            auto& jvm = JvmBytecodeEngine::getInstance();
+            jvm.executeMethod(m_runnableClass, "run", "()V", { JavaValue(m_runnableRef, true) }, m_display.get());
+            m_runnableRunning = false;
+        });
+    }
+}
+
 void JvmInterpreter::findAndBindCanvas() {
     auto& jvm = JvmBytecodeEngine::getInstance();
     jvm.setJarLoader(m_jarLoader.get());
@@ -196,6 +224,7 @@ void JvmInterpreter::findAndBindCanvas() {
                     if (cls->methods.find("run:()V") != cls->methods.end()) {
                         m_runnableClass = cls;
                         m_runnableRef = m_canvasRef;
+                        startRunnableThread();
                     }
                     break;
                 }
@@ -209,6 +238,7 @@ void JvmInterpreter::executionLoop() {
     jvm.setJarLoader(m_jarLoader.get());
 
     findAndBindCanvas();
+    startRunnableThread();
 
     int tickCount = 0;
     while (m_running) {
@@ -217,11 +247,7 @@ void JvmInterpreter::executionLoop() {
 
             if (!m_canvasClass) {
                 findAndBindCanvas();
-            }
-
-            // Tick active game thread / Runnable logic
-            if (m_runnableClass && m_runnableRef != 0) {
-                jvm.executeMethod(m_runnableClass, "run", "()V", { JavaValue(m_runnableRef, true) }, m_display.get());
+                startRunnableThread();
             }
 
             // Execute real game bytecode paint(Graphics g) method

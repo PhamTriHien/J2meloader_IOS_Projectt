@@ -53,10 +53,8 @@ public:
         m_canvasClass = cls;
     }
 
-    void registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> cls) {
-        m_runnableRef = ref;
-        m_runnableClass = cls;
-    }
+    void registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> cls);
+    void startRunnableThread();
 
 private:
     JvmInterpreter();
@@ -67,10 +65,12 @@ private:
     bool m_soundEnabled;
     std::atomic<bool> m_running;
     std::atomic<bool> m_paused;
+    std::atomic<bool> m_runnableRunning;
 
     std::unique_ptr<JarLoader> m_jarLoader;
     std::unique_ptr<LcduiDisplay> m_display;
     std::thread m_workerThread;
+    std::thread m_gameThread;
 
     std::mutex m_eventMutex;
     std::queue<InputEvent> m_eventQueue;
