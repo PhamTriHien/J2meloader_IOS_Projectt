@@ -294,7 +294,10 @@ struct JavaValue {
     JavaValue(double d) : type(DOUBLE) { val.d = d; }
     JavaValue(int64_t l) : type(LONG) { val.l = l; }
 
-    int32_t asInt() const { return val.i; }
+    int32_t asInt() const { return (type == LONG) ? (int32_t)val.l : ((type == FLOAT) ? (int32_t)val.f : ((type == DOUBLE) ? (int32_t)val.d : val.i)); }
+    int64_t asLong() const { return (type == LONG) ? val.l : ((type == INT) ? (int64_t)val.i : ((type == FLOAT) ? (int64_t)val.f : ((type == DOUBLE) ? (int64_t)val.d : (int64_t)val.i))); }
+    float asFloat() const { return (type == FLOAT) ? val.f : ((type == DOUBLE) ? (float)val.d : ((type == INT) ? (float)val.i : ((type == LONG) ? (float)val.l : 0.0f))); }
+    double asDouble() const { return (type == DOUBLE) ? val.d : ((type == FLOAT) ? (double)val.f : ((type == INT) ? (double)val.i : ((type == LONG) ? (double)val.l : 0.0))); }
     uint32_t asRef() const { return val.ref; }
 };
 
