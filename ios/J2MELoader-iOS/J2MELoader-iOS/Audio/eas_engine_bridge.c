@@ -1,6 +1,6 @@
 ﻿#include "eas_engine_bridge.h"
-#include "eas/eas.h"
-#include "eas/eas_reverb.h"
+#include "eas.h"
+#include "eas_reverb.h"
 #include <stdlib.h>
 #include <string.h>
 
