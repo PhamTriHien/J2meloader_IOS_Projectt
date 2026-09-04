@@ -22,12 +22,7 @@ jobs:
 
       - name: Build App
         run: |
-          if [ -d "ios/J2MELoader-iOS" ]; then
-            cd ios/J2MELoader-iOS
-          fi
-          
           mkdir -p build/Release-iphoneos
-          
           echo "Starting xcodebuild..."
           xcodebuild build \
             -project J2MELoader-iOS.xcodeproj \
@@ -39,18 +34,22 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES 2>&1 | tee xcodebuild.log || {
-              echo "=== BUILD FAILED. LAST 200 LINES: ==="
-              tail -n 200 xcodebuild.log
+            AD_HOC_CODE_SIGNING_ALLOWED=YES > xcodebuild.log 2>&1 || {
+              echo "=== XCODEBUILD FAILED ==="
+              tail -n 250 xcodebuild.log
               exit 1
             }
+          echo "Build finished successfully."
+
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
 
       - name: Package Payload to IPA
         run: |
-          if [ -d "ios/J2MELoader-iOS" ]; then
-            cd ios/J2MELoader-iOS
-          fi
-          
           mkdir -p build/Payload
           cp -R build/Release-iphoneos/J2MELoader-iOS.app build/Payload/
           cd build
@@ -61,6 +60,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: J2MELoader-iOS-ipa
-          path: |
-            build/J2MELoader-iOS.ipa
-            ios/J2MELoader-iOS/build/J2MELoader-iOS.ipa
+          path: build/J2MELoader-iOS.ipa
