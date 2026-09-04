@@ -34,32 +34,37 @@ jobs:
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: J2MELoader-iOS-ipa
-          path: "**/J2MELoader-iOS.ipa"
+          name: J2HienLoader-iOS-ipa
+          path: "**/build/*.ipa"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
-          tag_name: v1.8.2-ios
-          name: "J2ME-Loader iOS v1.8.2 Full Native Release"
+          tag_name: v1.8.2-j2hienloader
+          name: "J2HienLoader iOS v1.8.2 - Bản chính thức Tiếng Việt & Thực thi Game thật 100%"
           body: |
-            ## J2ME-Loader for iOS & iPadOS (Native Port v1.8.2)
+            ## J2HienLoader cho iOS & iPadOS (Bản phát hành chính thức v1.8.2)
             
-            ### Features
-            - **Pure Swift + Metal LCDUI Rendering Engine**: High performance 60 FPS hardware accelerated graphics with custom CRT Scanlines & Nokia LCD Subpixel Grid shaders.
-            - **Full J2ME / MIDP 2.0 Subsystems**:
-              - MIDlet lifecycle management (JAD/JAR parsing, RMS Record Management System flash memory storage)
-              - Micro3D v3 (JSR-184 & MBAC/TRA 3D model engine) & M3G Mobile 3D Graphics
-              - GameCanvas (Sprites, TiledLayers, LayerManager, pixel-level collision detection)
-              - Sonivox EAS MIDI engine & CoreAudio tone synthesizer
-              - Complete configurable retro on-screen virtual keypad + Gamepad/MFi Bluetooth controller remapping
+            ### ✨ Các tính năng nổi bật:
+            - **Thực thi Game Java Bytecode thật 100%**:
+              - Nạp trực tiếp file `.jar` / `.jad`.
+              - Bộ giải mã PNG Sprite/Tileset thật (`png_decoder.h`).
+              - Vòng lặp `Canvas.paint(Graphics g)` thuần C++20 mượt mà 60 FPS.
+            - **Đồ họa Metal 3 & Hiệu ứng Shader**:
+              - Bộ lọc Pixel Art, Bilinear, CRT TV cổ điển, Lưới điểm ảnh LCD Nokia.
+            - **Treo game ngầm 24/7 (Anti-Crash & Anti-Disconnect)**:
+              - Kích hoạt `UIBackgroundModes` + luồng giữ nhịp Audio nền + chống ngắt kết nối socket mạng khi tắt màn hình.
+            - **Giao diện 100% Tiếng Việt**:
+              - Tên ứng dụng: **J2HienLoader**
+            - **Hỗ trợ toàn diện thiết bị**:
+              - Tương thích 100% với iPhone & iPad / iPadOS (xoay ngang / dọc, đa độ phân giải).
             
-            ### Installation Instructions
-            1. Download `J2MELoader-iOS.ipa` attached below.
-            2. Install via **TrollStore**, **Sideloadly**, **AltStore**, **Scarlet**, or **Feather**.
-            3. Tap the `+` button in the app to import any `.jar` or `.jad` game file.
-          files: "**/J2MELoader-iOS.ipa"
+            ### 📲 Hướng dẫn cài đặt:
+            1. Tải file `J2HienLoader.ipa` hoặc `J2MELoader-iOS.ipa` đính kèm bên dưới.
+            2. Cài đặt qua **TrollStore**, **Sideloadly**, **AltStore**, **Esign**, **Scarlet**, hoặc **Feather**.
+            3. Mở app và bấm nút `+` (màu đỏ cam) để chọn file game `.jar` và bắt đầu chơi!
+          files: "**/build/*.ipa"
           draft: false
           prerelease: false
         env:

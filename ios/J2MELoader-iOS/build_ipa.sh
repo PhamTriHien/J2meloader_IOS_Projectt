@@ -50,7 +50,8 @@ cp -R build/Release-iphoneos/*.app build/Payload/
 
 echo "[3/3] Creating .ipa package..."
 cd build
-zip -r -y J2MELoader-iOS.ipa Payload
+zip -r -y J2HienLoader.ipa Payload
+cp J2HienLoader.ipa J2MELoader-iOS.ipa
 cd ..
 
-echo "=== SUCCESS: IPA built at $(pwd)/build/J2MELoader-iOS.ipa ==="
+echo "=== SUCCESS: IPA built at $(pwd)/build/J2HienLoader.ipa ==="
