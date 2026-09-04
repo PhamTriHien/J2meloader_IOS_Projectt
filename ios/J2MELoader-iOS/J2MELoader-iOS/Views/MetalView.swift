@@ -1,5 +1,6 @@
-﻿import SwiftUI
+import SwiftUI
 import MetalKit
+import UIKit.UIGestureRecognizerSubclass
 
 public struct MetalView: UIViewRepresentable {
     public var config: EmulatorConfig
@@ -135,6 +136,7 @@ class TouchGestureRecognizer: UIGestureRecognizer {
     }
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = .began
         if let touch = touches.first {
             let point = touch.location(in: view)
             onTouch(point, 0)
@@ -142,6 +144,7 @@ class TouchGestureRecognizer: UIGestureRecognizer {
     }
     
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = .changed
         if let touch = touches.first {
             let point = touch.location(in: view)
             onTouch(point, 1)
@@ -149,6 +152,15 @@ class TouchGestureRecognizer: UIGestureRecognizer {
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = .ended
+        if let touch = touches.first {
+            let point = touch.location(in: view)
+            onTouch(point, 2)
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = .cancelled
         if let touch = touches.first {
             let point = touch.location(in: view)
             onTouch(point, 2)

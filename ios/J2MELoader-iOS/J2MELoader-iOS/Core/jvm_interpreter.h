@@ -1,4 +1,4 @@
-﻿#ifndef JVM_INTERPRETER_H
+#ifndef JVM_INTERPRETER_H
 #define JVM_INTERPRETER_H
 
 #include "jar_loader.h"
@@ -7,6 +7,7 @@
 #include <string>
 #include <memory>
 #include <thread>
+#include <mutex>
 #include <atomic>
 #include <queue>
 #include <functional>

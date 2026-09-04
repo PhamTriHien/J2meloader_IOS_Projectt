@@ -39,20 +39,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES > build.log 2>&1 || BUILD_FAILED=1
-
-          if [ "$BUILD_FAILED" = "1" ]; then
-            echo "::error::Build Failed! Pushing logs to build-log branch..."
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git checkout -B build-log
-            cp build.log build_failure_log.txt
-            git add build_failure_log.txt
-            git commit -m "chore(ci): save build failure log [skip ci]" || true
-            git push origin build-log --force || true
-            tail -n 120 build.log
-            exit 1
-          fi
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
       - name: Package Payload to IPA
         run: |
