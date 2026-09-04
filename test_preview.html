@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J2ME-Loader (iOS / Android 100% UI Preview & Emulator)</title>
+<style>
+  :root {
+    --bg-dark: #121212;
+    --toolbar-bg: #212121;
+    --toolbar-border: #333333;
+    --fab-color: #FF2E51;
+    --fab-pressed: #D81B3F;
+    --text-primary: #FFFFFF;
+    --text-secondary: #AAAAAA;
+    --text-muted: #777777;
+    --item-hover: #242424;
+    --keypad-bg: #1A1A1A;
+    --keypad-btn: #2D2D2D;
+    --keypad-active: #FF2E51;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  body {
+    background: #0B0E14;
+    color: var(--text-primary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  /* Phone Mockup Frame */
+  .device-frame {
+    width: 410px;
+    height: 840px;
+    background: #000000;
+    border-radius: 46px;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.8), 0 0 0 10px #2D3139, 0 0 0 12px #1A1D24;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Status Bar */
+  .status-bar {
+    height: 40px;
+    background: var(--toolbar-bg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 24px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #E0E0E0;
+    z-index: 20;
+  }
+  .notch {
+    width: 120px;
+    height: 22px;
+    background: #000000;
+    border-radius: 0 0 14px 14px;
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  /* App Container */
+  .app-container {
+    flex: 1;
+    background: var(--bg-dark);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Toolbar */
+  .toolbar {
+    height: 54px;
+    background: var(--toolbar-bg);
+    border-bottom: 1px solid var(--toolbar-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    z-index: 10;
+  }
+  .toolbar-title {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .toolbar-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .btn-icon {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+  }
+  .btn-icon:hover { background: rgba(255,255,255,0.1); }
+
+  /* Search Input Overlay */
+  .search-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 54px;
+    background: var(--toolbar-bg);
+    display: none;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+    z-index: 15;
+  }
+  .search-input {
+    flex: 1;
+    background: #2D2D2D;
+    border: none;
+    border-radius: 6px;
+    color: #FFF;
+    padding: 8px 12px;
+    font-size: 15px;
+    outline: none;
+  }
+
+  /* Game List */
+  .game-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0 80px 0;
+  }
+  .game-list::-webkit-scrollbar { width: 4px; }
+  .game-list::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+
+  .game-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #1E1E1E;
+    transition: background 0.12s;
+  }
+  .game-item:hover, .game-item:active {
+    background: var(--item-hover);
+  }
+  .game-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--fab-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    font-weight: 700;
+    color: #FFF;
+    margin-right: 14px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+  .game-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .game-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .game-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  /* Floating Action Button */
+  .fab {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: var(--fab-color);
+    color: #FFF;
+    border: none;
+    font-size: 32px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(255, 46, 81, 0.45);
+    transition: transform 0.15s, background 0.15s;
+    z-index: 10;
+  }
+  .fab:hover { transform: scale(1.06); background: var(--fab-pressed); }
+  .fab:active { transform: scale(0.95); }
+
+  /* Context Menu */
+  .context-menu {
+    position: absolute;
+    background: #282828;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    padding: 6px 0;
+    min-width: 170px;
+    z-index: 100;
+    display: none;
+  }
+  .menu-item {
+    padding: 10px 16px;
+    font-size: 14px;
+    color: #FFF;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .menu-item:hover { background: var(--fab-color); }
+  .menu-divider { height: 1px; background: #383838; margin: 4px 0; }
+
+  /* Game Screen View */
+  .game-screen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #000;
+    display: none;
+    flex-direction: column;
+    z-index: 30;
+  }
+  .game-top-bar {
+    height: 48px;
+    background: var(--toolbar-bg);
+    border-bottom: 1px solid var(--toolbar-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+  }
+  .game-viewport-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #05070B;
+    position: relative;
+    overflow: hidden;
+  }
+  #gameCanvas {
+    background: #000;
+    image-rendering: pixelated;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8);
+    cursor: crosshair;
+  }
+
+  /* Shaders Overlay */
+  .shader-crt {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.3) 3px, rgba(0,0,0,0.3) 4px);
+    display: none;
+  }
+  .shader-lcd {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    background-size: 3px 3px;
+    background-image: linear-gradient(to right, rgba(0,255,0,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.2) 1px, transparent 1px);
+    display: none;
+  }
+
+  /* Virtual Keypad */
+  .keypad-container {
+    background: var(--keypad-bg);
+    padding: 8px 14px 16px 14px;
+    border-top: 1px solid #282828;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .soft-keys {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .btn-soft {
+    flex: 1;
+    background: var(--keypad-btn);
+    border: none;
+    border-radius: 6px;
+    color: #E0E0E0;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px 0;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+  .btn-soft:active { background: var(--fab-color); }
+
+  .dpad-container {
+    display: grid;
+    grid-template-columns: repeat(3, 44px);
+    grid-template-rows: repeat(3, 34px);
+    gap: 4px;
+    justify-content: center;
+    margin: 2px 0;
+  }
+  .btn-dpad {
+    background: var(--keypad-btn);
+    border: none;
+    border-radius: 6px;
+    color: #FFF;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-dpad.ok { color: var(--fab-color); font-size: 12px; }
+  .btn-dpad:active { background: var(--fab-color); color: #FFF; }
+
+  .number-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .btn-num {
+    background: var(--keypad-btn);
+    border: none;
+    border-radius: 6px;
+    color: #E0E0E0;
+    padding: 6px 10px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.25);
+  }
+  .btn-num .num { font-size: 14px; font-weight: 700; }
+  .btn-num .sub { font-size: 9px; color: #888; }
+  .btn-num:active { background: var(--fab-color); }
+
+  /* Modal */
+  .modal-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    padding: 20px;
+  }
+  .modal-card {
+    background: #1E1E1E;
+    border-radius: 14px;
+    width: 100%;
+    max-height: 85%;
+    overflow-y: auto;
+    padding: 18px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+  }
+  .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 12px; color: #FFF; }
+  .form-group { margin-bottom: 14px; }
+  .form-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block; }
+  .form-select, .form-input {
+    width: 100%;
+    background: #2D2D2D;
+    border: 1px solid #404040;
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: #FFF;
+    font-size: 13px;
+    outline: none;
+  }
+  .btn-primary {
+    width: 100%;
+    background: var(--fab-color);
+    border: none;
+    border-radius: 8px;
+    padding: 10px;
+    color: #FFF;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="device-frame">
+  <!-- iPhone / Mobile Top Notch & Status Bar -->
+  <div class="status-bar">
+    <span>9:41</span>
+    <div class="notch"></div>
+    <span>5G 􀛨 100%</span>
+  </div>
+
+  <div class="app-container" id="appContainer">
+    <!-- Top Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-title">J2ME-Loader</div>
+      <div class="toolbar-actions">
+        <button class="btn-icon" id="btnSearch" title="Search">🔍</button>
+        <button class="btn-icon" id="btnSort" title="Sort">⇅</button>
+        <button class="btn-icon" id="btnOverflow" title="Menu">⋮</button>
+      </div>
+    </div>
+
+    <!-- Search Bar Overlay -->
+    <div class="search-overlay" id="searchOverlay">
+      <button class="btn-icon" id="btnSearchBack">←</button>
+      <input type="text" class="search-input" id="searchInput" placeholder="Search apps...">
+      <button class="btn-icon" id="btnSearchClear">✕</button>
+    </div>
+
+    <!-- Game List -->
+    <div class="game-list" id="gameList"></div>
+
+    <!-- Floating Action Button '+' -->
+    <button class="fab" id="btnAddGame" title="Install .jar / .jad">+</button>
+    <input type="file" id="fileInput" accept=".jar,.jad" style="display:none">
+
+    <!-- Game Screen Viewport -->
+    <div class="game-screen" id="gameScreen">
+      <div class="game-top-bar">
+        <button class="btn-icon" id="btnGameBack" style="font-size:14px; font-weight:bold;">‹ Back</button>
+        <span id="gameTitleDisplay" style="font-size:14px; font-weight:600;">Bounce Tales</span>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button class="btn-icon" id="btnSpeed" style="font-size:11px; font-weight:bold; color:var(--fab-color); background:#2A2A2A; border-radius:4px; padding:3px 6px;">1x</button>
+          <button class="btn-icon" id="btnPause">❚❚</button>
+          <button class="btn-icon" id="btnRestart">↺</button>
+          <button class="btn-icon" id="btnGameSettings">⚙</button>
+        </div>
+      </div>
+
+      <div class="game-viewport-wrap" id="viewportWrap">
+        <canvas id="gameCanvas" width="240" height="320"></canvas>
+        <div class="shader-crt" id="shaderCrt"></div>
+        <div class="shader-lcd" id="shaderLcd"></div>
+      </div>
+
+      <!-- Virtual Retro Keypad -->
+      <div class="keypad-container" id="keypadContainer">
+        <div class="soft-keys">
+          <button class="btn-soft" id="keyLSK">— LSK —</button>
+          <button class="btn-soft" id="keyRSK">— RSK —</button>
+        </div>
+
+        <div class="dpad-container">
+          <div></div>
+          <button class="btn-dpad" id="keyUp">▲</button>
+          <div></div>
+          <button class="btn-dpad" id="keyLeft">◀</button>
+          <button class="btn-dpad ok" id="keyFire">OK</button>
+          <button class="btn-dpad" id="keyRight">▶</button>
+          <div></div>
+          <button class="btn-dpad" id="keyDown">▼</button>
+          <div></div>
+        </div>
+
+        <div class="number-grid">
+          <button class="btn-num" data-key="1"><span class="num">1</span><span class="sub">.</span></button>
+          <button class="btn-num" data-key="2"><span class="num">2</span><span class="sub">abc</span></button>
+          <button class="btn-num" data-key="3"><span class="num">3</span><span class="sub">def</span></button>
+          <button class="btn-num" data-key="4"><span class="num">4</span><span class="sub">ghi</span></button>
+          <button class="btn-num" data-key="5"><span class="num">5</span><span class="sub">jkl</span></button>
+          <button class="btn-num" data-key="6"><span class="num">6</span><span class="sub">mno</span></button>
+          <button class="btn-num" data-key="7"><span class="num">7</span><span class="sub">pqrs</span></button>
+          <button class="btn-num" data-key="8"><span class="num">8</span><span class="sub">tuv</span></button>
+          <button class="btn-num" data-key="9"><span class="num">9</span><span class="sub">wxyz</span></button>
+          <button class="btn-num" data-key="*"><span class="num">*</span><span class="sub"></span></button>
+          <button class="btn-num" data-key="0"><span class="num">0</span><span class="sub">␣</span></button>
+          <button class="btn-num" data-key="#"><span class="num">#</span><span class="sub">⇧</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+      <div class="menu-item" id="ctxStart">▶ Start</div>
+      <div class="menu-item" id="ctxSettings">⚙ Settings</div>
+      <div class="menu-item" id="ctxRename">✏ Rename</div>
+      <div class="menu-item" id="ctxClear">🗑 Clear Saved Data</div>
+      <div class="menu-divider"></div>
+      <div class="menu-item" id="ctxDelete" style="color:#FF453A;">❌ Delete</div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal">
+      <div class="modal-card">
+        <div class="modal-title" id="settingsTitle">Settings: Bounce Tales</div>
+        <div class="form-group">
+          <label class="form-label">Device Profile Preset</label>
+          <select class="form-select" id="selPreset">
+            <option value="240x320">Nokia N73 (240x320)</option>
+            <option value="176x220">Sony Ericsson K750i (176x220)</option>
+            <option value="176x208">Nokia 6600 (176x208)</option>
+            <option value="360x640">Nokia 5800 XpressMusic (360x640)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Graphics Shader / Filter</label>
+          <select class="form-select" id="selShader">
+            <option value="nearest">Nearest (Pixel Sharp)</option>
+            <option value="crt">CRT Scanlines</option>
+            <option value="lcd">Nokia LCD Subpixel Grid</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">FPS Limit</label>
+          <select class="form-select" id="selFps">
+            <option value="60">60 FPS</option>
+            <option value="30">30 FPS</option>
+            <option value="0">Unlimited</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Virtual Keypad Layout</label>
+          <select class="form-select" id="selKeypad">
+            <option value="classic">Classic Phone (3x4 + D-Pad)</option>
+            <option value="hidden">Hidden (Touchscreen Direct)</option>
+          </select>
+        </div>
+        <button class="btn-primary" id="btnSaveSettings">Save & Apply</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// WebAudio Synthesizer for retro 8-bit & MIDI beeps
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+function playTone(freq = 520, duration = 0.06, type = "square") {
+  try {
+    if (!audioCtx) audioCtx = new AudioCtx();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  } catch(e) {}
+}
+
+// Initial Apps List
+let games = [
+  { id: 1, title: "Bounce Tales", vendor: "Nokia", version: "2.0.26", color: "#FF3B30", shader: "nearest" },
+  { id: 2, title: "Diamond Rush", vendor: "Gameloft", version: "1.1.8", color: "#007AFF", shader: "nearest" },
+  { id: 3, title: "Tower Bloxx", vendor: "Digital Chocolate", version: "1.0.4", color: "#FF9500", shader: "nearest" },
+  { id: 4, title: "Asphalt 3: 3D", vendor: "Gameloft", version: "1.2.0", color: "#FF2D55", shader: "nearest" },
+  { id: 5, title: "Doom RPG", vendor: "id Software / EA", version: "1.0.9", color: "#5856D6", shader: "nearest" },
+  { id: 6, title: "Sonic The Hedgehog", vendor: "Sega", version: "1.0.0", color: "#34C759", shader: "nearest" },
+  { id: 7, title: "Ninja School", vendor: "Teamobi", version: "1.4.2", color: "#AF52DE", shader: "nearest" },
+  { id: 8, title: "Avatar 2D", vendor: "Teamobi", version: "2.5.0", color: "#5AC8FA", shader: "nearest" },
+  { id: 9, title: "Khí Phách Anh Hùng", vendor: "Teamobi", version: "1.7.5", color: "#FFCC00", shader: "nearest" }
+];
+
+let currentGame = null;
+let selectedGameForContext = null;
+let searchQuery = "";
+
+// Elements
+const gameListEl = document.getElementById("gameList");
+const searchOverlay = document.getElementById("searchOverlay");
+const searchInput = document.getElementById("searchInput");
+const contextMenu = document.getElementById("contextMenu");
+const gameScreen = document.getElementById("gameScreen");
+const gameCanvas = document.getElementById("gameCanvas");
+const ctx = gameCanvas.getContext("2d");
+const settingsModal = document.getElementById("settingsModal");
+const shaderCrt = document.getElementById("shaderCrt");
+const shaderLcd = document.getElementById("shaderLcd");
+
+// Render Library
+function renderList() {
+  gameListEl.innerHTML = "";
+  const filtered = games.filter(g => 
+    g.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    g.vendor.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  filtered.forEach(game => {
+    const item = document.createElement("div");
+    item.className = "game-item";
+    item.innerHTML = `
+      <div class="game-icon" style="background:${game.color}">${game.title.charAt(0)}</div>
+      <div class="game-info">
+        <div class="game-name">${game.title}</div>
+        <div class="game-meta">
+          <span>${game.vendor}</span>
+          <span>v${game.version}</span>
+        </div>
+      </div>
+    `;
+    item.addEventListener("click", () => launchGame(game));
+    item.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      selectedGameForContext = game;
+      contextMenu.style.top = `${Math.min(e.clientY - 40, 500)}px`;
+      contextMenu.style.left = `${Math.min(e.clientX - 20, 200)}px`;
+      contextMenu.style.display = "block";
+    });
+    gameListEl.appendChild(item);
+  });
+}
+
+// Search
+document.getElementById("btnSearch").onclick = () => {
+  searchOverlay.style.display = "flex";
+  searchInput.focus();
+};
+document.getElementById("btnSearchBack").onclick = () => {
+  searchOverlay.style.display = "none";
+  searchQuery = "";
+  renderList();
+};
+document.getElementById("btnSearchClear").onclick = () => {
+  searchInput.value = "";
+  searchQuery = "";
+  renderList();
+};
+searchInput.oninput = (e) => {
+  searchQuery = e.target.value;
+  renderList();
+};
+
+// Sort
+document.getElementById("btnSort").onclick = () => {
+  games.sort((a,b) => a.title.localeCompare(b.title));
+  playTone(650, 0.05);
+  renderList();
+};
+
+// FAB & File Upload
+document.getElementById("btnAddGame").onclick = () => {
+  document.getElementById("fileInput").click();
+};
+document.getElementById("fileInput").onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const name = file.name.replace(/\.[^/.]+$/, "");
+  const newGame = {
+    id: Date.now(),
+    title: name,
+    vendor: "Custom JAR",
+    version: "1.0.0",
+    color: "#34C759",
+    shader: "nearest"
+  };
+  games.unshift(newGame);
+  renderList();
+  playTone(880, 0.1);
+  alert(`Installed: ${name}`);
+};
+
+// Context Menu Handlers
+document.addEventListener("click", () => contextMenu.style.display = "none");
+document.getElementById("ctxStart").onclick = () => { if (selectedGameForContext) launchGame(selectedGameForContext); };
+document.getElementById("ctxSettings").onclick = () => { if (selectedGameForContext) openSettings(selectedGameForContext); };
+document.getElementById("ctxRename").onclick = () => {
+  if (selectedGameForContext) {
+    const newName = prompt("Enter new name:", selectedGameForContext.title);
+    if (newName && newName.trim()) {
+      selectedGameForContext.title = newName.trim();
+      renderList();
+    }
+  }
+};
+document.getElementById("ctxClear").onclick = () => {
+  if (selectedGameForContext && confirm(`Clear RMS storage for ${selectedGameForContext.title}?`)) {
+    playTone(400, 0.08);
+    alert("RMS storage cleared.");
+  }
+};
+document.getElementById("ctxDelete").onclick = () => {
+  if (selectedGameForContext && confirm(`Delete ${selectedGameForContext.title}?`)) {
+    games = games.filter(g => g.id !== selectedGameForContext.id);
+    renderList();
+    playTone(350, 0.1);
+  }
+};
+
+// Settings Modal
+function openSettings(game) {
+  currentGame = game;
+  document.getElementById("settingsTitle").innerText = `Settings: ${game.title}`;
+  document.getElementById("selShader").value = game.shader || "nearest";
+  settingsModal.style.display = "flex";
+}
+document.getElementById("btnSaveSettings").onclick = () => {
+  if (currentGame) {
+    currentGame.shader = document.getElementById("selShader").value;
+    applyShader(currentGame.shader);
+  }
+  playTone(660, 0.06);
+  settingsModal.style.display = "none";
+};
+settingsModal.onclick = (e) => { if (e.target === settingsModal) settingsModal.style.display = "none"; };
+
+function applyShader(shader) {
+  shaderCrt.style.display = shader === "crt" ? "block" : "none";
+  shaderLcd.style.display = shader === "lcd" ? "block" : "none";
+}
+
+// ------------------------------------
+// Interactive 60 FPS Game Loop Engine
+// ------------------------------------
+let ball = { x: 120, y: 200, vx: 0, vy: 0, r: 14 };
+let rings = [{x: 50, y: 180}, {x: 120, y: 120}, {x: 190, y: 180}, {x: 80, y: 240}, {x: 160, y: 240}];
+let collected = new Set();
+let score = 0;
+let speedMult = 1;
+let isPaused = false;
+let keysHeld = new Set();
+let animFrame = null;
+let fps = 60, frames = 0, lastFpsTime = performance.now();
+
+function launchGame(game) {
+  currentGame = game;
+  document.getElementById("gameTitleDisplay").innerText = game.title;
+  gameScreen.style.display = "flex";
+  applyShader(game.shader);
+  ball = { x: 120, y: 200, vx: 0, vy: 0, r: 14 };
+  collected.clear();
+  score = 0;
+  playTone(550, 0.08);
+  if (!animFrame) animLoop();
+}
+
+document.getElementById("btnGameBack").onclick = () => {
+  gameScreen.style.display = "none";
+};
+document.getElementById("btnSpeed").onclick = (e) => {
+  speedMult = speedMult === 1 ? 2 : (speedMult === 2 ? 4 : 1);
+  e.target.innerText = `${speedMult}x`;
+  playTone(700, 0.04);
+};
+document.getElementById("btnPause").onclick = (e) => {
+  isPaused = !isPaused;
+  e.target.innerText = isPaused ? "▶" : "❚❚";
+  playTone(500, 0.04);
+};
+document.getElementById("btnRestart").onclick = () => {
+  ball = { x: 120, y: 200, vx: 0, vy: 0, r: 14 };
+  collected.clear();
+  score = 0;
+  playTone(800, 0.08);
+};
+document.getElementById("btnGameSettings").onclick = () => openSettings(currentGame);
+
+// Keypad Events
+function pressKey(k) {
+  keysHeld.add(k);
+  const tones = { "UP":587, "DOWN":493, "LEFT":523, "RIGHT":659, "FIRE":880, "LSK":440, "RSK":440, "1":697, "2":770, "3":852, "4":697, "5":770 };
+  playTone(tones[k] || 500, 0.05);
+}
+function releaseKey(k) { keysHeld.delete(k); }
+
+function bindBtn(id, k) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("mousedown", () => pressKey(k));
+  el.addEventListener("mouseup", () => releaseKey(k));
+  el.addEventListener("touchstart", (e) => { e.preventDefault(); pressKey(k); });
+  el.addEventListener("touchend", () => releaseKey(k));
+}
+bindBtn("keyUp", "UP"); bindBtn("keyDown", "DOWN"); bindBtn("keyLeft", "LEFT"); bindBtn("keyRight", "RIGHT");
+bindBtn("keyFire", "FIRE"); bindBtn("keyLSK", "LSK"); bindBtn("keyRSK", "RSK");
+
+document.querySelectorAll(".btn-num").forEach(btn => {
+  const k = btn.dataset.key;
+  btn.addEventListener("mousedown", () => pressKey(k));
+  btn.addEventListener("mouseup", () => releaseKey(k));
+  btn.addEventListener("touchstart", (e) => { e.preventDefault(); pressKey(k); });
+  btn.addEventListener("touchend", () => releaseKey(k));
+});
+
+// PC Keyboard Bindings
+window.addEventListener("keydown", (e) => {
+  const map = { "ArrowUp":"UP", "ArrowDown":"DOWN", "ArrowLeft":"LEFT", "ArrowRight":"RIGHT", "Enter":"FIRE", " ":"FIRE", "F1":"LSK", "F2":"RSK", "z":"LSK", "x":"RSK" };
+  const k = map[e.key] || e.key.toUpperCase();
+  if (k) pressKey(k);
+});
+window.addEventListener("keyup", (e) => {
+  const map = { "ArrowUp":"UP", "ArrowDown":"DOWN", "ArrowLeft":"LEFT", "ArrowRight":"RIGHT", "Enter":"FIRE", " ":"FIRE", "F1":"LSK", "F2":"RSK", "z":"LSK", "x":"RSK" };
+  const k = map[e.key] || e.key.toUpperCase();
+  if (k) releaseKey(k);
+});
+
+// Touch/Mouse on Canvas
+gameCanvas.addEventListener("mousedown", (e) => {
+  const rect = gameCanvas.getBoundingClientRect();
+  ball.x = (e.clientX - rect.left) * (gameCanvas.width / rect.width);
+  ball.y = (e.clientY - rect.top) * (gameCanvas.height / rect.height);
+  ball.vx = 0; ball.vy = 0;
+  playTone(620, 0.03);
+});
+
+// 60 FPS Render Loop
+function animLoop() {
+  const cw = gameCanvas.width;
+  const ch = gameCanvas.height;
+
+  if (!isPaused) {
+    if (keysHeld.has("LEFT") || keysHeld.has("4")) ball.vx -= 0.8 * speedMult;
+    if (keysHeld.has("RIGHT") || keysHeld.has("6")) ball.vx += 0.8 * speedMult;
+    if (keysHeld.has("UP") || keysHeld.has("2") || keysHeld.has("FIRE") || keysHeld.has("5")) {
+      if (ball.y >= ch - ball.r - 2) {
+        ball.vy = -8.5 * speedMult;
+        playTone(900, 0.04);
+      }
+    }
+
+    ball.vy += 0.35 * speedMult;
+    ball.x += ball.vx * speedMult;
+    ball.y += ball.vy * speedMult;
+    ball.vx *= 0.92;
+
+    if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx = -ball.vx * 0.6; }
+    if (ball.x + ball.r > cw) { ball.x = cw - ball.r; ball.vx = -ball.vx * 0.6; }
+    if (ball.y + ball.r > ch) { ball.y = ch - ball.r; ball.vy = -ball.vy * 0.5; }
+
+    rings.forEach((r, idx) => {
+      if (!collected.has(idx)) {
+        if (Math.hypot(ball.x - r.x, ball.y - r.y) < ball.r + 12) {
+          collected.add(idx);
+          score += 100;
+          playTone(1200, 0.08);
+        }
+      }
+    });
+  }
+
+  // FPS calculation
+  frames++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 1000) {
+    fps = frames;
+    frames = 0;
+    lastFpsTime = now;
+  }
+
+  // Draw Scene
+  ctx.fillStyle = "#0F172A";
+  ctx.fillRect(0, 0, cw, ch * 0.65);
+  ctx.fillStyle = "#1E293B";
+  ctx.fillRect(0, ch * 0.65, cw, ch * 0.35);
+
+  ctx.strokeStyle = "#334155";
+  ctx.lineWidth = 1;
+  for (let y = Math.floor(ch * 0.65); y < ch; y += 18) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke();
+  }
+  for (let x = 0; x < cw; x += 24) {
+    ctx.beginPath(); ctx.moveTo(x, Math.floor(ch * 0.65)); ctx.lineTo(x, ch); ctx.stroke();
+  }
+
+  // Golden Rings
+  rings.forEach((r, idx) => {
+    if (!collected.has(idx)) {
+      const pulse = Math.sin(Date.now() / 150 + idx) * 2;
+      ctx.strokeStyle = "#FFD700";
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(r.x, r.y, 10 + pulse, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "#FFF8DC";
+      ctx.beginPath(); ctx.arc(r.x, r.y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+  });
+
+  // Bounce Ball
+  ctx.fillStyle = "#FF2E51";
+  ctx.strokeStyle = "#990022";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  // Highlight
+  ctx.fillStyle = "#FFA0B0";
+  ctx.beginPath(); ctx.arc(ball.x - ball.r*0.3, ball.y - ball.r*0.4, ball.r*0.35, 0, Math.PI * 2); ctx.fill();
+
+  // HUD
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "bold 11px Segoe UI, sans-serif";
+  ctx.fillText(`SCORE: ${score}`, 10, 18);
+  ctx.fillStyle = "#34C759";
+  ctx.fillText(`${fps} FPS`, cw - 48, 18);
+
+  if (isPaused) {
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "bold 18px Segoe UI, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("PAUSED", cw/2, ch/2);
+    ctx.textAlign = "start";
+  }
+
+  animFrame = requestAnimationFrame(animLoop);
+}
+
+// Init
+renderList();
+</script>
+</body>
+</html>

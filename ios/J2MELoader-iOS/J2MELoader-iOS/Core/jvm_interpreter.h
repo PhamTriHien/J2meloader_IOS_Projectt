@@ -4,6 +4,7 @@
 #include "jar_loader.h"
 #include "lcdui_display.h"
 #include "rms_storage.h"
+#include "jvm_bytecode.h"
 #include <string>
 #include <memory>
 #include <thread>
@@ -67,9 +68,14 @@ private:
     std::function<void(const uint8_t*, size_t)> m_playMidiCallback;
     std::function<void(int, int)> m_playToneCallback;
 
+    uint32_t m_midletRef = 0;
+    uint32_t m_canvasRef = 0;
+    std::shared_ptr<ClassFile> m_midletClass;
+    std::shared_ptr<ClassFile> m_canvasClass;
+
     void executionLoop();
     void processEvents();
-    void renderMockSplashScreen(const std::string& title);
+    void renderEngineFrame(const std::string& title);
 };
 
 #endif // JVM_INTERPRETER_H
