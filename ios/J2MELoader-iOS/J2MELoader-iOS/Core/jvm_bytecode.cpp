@@ -1,4 +1,5 @@
 #include "jvm_bytecode.h"
+#include "jvm_interpreter.h"
 #include "lcdui_display.h"
 #include "jar_loader.h"
 #include "png_decoder.h"
