@@ -41,23 +41,13 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=YES > xcodebuild_raw.log 2>&1 || BUILD_FAILED=1
 
           if [ "$BUILD_FAILED" = "1" ]; then
-            python3 -c "
-import json, urllib.request, os
-with open('xcodebuild_raw.log', 'r', errors='ignore') as f:
-    lines = f.readlines()
-errs = [l for l in lines if any(k in l for k in ['error:', 'fatal error:', 'BUILD FAILED', 'warning:'])]
-body = '### Xcode Build Failure Log\n\n```text\n' + ''.join(errs[-80:]) + '\n```\n\n### Last Lines:\n```text\n' + ''.join(lines[-40:]) + '\n```'
-data = json.dumps({'title': 'CI Build Log', 'body': body[:65000]}).encode('utf-8')
-req = urllib.request.Request(
-    'https://api.github.com/repos/${{ github.repository }}/issues',
-    data=data,
-    headers={'Authorization': 'token ${{ secrets.GITHUB_TOKEN }}', 'Content-Type': 'application/json', 'User-Agent': 'CI'}
-)
-try:
-    urllib.request.urlopen(req)
-except Exception as e:
-    print('Issue error:', e)
-"
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+            cp xcodebuild_raw.log xcodebuild_output.txt
+            git add xcodebuild_output.txt
+            git commit -m "chore: save xcodebuild output [skip ci]" || true
+            git push origin main || true
             cat xcodebuild_raw.log
             exit 1
           fi
