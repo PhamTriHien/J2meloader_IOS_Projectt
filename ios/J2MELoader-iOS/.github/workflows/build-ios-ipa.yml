@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
   build-ipa:
@@ -26,6 +25,9 @@ jobs:
 
       - name: Build and Package IPA
         run: |
+          if [ -d "ios/J2MELoader-iOS" ]; then
+            cd ios/J2MELoader-iOS
+          fi
           chmod +x build_ipa.sh
           ./build_ipa.sh
 
@@ -33,25 +35,32 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: J2MELoader-iOS-ipa
-          path: build/J2MELoader-iOS.ipa
+          path: "**/J2MELoader-iOS.ipa"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
           tag_name: v1.8.2-ios
-          name: "J2ME-Loader iOS v1.8.2 (Native IPA for iPhone / iPad)"
+          name: "J2ME-Loader iOS v1.8.2 Full Native Release"
           body: |
-            ### 🎮 J2ME-Loader for iOS (Native Port)
-            **Version**: 1.8.2
-            **Architecture**: ARM64 (iOS 15.0+ / iPadOS 15.0+)
+            ## J2ME-Loader for iOS & iPadOS (Native Port v1.8.2)
             
-            #### Features Included:
-            - **Complete UI & Engine**: Full native SwiftUI + Metal shader pipeline (Nearest, Bilinear, CRT Scanlines, LCD Grid).
-            - **CoreAudio & AVMIDIPlayer**: Crystal clear SoundFont / MIDI synthesizer and real-time Tone generator.
-            - **J2ME Runtime**: LCDUI Graphics, GameCanvas (Sprites & TiledLayer), M3G (JSR-184) 3D, Micro3D v3, RMS Flash Storage.
-            - **Virtual Controls & Key Mapper**: Retro phone keypad, D-pad, touch overlay, and MFi/Bluetooth controller support.
-            - **Full Sideload Support**: Compatible with TrollStore, Sideloadly, AltStore, Feather, and Scarlet.
-          files: build/J2MELoader-iOS.ipa
+            ### Features
+            - **Pure Swift + Metal LCDUI Rendering Engine**: High performance 60 FPS hardware accelerated graphics with custom CRT Scanlines & Nokia LCD Subpixel Grid shaders.
+            - **Full J2ME / MIDP 2.0 Subsystems**:
+              - MIDlet lifecycle management (JAD/JAR parsing, RMS Record Management System flash memory storage)
+              - Micro3D v3 (JSR-184 & MBAC/TRA 3D model engine) & M3G Mobile 3D Graphics
+              - GameCanvas (Sprites, TiledLayers, LayerManager, pixel-level collision detection)
+              - Sonivox EAS MIDI engine & CoreAudio tone synthesizer
+              - Complete configurable retro on-screen virtual keypad + Gamepad/MFi Bluetooth controller remapping
+            
+            ### Installation Instructions
+            1. Download `J2MELoader-iOS.ipa` attached below.
+            2. Install via **TrollStore**, **Sideloadly**, **AltStore**, **Scarlet**, or **Feather**.
+            3. Tap the `+` button in the app to import any `.jar` or `.jad` game file.
+          files: "**/J2MELoader-iOS.ipa"
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

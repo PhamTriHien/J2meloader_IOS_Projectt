@@ -35,9 +35,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: J2MELoader-iOS-ipa
-          path: |
-            build/J2MELoader-iOS.ipa
-            ios/J2MELoader-iOS/build/J2MELoader-iOS.ipa
+          path: "**/J2MELoader-iOS.ipa"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -61,9 +59,7 @@ jobs:
             1. Download `J2MELoader-iOS.ipa` attached below.
             2. Install via **TrollStore**, **Sideloadly**, **AltStore**, **Scarlet**, or **Feather**.
             3. Tap the `+` button in the app to import any `.jar` or `.jad` game file.
-          files: |
-            build/J2MELoader-iOS.ipa
-            ios/J2MELoader-iOS/build/J2MELoader-iOS.ipa
+          files: "**/J2MELoader-iOS.ipa"
           draft: false
           prerelease: false
         env:
