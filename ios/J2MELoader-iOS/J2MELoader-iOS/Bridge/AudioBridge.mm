@@ -1,11 +1,12 @@
-﻿#import "AudioBridge.h"
+#import "AudioBridge.h"
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
-#include "../Audio/eas_engine_bridge.h"
+#include <math.h>
 
 @interface AudioBridge ()
 @property (nonatomic, strong) AVAudioEngine *engine;
 @property (nonatomic, strong) AVAudioSourceNode *synthSourceNode;
+@property (nonatomic, strong) AVMIDIPlayer *midiPlayer;
 @property (nonatomic, assign) float volume;
 @property (nonatomic, assign) double tonePhase;
 @property (nonatomic, assign) double tonePhaseInc;
@@ -32,7 +33,6 @@ static AudioBridge *s_sharedInstance = nil;
         _tonePhaseInc = 0.0;
         _isPlayingTone = NO;
         [self setupAudioSession];
-        eas_engine_init();
     }
     return self;
 }
@@ -64,7 +64,7 @@ static AudioBridge *s_sharedInstance = nil;
         AudioBufferList * _Nonnull outputData) {
         
         AudioBridge *strongSelf = weakSelf;
-        if (!strongSelf) {
+        if (!strongSelf || !strongSelf->_isPlayingTone) {
             *isSilence = YES;
             return noErr;
         }
@@ -72,32 +72,14 @@ static AudioBridge *s_sharedInstance = nil;
         float *leftChannel = (float *)outputData->mBuffers[0].mData;
         float *rightChannel = (outputData->mNumberBuffers > 1) ? (float *)outputData->mBuffers[1].mData : leftChannel;
 
-        // Render Sonivox EAS MIDI Synth PCM
-        int16_t pcmTemp[2048 * 2];
-        AVAudioFrameCount framesToRender = MIN(frameCount, (AVAudioFrameCount)2048);
-        int rendered = eas_engine_render_pcm(pcmTemp, (int)framesToRender);
-
         for (AVAudioFrameCount i = 0; i < frameCount; ++i) {
-            float sampleL = 0.0f;
-            float sampleR = 0.0f;
+            float toneSample = (float)(sin(strongSelf->_tonePhase) * strongSelf->_volume * 0.4f);
+            strongSelf->_tonePhase += strongSelf->_tonePhaseInc;
+            if (strongSelf->_tonePhase >= M_PI * 2.0) strongSelf->_tonePhase -= M_PI * 2.0;
 
-            if (i < (AVAudioFrameCount)rendered) {
-                sampleL = ((float)pcmTemp[i * 2]) / 32768.0f;
-                sampleR = ((float)pcmTemp[i * 2 + 1]) / 32768.0f;
-            }
-
-            // Mix Tone generator if active
-            if (strongSelf->_isPlayingTone) {
-                float toneSample = (float)(sin(strongSelf->_tonePhase) * strongSelf->_volume * 0.4);
-                sampleL += toneSample;
-                sampleR += toneSample;
-                strongSelf->_tonePhase += strongSelf->_tonePhaseInc;
-                if (strongSelf->_tonePhase >= M_PI * 2.0) strongSelf->_tonePhase -= M_PI * 2.0;
-            }
-
-            leftChannel[i] = sampleL * strongSelf->_volume;
+            leftChannel[i] = toneSample;
             if (outputData->mNumberBuffers > 1) {
-                rightChannel[i] = sampleR * strongSelf->_volume;
+                rightChannel[i] = toneSample;
             }
         }
 
@@ -116,6 +98,7 @@ static AudioBridge *s_sharedInstance = nil;
     AudioBridge *instance = [AudioBridge sharedInstance];
     if (freq <= 0) return;
 
+    [instance setupAudioEngine];
     instance.tonePhaseInc = (2.0 * M_PI * freq) / 44100.0;
     instance.isPlayingTone = YES;
 
@@ -126,21 +109,43 @@ static AudioBridge *s_sharedInstance = nil;
 
 + (void)playMidiData:(NSData *)data {
     if (!data || data.length == 0) return;
-    eas_engine_play_midi_data((const uint8_t *)data.bytes, data.length);
+    AudioBridge *instance = [AudioBridge sharedInstance];
+    
+    [instance stopCurrentMidi];
+    
+    NSError *error = nil;
+    instance.midiPlayer = [[AVMIDIPlayer alloc] initWithData:data soundBankURL:nil error:&error];
+    if (!error && instance.midiPlayer) {
+        [instance.midiPlayer prepareToPlay];
+        [instance.midiPlayer play:^{
+            // Playback completed block
+        }];
+    }
+}
+
+- (void)stopCurrentMidi {
+    if (self.midiPlayer) {
+        if (self.midiPlayer.isPlaying) {
+            [self.midiPlayer stop];
+        }
+        self.midiPlayer = nil;
+    }
 }
 
 + (void)stopAudio {
     AudioBridge *instance = [AudioBridge sharedInstance];
     instance.isPlayingTone = NO;
-    eas_engine_stop_midi();
+    [instance stopCurrentMidi];
     if (instance.engine && instance.engine.isRunning) {
         [instance.engine stop];
     }
 }
 
 + (void)setVolume:(float)volume {
-    [AudioBridge sharedInstance].volume = volume;
-    eas_engine_set_volume(volume);
+    AudioBridge *instance = [AudioBridge sharedInstance];
+    if (volume < 0.0f) volume = 0.0f;
+    if (volume > 1.0f) volume = 1.0f;
+    instance.volume = volume;
 }
 
 @end

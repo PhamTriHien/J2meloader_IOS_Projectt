@@ -1,4 +1,4 @@
-﻿name: Build iOS IPA
+name: Build iOS IPA
 
 on:
   push:
@@ -29,20 +29,19 @@ jobs:
           mkdir -p build/Release-iphoneos
           
           echo "Starting xcodebuild..."
-          set -o pipefail
           xcodebuild build \
             -project J2MELoader-iOS.xcodeproj \
-            -target J2MELoader-iOS \
+            -scheme J2MELoader-iOS \
             -configuration Release \
             -sdk iphoneos \
-            -arch arm64 \
+            -destination "generic/platform=iOS" \
             CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphoneos" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES 2>&1 | tee xcodebuild.log || {
-              echo "=== BUILD FAILED. RELEVANT ERRORS: ==="
-              grep -E "(error:|fatal error:|BUILD FAILED|\*\* BUILD FAILED \*\*)" xcodebuild.log -B 2 -A 4 || tail -n 50 xcodebuild.log
+              echo "=== BUILD FAILED. LAST 200 LINES: ==="
+              tail -n 200 xcodebuild.log
               exit 1
             }
 
