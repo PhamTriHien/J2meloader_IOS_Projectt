@@ -1,4 +1,4 @@
-﻿#import "J2MEBridge.h"
+#import "J2MEBridge.h"
 #import "AudioBridge.h"
 #include "../Core/jar_loader.h"
 #include "../Core/jvm_interpreter.h"
@@ -97,6 +97,13 @@
     LcduiDisplay *disp = JvmInterpreter::getInstance().getDisplay();
     if (!disp) return NULL;
     return disp->getBuffer();
+}
+
++ (nullable NSData *)getFramebufferData {
+    LcduiDisplay *disp = JvmInterpreter::getInstance().getDisplay();
+    if (!disp || !disp->getBuffer()) return nil;
+    size_t size = disp->getWidth() * disp->getHeight() * sizeof(uint32_t);
+    return [NSData dataWithBytes:disp->getBuffer() length:size];
 }
 
 + (int)getFrameBufferWidth {

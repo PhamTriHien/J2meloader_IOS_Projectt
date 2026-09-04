@@ -99,6 +99,18 @@ public struct SettingsView: View {
                         }
                     }
                     
+                    Picker("Hướng xoay màn hình", selection: $game.config.screenOrientation) {
+                        ForEach(ScreenOrientation.allCases, id: \.self) { orientation in
+                            Text(orientation.displayName).tag(orientation)
+                        }
+                    }
+                    
+                    Picker("Màu nền màn hình LCD", selection: $game.config.screenBgColor) {
+                        ForEach(ScreenBgColor.allCases, id: \.self) { bg in
+                            Text(bg.displayName).tag(bg)
+                        }
+                    }
+                    
                     Picker("Chế độ co giãn", selection: $game.config.scalingMode) {
                         ForEach(ScalingMode.allCases, id: \.self) { mode in
                             Text(mode.displayName).tag(mode)
@@ -115,6 +127,7 @@ public struct SettingsView: View {
                         Label("Tinh chỉnh thông số Shader...", systemImage: "slider.horizontal.3")
                     }
                     
+                    Toggle("Hiển thị chỉ số đo FPS thời gian thực", isOn: $game.config.showFps)
                     Stepper("Giới hạn khung hình: \(game.config.targetFps) FPS", value: $game.config.targetFps, in: 15...120, step: 5)
                 }
                 
@@ -146,6 +159,28 @@ public struct SettingsView: View {
                             Text("Âm lượng: \(Int(game.config.soundVolume * 100))%")
                             Slider(value: $game.config.soundVolume, in: 0.0...1.0, step: 0.05)
                         }
+                    }
+                }
+                
+                Section(header: Text("Tương thích hệ thống & Chữ (Fonts)")) {
+                    Picker("Kích cỡ chữ MIDP (Font Scale)", selection: $game.config.fontSizeScale) {
+                        ForEach(FontSizeScale.allCases, id: \.self) { scale in
+                            Text(scale.displayName).tag(scale)
+                        }
+                    }
+                    
+                    HStack {
+                        Text("Mã thiết bị giả lập (Platform)")
+                        Spacer()
+                        TextField("NokiaN73", text: $game.config.systemPlatform)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    
+                    HStack {
+                        Text("Ngôn ngữ (Locale)")
+                        Spacer()
+                        TextField("vi-VN", text: $game.config.systemLocale)
+                            .multilineTextAlignment(.trailing)
                     }
                 }
                 

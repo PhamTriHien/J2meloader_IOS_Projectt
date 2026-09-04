@@ -111,10 +111,40 @@ public struct GameScreenView: View {
                             .foregroundColor(.white.opacity(0.85))
                     }
                     
+                    // Menu xoay hướng màn hình nhanh
+                    Menu {
+                        ForEach(ScreenOrientation.allCases, id: \.self) { orientation in
+                            Button(action: {
+                                currentConfig.screenOrientation = orientation
+                                var updated = game
+                                updated.config = currentConfig
+                                gameManager.updateGame(updated)
+                            }) {
+                                HStack {
+                                    Text(orientation.displayName)
+                                    if currentConfig.screenOrientation == orientation {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    
                     // Nút Ánh xạ phím tay cầm
                     Button(action: { showingKeyMapper = true }) {
                         Image(systemName: "gamecontroller.fill")
                             .font(.system(size: 18))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    
+                    // Nút Chụp ảnh màn hình
+                    Button(action: { takeScreenshot() }) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 17))
                             .foregroundColor(.white.opacity(0.85))
                     }
                     
@@ -148,13 +178,35 @@ public struct GameScreenView: View {
                 
                 // Màn hình LCD Canvas hiển thị đồ họa 60 FPS
                 ZStack {
-                    Color.black
+                    Color(
+                        red: Double((currentConfig.screenBgColor.hexColor >> 16) & 0xFF) / 255.0,
+                        green: Double((currentConfig.screenBgColor.hexColor >> 8) & 0xFF) / 255.0,
+                        blue: Double(currentConfig.screenBgColor.hexColor & 0xFF) / 255.0
+                    )
                     
                     MetalView(config: currentConfig) { x, y, action in
                         J2MEBridge.sendTouchEvent(x, y: y, action: action)
                     }
                     .aspectRatio(CGFloat(currentConfig.effectiveWidth) / CGFloat(currentConfig.effectiveHeight), contentMode: currentConfig.scalingMode == .stretch ? .fill : .fit)
                     .clipped()
+                    
+                    // Badge hiển thị FPS thời gian thực (nếu bật trong cài đặt)
+                    if currentConfig.showFps {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Text("\(currentConfig.targetFps * speedMultiplier) FPS")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.black.opacity(0.65))
+                                    .foregroundColor(.green)
+                                    .cornerRadius(4)
+                                    .padding(8)
+                            }
+                            Spacer()
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
@@ -201,5 +253,32 @@ public struct GameScreenView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             self.startEmulation()
         }
+    }
+    
+    private func takeScreenshot() {
+        let w = Int(currentConfig.effectiveWidth)
+        let h = Int(currentConfig.effectiveHeight)
+        guard let pixelData = J2MEBridge.getFramebufferData() else { return }
+        
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue)
+        
+        guard let provider = CGDataProvider(data: pixelData as CFData),
+              let cgImage = CGImage(
+                width: w,
+                height: h,
+                bitsPerComponent: 8,
+                bitsPerPixel: 32,
+                bytesPerRow: w * 4,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo,
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: false,
+                intent: .defaultIntent
+              ) else { return }
+        
+        let uiImage = UIImage(cgImage: cgImage)
+        UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
     }
 }

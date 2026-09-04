@@ -1,4 +1,4 @@
-﻿#import <Foundation/Foundation.h>
+#import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -20,6 +20,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)sendTouchEvent:(int)x y:(int)y action:(int)action;
 
 + (nullable const void *)getFrameBufferBytes;
++ (nullable NSData *)getFramebufferData;
 + (int)getFrameBufferWidth;
 + (int)getFrameBufferHeight;
 

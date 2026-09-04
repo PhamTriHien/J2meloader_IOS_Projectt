@@ -93,11 +93,68 @@ public enum KeypadLayout: String, Codable, CaseIterable {
     }
 }
 
+public enum ScreenOrientation: String, Codable, CaseIterable {
+    case autoSensor = "Auto Rotate (Sensor)"
+    case portrait = "Lock Portrait"
+    case landscape = "Lock Landscape"
+    
+    public var displayName: String {
+        switch self {
+        case .autoSensor: return "Tự động xoay theo cảm biến"
+        case .portrait: return "Khóa màn hình dọc (Portrait)"
+        case .landscape: return "Khóa màn hình ngang (Landscape)"
+        }
+    }
+}
+
+public enum ScreenBgColor: String, Codable, CaseIterable {
+    case black = "Black"
+    case darkNokia = "Retro Nokia Navy"
+    case darkGray = "Charcoal Gray"
+    case white = "White"
+    
+    public var displayName: String {
+        switch self {
+        case .black: return "Đen hoàn toàn (#000000)"
+        case .darkNokia: return "Xanh đen Nokia cổ điển (#050814)"
+        case .darkGray: return "Xám đậm than (#1E1E1E)"
+        case .white: return "Trắng sáng (#FFFFFF)"
+        }
+    }
+    
+    public var hexColor: UInt32 {
+        switch self {
+        case .black: return 0xFF000000
+        case .darkNokia: return 0xFF050814
+        case .darkGray: return 0xFF1E1E1E
+        case .white: return 0xFFFFFFFF
+        }
+    }
+}
+
+public enum FontSizeScale: String, Codable, CaseIterable {
+    case small = "Small"
+    case medium = "Medium"
+    case large = "Large"
+    
+    public var displayName: String {
+        switch self {
+        case .small: return "Cỡ chữ nhỏ (Small)"
+        case .medium: return "Cỡ chữ tiêu chuẩn (Medium)"
+        case .large: return "Cỡ chữ lớn (Large)"
+        }
+    }
+}
+
 public struct EmulatorConfig: Codable, Hashable {
     public var preset: ResolutionPreset
     public var customWidth: Int
     public var customHeight: Int
     public var targetFps: Int
+    public var showFps: Bool
+    public var screenOrientation: ScreenOrientation
+    public var screenBgColor: ScreenBgColor
+    public var fontSizeScale: FontSizeScale
     public var scalingMode: ScalingMode
     public var filterMode: FilterMode
     public var soundEnabled: Bool
@@ -106,6 +163,7 @@ public struct EmulatorConfig: Codable, Hashable {
     public var keypadLayout: KeypadLayout
     public var keypadOpacity: Double
     public var touchScreenEnabled: Bool
+    public var systemPlatform: String
     public var systemLocale: String
     public var backgroundKeepAlive: Bool
     public var networkKeepAlive: Bool
@@ -116,6 +174,10 @@ public struct EmulatorConfig: Codable, Hashable {
         customWidth: Int = 240,
         customHeight: Int = 320,
         targetFps: Int = 60,
+        showFps: Bool = true,
+        screenOrientation: ScreenOrientation = .autoSensor,
+        screenBgColor: ScreenBgColor = .darkNokia,
+        fontSizeScale: FontSizeScale = .medium,
         scalingMode: ScalingMode = .fit,
         filterMode: FilterMode = .nearest,
         soundEnabled: Bool = true,
@@ -124,6 +186,7 @@ public struct EmulatorConfig: Codable, Hashable {
         keypadLayout: KeypadLayout = .classicPhone,
         keypadOpacity: Double = 0.85,
         touchScreenEnabled: Bool = true,
+        systemPlatform: String = "NokiaN73",
         systemLocale: String = "vi-VN",
         backgroundKeepAlive: Bool = true,
         networkKeepAlive: Bool = true,
@@ -133,6 +196,10 @@ public struct EmulatorConfig: Codable, Hashable {
         self.customWidth = customWidth
         self.customHeight = customHeight
         self.targetFps = targetFps
+        self.showFps = showFps
+        self.screenOrientation = screenOrientation
+        self.screenBgColor = screenBgColor
+        self.fontSizeScale = fontSizeScale
         self.scalingMode = scalingMode
         self.filterMode = filterMode
         self.soundEnabled = soundEnabled
@@ -141,6 +208,7 @@ public struct EmulatorConfig: Codable, Hashable {
         self.keypadLayout = keypadLayout
         self.keypadOpacity = keypadOpacity
         self.touchScreenEnabled = touchScreenEnabled
+        self.systemPlatform = systemPlatform
         self.systemLocale = systemLocale
         self.backgroundKeepAlive = backgroundKeepAlive
         self.networkKeepAlive = networkKeepAlive
