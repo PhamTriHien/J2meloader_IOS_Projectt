@@ -20,29 +20,35 @@ jobs:
         with:
           xcode-version: '15.4'
 
-      - name: Build and Archive
+      - name: Build App
         run: |
           if [ -d "ios/J2MELoader-iOS" ]; then
             cd ios/J2MELoader-iOS
           fi
-          xcodebuild clean archive \
+          
+          mkdir -p build/Release-iphoneos
+          
+          # Build target directly for iPhoneOS ARM64
+          xcodebuild build \
             -project J2MELoader-iOS.xcodeproj \
-            -scheme J2MELoader-iOS \
+            -target J2MELoader-iOS \
             -configuration Release \
-            -archivePath build/J2MELoader-iOS.xcarchive \
-            -destination "generic/platform=iOS" \
+            -sdk iphoneos \
+            -arch arm64 \
+            CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphoneos" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE=""
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
       - name: Package Payload to IPA
         run: |
           if [ -d "ios/J2MELoader-iOS" ]; then
             cd ios/J2MELoader-iOS
           fi
+          
           mkdir -p build/Payload
-          cp -R build/J2MELoader-iOS.xcarchive/Products/Applications/J2MELoader-iOS.app build/Payload/
+          cp -R build/Release-iphoneos/J2MELoader-iOS.app build/Payload/
           cd build
           zip -r -y J2MELoader-iOS.ipa Payload
           echo "IPA created successfully at $(pwd)/J2MELoader-iOS.ipa"
