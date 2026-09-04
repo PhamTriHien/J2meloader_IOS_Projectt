@@ -75,8 +75,8 @@
 		BB00002A2C88000100000002 /* jvm_bytecode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = jvm_bytecode.h; sourceTree = "<group>"; };
 		BB0000192C88000100000002 /* eas_engine_bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = eas_engine_bridge.c; sourceTree = "<group>"; };
 		BB00002B2C88000100000002 /* eas_engine_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = eas_engine_bridge.h; sourceTree = "<group>"; };
-		BB00001A2C88000100000001 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders.metal; sourceTree = "<group>"; };
-		BB00002C2C88000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BB00001A2C88000100000001 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = "Shaders/Shaders.metal"; sourceTree = "<group>"; };
+		BB00002C2C88000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Resources/Info.plist"; sourceTree = "<group>"; };
 		BB00001B2C88000100000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
