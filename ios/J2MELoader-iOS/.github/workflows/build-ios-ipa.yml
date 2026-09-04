@@ -28,7 +28,8 @@ jobs:
           
           mkdir -p build/Release-iphoneos
           
-          # Build target directly for iPhoneOS ARM64
+          echo "Starting xcodebuild..."
+          set -o pipefail
           xcodebuild build \
             -project J2MELoader-iOS.xcodeproj \
             -target J2MELoader-iOS \
@@ -39,7 +40,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            AD_HOC_CODE_SIGNING_ALLOWED=YES 2>&1 | tee xcodebuild.log || {
+              echo "=== BUILD FAILED. RELEVANT ERRORS: ==="
+              grep -E "(error:|fatal error:|BUILD FAILED|\*\* BUILD FAILED \*\*)" xcodebuild.log -B 2 -A 4 || tail -n 50 xcodebuild.log
+              exit 1
+            }
 
       - name: Package Payload to IPA
         run: |
