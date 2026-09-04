@@ -3,19 +3,71 @@ import SwiftUI
 public struct SettingsView: View {
     @State public var game: GameItem
     public var onSave: (GameItem) -> Void
+    public var onStart: ((GameItem) -> Void)?
     @Environment(\.presentationMode) var presentationMode
     
     @State private var showingKeyMapper = false
     @State private var showingShaderTune = false
     
-    public init(game: GameItem, onSave: @escaping (GameItem) -> Void) {
+    public init(game: GameItem, onSave: @escaping (GameItem) -> Void, onStart: ((GameItem) -> Void)? = nil) {
         _game = State(initialValue: game)
         self.onSave = onSave
+        self.onStart = onStart
     }
     
     public var body: some View {
         NavigationView {
             Form {
+                // Header Game Card & Nút Bắt đầu chơi (START)
+                Section {
+                    VStack(spacing: 12) {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Color(red: 0x52/255.0, green: 0x5a/255.0, blue: 0xa0/255.0)
+                                Image(systemName: "gamecontroller.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.white)
+                            }
+                            .frame(width: 48, height: 48)
+                            .cornerRadius(8)
+                            
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(game.title)
+                                    .font(.system(size: 17, weight: .bold))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                
+                                Text("\(game.vendor) • v\(game.version)")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                        }
+                        
+                        if let startAction = onStart {
+                            Button(action: {
+                                onSave(game)
+                                presentationMode.wrappedValue.dismiss()
+                                startAction(game)
+                            }) {
+                                HStack {
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 16, weight: .bold))
+                                    Text("BẮT ĐẦU CHƠI")
+                                        .font(.system(size: 16, weight: .bold))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(J2MEColors.accent)
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                
                 Section(header: Text("Thiết bị mẫu (Device Profile)")) {
                     Picker("Hồ sơ thiết bị", selection: Binding(
                         get: { game.config.preset },

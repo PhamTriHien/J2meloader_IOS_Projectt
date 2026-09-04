@@ -102,7 +102,17 @@ public struct LibraryView: View {
                                 OriginalListRowJar(
                                     game: game,
                                     gameManager: gameManager,
-                                    onLaunch: { gameManager.launchGame(game) },
+                                    onLaunch: {
+                                        let quickLaunch = UserDefaults.standard.bool(forKey: "J2ME_QUICK_LAUNCH")
+                                        if quickLaunch {
+                                            gameManager.launchGame(game)
+                                        } else {
+                                            selectedGameForSettings = game
+                                        }
+                                    },
+                                    onDirectPlay: {
+                                        gameManager.launchGame(game)
+                                    },
                                     onSettings: { selectedGameForSettings = game },
                                     onRename: {
                                         gameToRename = game
@@ -186,10 +196,18 @@ public struct LibraryView: View {
                 }
             }
             .sheet(item: $selectedGameForSettings) { game in
-                SettingsView(game: game) { updated in
-                    gameManager.updateGame(updated)
-                }
+                SettingsView(
+                    game: game,
+                    onSave: { updated in
+                        gameManager.updateGame(updated)
+                    },
+                    onStart: { updated in
+                        gameManager.updateGame(updated)
+                        gameManager.launchGame(updated)
+                    }
+                )
             }
+            .sheet(isPresented: $showingSettingsGeneral) { GeneralSettingsView() }
             .sheet(isPresented: $showingHelp) { HelpView() }
             .sheet(isPresented: $showingAbout) { AboutView() }
             .fullScreenCover(isPresented: $gameManager.isEmulating) {
@@ -234,6 +252,7 @@ struct OriginalListRowJar: View {
     let game: GameItem
     let gameManager: GameManager
     let onLaunch: () -> Void
+    let onDirectPlay: () -> Void
     let onSettings: () -> Void
     let onRename: () -> Void
     let onClearData: () -> Void
@@ -292,13 +311,56 @@ struct OriginalListRowJar: View {
         }
         .buttonStyle(PlainButtonStyle())
         .contextMenu {
-            Button(action: onLaunch) { Label("Bắt đầu chơi", systemImage: "play.fill") }
+            Button(action: onDirectPlay) { Label("Bắt đầu chơi", systemImage: "play.fill") }
             Button(action: onSettings) { Label("Cài đặt game", systemImage: "gearshape.fill") }
             Button(action: onRename) { Label("Đổi tên", systemImage: "pencil") }
             Button(action: onClearData) { Label("Xóa dữ liệu (RMS)", systemImage: "trash.slash") }
             Divider()
             Button(role: .destructive, action: { gameManager.deleteGame(game) }) {
                 Label("Xóa khỏi thư viện", systemImage: "trash")
+            }
+        }
+    }
+}
+
+// MARK: - Cài đặt chung (General Settings Dialog)
+struct GeneralSettingsView: View {
+    @AppStorage("J2ME_QUICK_LAUNCH") private var quickLaunch: Bool = false
+    @AppStorage("J2ME_BG_KEEP_ALIVE") private var bgKeepAlive: Bool = true
+    @AppStorage("J2ME_NETWORK_KEEP_ALIVE") private var networkKeepAlive: Bool = true
+    @Environment(\.presentationMode) var presentationMode
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Tùy chọn khởi chạy")) {
+                    Toggle("Khởi chạy nhanh khi bấm vào game", isOn: $quickLaunch)
+                    Text("Khi bật, chạm vào game trong thư viện sẽ vào chơi ngay lập tức mà không hiện hộp thoại cài đặt.")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+                
+                Section(header: Text("Tối ưu hệ thống & Chạy ngầm 24/7 (Anti-Crash)")) {
+                    Toggle("Treo game ngầm 24/7 không bị tắt", isOn: $bgKeepAlive)
+                    Toggle("Giữ kết nối mạng Socket liên tục", isOn: $networkKeepAlive)
+                }
+                
+                Section(header: Text("Bộ nhớ & Dữ liệu")) {
+                    HStack {
+                        Text("Thư mục dữ liệu RMS")
+                        Spacer()
+                        Text("Documents/RMS").foregroundColor(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Cài đặt chung")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Đóng") { presentationMode.wrappedValue.dismiss() }
+                        .foregroundColor(J2MEColors.accent)
+                        .font(.headline)
+                }
             }
         }
     }

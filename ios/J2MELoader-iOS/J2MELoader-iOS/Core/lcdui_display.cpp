@@ -74,7 +74,7 @@ static const uint8_t font8x8_basic[96][8] = {
 
 LcduiDisplay::LcduiDisplay(int width, int height)
     : m_width(width), m_height(height) {
-    m_buffer.resize(width * height, 0xFFFFFFFF);
+    m_buffer.resize(width * height, 0xFF050814);
     resetClip();
 }
 
@@ -84,7 +84,7 @@ void LcduiDisplay::resize(int width, int height) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_width = width;
     m_height = height;
-    m_buffer.resize(width * height, 0xFFFFFFFF);
+    m_buffer.resize(width * height, 0xFF050814);
     resetClip();
 }
 

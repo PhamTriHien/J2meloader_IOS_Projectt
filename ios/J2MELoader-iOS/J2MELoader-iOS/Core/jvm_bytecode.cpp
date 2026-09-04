@@ -67,6 +67,7 @@ void JvmBytecodeEngine::reset() {
     m_heapObjects.clear();
     m_heapArrays.clear();
     m_nativeImages.clear();
+    m_staticFields.clear();
     m_activeJar = nullptr;
     m_nextRef = 1;
 }
@@ -97,10 +98,15 @@ uint32_t JvmBytecodeEngine::allocArray(uint8_t type, int length) {
     JavaArray arr;
     arr.id = ref;
     arr.elemType = type;
-    if (type == 10) arr.intData.resize(length, 0); // T_INT
-    else if (type == 8) arr.byteData.resize(length, 0); // T_BYTE / T_BOOLEAN
-    else if (type == 5) arr.charData.resize(length, 0); // T_CHAR
-    else arr.refData.resize(length, 0); // Reference / Object array
+    int l = std::max(0, length);
+    if (type == 10) arr.intData.resize(l, 0); // T_INT
+    else if (type == 8 || type == 4) arr.byteData.resize(l, 0); // T_BYTE / T_BOOLEAN
+    else if (type == 5) arr.charData.resize(l, 0); // T_CHAR
+    else if (type == 9) arr.shortData.resize(l, 0); // T_SHORT
+    else if (type == 11) arr.longData.resize(l, 0); // T_LONG
+    else if (type == 6) arr.floatData.resize(l, 0.0f); // T_FLOAT
+    else if (type == 7) arr.doubleData.resize(l, 0.0); // T_DOUBLE
+    else arr.refData.resize(l, 0); // Reference / Object array
     m_heapArrays[ref] = std::move(arr);
     return ref;
 }
@@ -313,17 +319,45 @@ std::shared_ptr<ClassFile> JvmBytecodeEngine::loadClass(const std::vector<uint8_
 }
 
 std::shared_ptr<ClassFile> JvmBytecodeEngine::findOrLoadClass(const std::string& className, JarLoader* jar) {
-    auto it = m_loadedClasses.find(className);
+    std::string normName = className;
+    std::replace(normName.begin(), normName.end(), '.', '/');
+
+    auto it = m_loadedClasses.find(normName);
     if (it != m_loadedClasses.end()) return it->second;
 
     if (!jar) return nullptr;
 
-    std::string entryName = className + ".class";
+    std::string entryName = normName + ".class";
     std::vector<uint8_t> bytes;
     if (jar->extractEntry(entryName, bytes)) {
         return loadClass(bytes);
     }
     return nullptr;
+}
+
+static std::string getFieldKey(std::shared_ptr<ClassFile> cls, uint16_t fIdx) {
+    if (!cls || fIdx >= cls->constantPool.size()) return "";
+    const auto& cp = cls->constantPool[fIdx];
+    std::string cname = cls->thisClassName;
+    std::string fname = "";
+    if (cp.classIndex < cls->constantPool.size() && cls->constantPool[cp.classIndex].nameIndex < cls->constantPool.size()) {
+        cname = cls->constantPool[cls->constantPool[cp.classIndex].nameIndex].strVal;
+    }
+    if (cp.nameAndTypeIndex < cls->constantPool.size()) {
+        const auto& nat = cls->constantPool[cp.nameAndTypeIndex];
+        if (nat.nameIndex < cls->constantPool.size()) fname = cls->constantPool[nat.nameIndex].strVal;
+    }
+    return cname + ":" + fname;
+}
+
+static std::string getFieldName(std::shared_ptr<ClassFile> cls, uint16_t fIdx) {
+    if (!cls || fIdx >= cls->constantPool.size()) return "";
+    const auto& cp = cls->constantPool[fIdx];
+    if (cp.nameAndTypeIndex < cls->constantPool.size()) {
+        const auto& nat = cls->constantPool[cp.nameAndTypeIndex];
+        if (nat.nameIndex < cls->constantPool.size()) return cls->constantPool[nat.nameIndex].strVal;
+    }
+    return "";
 }
 
 // ----------------------------------------------------
@@ -355,25 +389,241 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                             dst->byteData[dstPos + k] = src->byteData[srcPos + k];
                         }
                     }
+                } else if (!src->charData.empty() && !dst->charData.empty()) {
+                    for (int k = 0; k < len; ++k) {
+                        if (srcPos + k < (int)src->charData.size() && dstPos + k < (int)dst->charData.size()) {
+                            dst->charData[dstPos + k] = src->charData[srcPos + k];
+                        }
+                    }
+                } else if (!src->refData.empty() && !dst->refData.empty()) {
+                    for (int k = 0; k < len; ++k) {
+                        if (srcPos + k < (int)src->refData.size() && dstPos + k < (int)dst->refData.size()) {
+                            dst->refData[dstPos + k] = src->refData[srcPos + k];
+                        }
+                    }
                 }
             }
             return true;
         }
         if (methodName == "gc") return true;
+        if (methodName == "identityHashCode") {
+            outResult = JavaValue(args.size() > 0 ? (int32_t)args[0].asRef() : 0);
+            return true;
+        }
         if (methodName == "getProperty") {
             std::string prop = args.size() >= 1 ? getString(args[0].asRef()) : "";
             if (prop == "microedition.platform") outResult = JavaValue(createString("NokiaN73"), true);
             else if (prop == "microedition.profiles") outResult = JavaValue(createString("MIDP-2.0"), true);
             else if (prop == "microedition.configuration") outResult = JavaValue(createString("CLDC-1.1"), true);
+            else if (prop == "microedition.locale") outResult = JavaValue(createString("vi-VN"), true);
+            else if (prop == "microedition.encoding") outResult = JavaValue(createString("UTF-8"), true);
             else outResult = JavaValue(createString(""), true);
             return true;
         }
+        if (methodName == "exit") return true;
     }
 
     if (className == "java/lang/Math") {
         if (methodName == "abs") { outResult = JavaValue(std::abs(args[0].asInt())); return true; }
         if (methodName == "min") { outResult = JavaValue(std::min(args[0].asInt(), args[1].asInt())); return true; }
         if (methodName == "max") { outResult = JavaValue(std::max(args[0].asInt(), args[1].asInt())); return true; }
+        if (methodName == "sqrt") { outResult = JavaValue((float)std::sqrt(args[0].asInt())); return true; }
+        if (methodName == "sin") { outResult = JavaValue((float)std::sin(args[0].asInt())); return true; }
+        if (methodName == "cos") { outResult = JavaValue((float)std::cos(args[0].asInt())); return true; }
+    }
+
+    if (className == "java/lang/String") {
+        if (methodName == "valueOf") {
+            if (args.size() >= 1) {
+                outResult = JavaValue(createString(std::to_string(args[0].asInt())), true);
+            } else {
+                outResult = JavaValue(createString(""), true);
+            }
+            return true;
+        }
+        if (methodName == "length") {
+            std::string s = getString(args[0].asRef());
+            outResult = JavaValue((int32_t)s.length());
+            return true;
+        }
+        if (methodName == "charAt" && args.size() >= 2) {
+            std::string s = getString(args[0].asRef());
+            int idx = args[1].asInt();
+            outResult = JavaValue((idx >= 0 && idx < (int)s.length()) ? (int32_t)(uint8_t)s[idx] : 0);
+            return true;
+        }
+        if (methodName == "substring" && args.size() >= 2) {
+            std::string s = getString(args[0].asRef());
+            int begin = args[1].asInt();
+            int end = args.size() >= 3 ? args[2].asInt() : (int)s.length();
+            if (begin >= 0 && begin <= (int)s.length() && end >= begin && end <= (int)s.length()) {
+                outResult = JavaValue(createString(s.substr(begin, end - begin)), true);
+            } else {
+                outResult = JavaValue(createString(""), true);
+            }
+            return true;
+        }
+        if (methodName == "indexOf" && args.size() >= 2) {
+            std::string s = getString(args[0].asRef());
+            char c = (char)args[1].asInt();
+            size_t pos = s.find(c);
+            outResult = JavaValue(pos != std::string::npos ? (int32_t)pos : -1);
+            return true;
+        }
+        if (methodName == "concat" && args.size() >= 2) {
+            std::string s1 = getString(args[0].asRef());
+            std::string s2 = getString(args[1].asRef());
+            outResult = JavaValue(createString(s1 + s2), true);
+            return true;
+        }
+        if (methodName == "equals" && args.size() >= 2) {
+            std::string s1 = getString(args[0].asRef());
+            std::string s2 = getString(args[1].asRef());
+            outResult = JavaValue(s1 == s2 ? 1 : 0);
+            return true;
+        }
+        if (methodName == "equalsIgnoreCase" && args.size() >= 2) {
+            std::string s1 = getString(args[0].asRef());
+            std::string s2 = getString(args[1].asRef());
+            std::string l1 = s1, l2 = s2;
+            std::transform(l1.begin(), l1.end(), l1.begin(), ::tolower);
+            std::transform(l2.begin(), l2.end(), l2.begin(), ::tolower);
+            outResult = JavaValue(l1 == l2 ? 1 : 0);
+            return true;
+        }
+        if (methodName == "getBytes") {
+            std::string s = getString(args[0].asRef());
+            uint32_t arrRef = allocArray(8, (int)s.length());
+            JavaArray* arr = getArray(arrRef);
+            if (arr) {
+                for (size_t i = 0; i < s.length(); ++i) arr->byteData[i] = (uint8_t)s[i];
+            }
+            outResult = JavaValue(arrRef, true);
+            return true;
+        }
+    }
+
+    if (className == "java/lang/StringBuffer" || className == "java/lang/StringBuilder") {
+        if (methodName == "<init>") {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (obj && args.size() >= 2 && args[1].type == JavaValue::OBJ_REF) {
+                obj->stringVal = getString(args[1].asRef());
+            }
+            return true;
+        }
+        if (methodName == "append") {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (obj && args.size() >= 2) {
+                if (args[1].type == JavaValue::OBJ_REF) {
+                    obj->stringVal += getString(args[1].asRef());
+                } else {
+                    obj->stringVal += std::to_string(args[1].asInt());
+                }
+            }
+            outResult = JavaValue(args[0].asRef(), true);
+            return true;
+        }
+        if (methodName == "toString") {
+            JavaObject* obj = getObject(args[0].asRef());
+            outResult = JavaValue(createString(obj ? obj->stringVal : ""), true);
+            return true;
+        }
+        if (methodName == "length") {
+            JavaObject* obj = getObject(args[0].asRef());
+            outResult = JavaValue(obj ? (int32_t)obj->stringVal.length() : 0);
+            return true;
+        }
+        if (methodName == "setLength" && args.size() >= 2) {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (obj) {
+                int newLen = args[1].asInt();
+                if (newLen >= 0 && (size_t)newLen <= obj->stringVal.length()) {
+                    obj->stringVal.resize(newLen);
+                }
+            }
+            return true;
+        }
+    }
+
+    if (className == "java/lang/Integer") {
+        if (methodName == "parseInt" && args.size() >= 1) {
+            std::string s = getString(args[0].asRef());
+            try {
+                outResult = JavaValue((int32_t)std::stoi(s));
+            } catch (...) {
+                outResult = JavaValue(0);
+            }
+            return true;
+        }
+        if (methodName == "toString" && args.size() >= 1) {
+            outResult = JavaValue(createString(std::to_string(args[0].asInt())), true);
+            return true;
+        }
+    }
+
+    if (className == "java/util/Random") {
+        if (methodName == "<init>") return true;
+        if (methodName == "nextInt") {
+            int maxVal = args.size() >= 2 ? args[1].asInt() : 0;
+            if (maxVal > 0) {
+                outResult = JavaValue(std::rand() % maxVal);
+            } else {
+                outResult = JavaValue(std::rand());
+            }
+            return true;
+        }
+    }
+
+    if (className == "java/util/Vector") {
+        if (methodName == "<init>") {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (obj) {
+                uint32_t arrRef = allocArray(0, 16);
+                obj->fields["elements"] = JavaValue(arrRef, true);
+                obj->fields["elementCount"] = JavaValue(0);
+            }
+            return true;
+        }
+        if (methodName == "addElement" && args.size() >= 2) {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (obj) {
+                int count = obj->fields["elementCount"].asInt();
+                uint32_t arrRef = obj->fields["elements"].asRef();
+                JavaArray* arr = getArray(arrRef);
+                if (arr) {
+                    if (count >= (int)arr->refData.size()) {
+                        arr->refData.resize(std::max(16, (int)arr->refData.size() * 2), 0);
+                    }
+                    arr->refData[count] = args[1].asRef();
+                    obj->fields["elementCount"] = JavaValue(count + 1);
+                }
+            }
+            return true;
+        }
+        if (methodName == "elementAt" && args.size() >= 2) {
+            JavaObject* obj = getObject(args[0].asRef());
+            int idx = args[1].asInt();
+            if (obj) {
+                uint32_t arrRef = obj->fields["elements"].asRef();
+                JavaArray* arr = getArray(arrRef);
+                if (arr && idx >= 0 && idx < (int)arr->refData.size()) {
+                    outResult = JavaValue(arr->refData[idx], true);
+                    return true;
+                }
+            }
+            outResult = JavaValue(0, true);
+            return true;
+        }
+        if (methodName == "size") {
+            JavaObject* obj = getObject(args[0].asRef());
+            outResult = JavaValue(obj ? obj->fields["elementCount"].asInt() : 0);
+            return true;
+        }
+        if (methodName == "removeAllElements") {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (obj) obj->fields["elementCount"] = JavaValue(0);
+            return true;
+        }
     }
 
     if (className == "javax/microedition/lcdui/Display") {
@@ -381,21 +631,41 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             outResult = JavaValue(allocObject("javax/microedition/lcdui/Display"), true);
             return true;
         }
-        if (methodName == "setCurrent") return true;
-        if (methodName == "getCurrent") { outResult = JavaValue(0, true); return true; }
+        if (methodName == "setCurrent" && args.size() >= 2) {
+            uint32_t nextRef = args[1].asRef();
+            JavaObject* canvasObj = getObject(nextRef);
+            if (canvasObj && !canvasObj->className.empty()) {
+                auto cls = findOrLoadClass(canvasObj->className, m_activeJar);
+                JvmInterpreter::getInstance().setCurrentCanvas(nextRef, cls);
+            }
+            return true;
+        }
+        if (methodName == "getCurrent") {
+            outResult = JavaValue(0, true);
+            return true;
+        }
         if (methodName == "isColor") { outResult = JavaValue(1); return true; }
         if (methodName == "numColors") { outResult = JavaValue(16777216); return true; }
         if (methodName == "vibrate" || methodName == "flashBacklight") { outResult = JavaValue(1); return true; }
+        if (methodName == "callSerially" && args.size() >= 2) {
+            uint32_t rRef = args[1].asRef();
+            JavaObject* rObj = getObject(rRef);
+            if (rObj) {
+                auto cls = findOrLoadClass(rObj->className, m_activeJar);
+                if (cls) JvmInterpreter::getInstance().registerRunnable(rRef, cls);
+            }
+            return true;
+        }
     }
 
     if (className == "javax/microedition/lcdui/Image") {
         if (methodName == "createImage") {
-            if (desc.find("(Ljava/lang/String;)") != std::string::npos) {
+            if (desc.find("(Ljava/lang/String;)") != std::string::npos && args.size() >= 1) {
                 std::string path = getString(args[0].asRef());
                 outResult = JavaValue(loadNativeImageFromJar(path), true);
                 return true;
             }
-            if (desc.find("([BII)") != std::string::npos) {
+            if (desc.find("([BII)") != std::string::npos && args.size() >= 3) {
                 JavaArray* arr = getArray(args[0].asRef());
                 int offset = args[1].asInt();
                 int len = args[2].asInt();
@@ -406,11 +676,45 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 }
                 return true;
             }
-            if (desc.find("(II)") != std::string::npos) {
+            if (desc.find("(II)") != std::string::npos && args.size() >= 2) {
                 int w = args[0].asInt(), h = args[1].asInt();
                 outResult = JavaValue(allocateNativeImage(w, h, true), true);
                 return true;
             }
+            if (args.size() >= 6) {
+                NativeImage* src = getNativeImage(args[0].asRef());
+                int x = args[1].asInt(), y = args[2].asInt(), w = args[3].asInt(), h = args[4].asInt();
+                uint32_t resRef = allocateNativeImage(w, h, false);
+                NativeImage* dst = getNativeImage(resRef);
+                if (src && dst && w > 0 && h > 0) {
+                    for (int r = 0; r < h; ++r) {
+                        for (int c = 0; c < w; ++c) {
+                            int sx = x + c, sy = y + r;
+                            if (sx >= 0 && sx < src->width && sy >= 0 && sy < src->height) {
+                                dst->pixels[r * w + c] = src->pixels[sy * src->width + sx];
+                            }
+                        }
+                    }
+                }
+                outResult = JavaValue(resRef, true);
+                return true;
+            }
+        }
+        if (methodName == "createRGBImage" && args.size() >= 4) {
+            JavaArray* arr = getArray(args[0].asRef());
+            int w = args[1].asInt(), h = args[2].asInt();
+            bool alpha = args[3].asInt() != 0;
+            uint32_t resRef = allocateNativeImage(w, h, false);
+            NativeImage* dst = getNativeImage(resRef);
+            if (arr && dst && (int)arr->intData.size() >= w * h) {
+                for (int i = 0; i < w * h; ++i) {
+                    uint32_t p = (uint32_t)arr->intData[i];
+                    if (!alpha) p |= 0xFF000000;
+                    dst->pixels[i] = p;
+                }
+            }
+            outResult = JavaValue(resRef, true);
+            return true;
         }
         if (methodName == "getWidth") {
             NativeImage* img = getNativeImage(args[0].asRef());
@@ -562,12 +866,36 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
     }
 
     if (className.find("Canvas") != std::string::npos) {
-        if (methodName == "repaint" || methodName == "flushGraphics") return true;
+        if (methodName == "repaint" || methodName == "flushGraphics" || methodName == "serviceRepaints") return true;
         if (methodName == "getWidth") { outResult = JavaValue(display ? display->getWidth() : 240); return true; }
         if (methodName == "getHeight") { outResult = JavaValue(display ? display->getHeight() : 320); return true; }
         if (methodName == "isDoubleBuffered") { outResult = JavaValue(1); return true; }
         if (methodName == "hasPointerEvents") { outResult = JavaValue(1); return true; }
+        if (methodName == "hasPointerMotionEvents") { outResult = JavaValue(1); return true; }
+        if (methodName == "hasRepeatEvents") { outResult = JavaValue(1); return true; }
         if (methodName == "setFullScreenMode") return true;
+        if (methodName == "getGameAction") {
+            int code = args.size() >= 2 ? args[1].asInt() : 0;
+            int action = 0;
+            if (code == -1 || code == '2') action = 1; // UP
+            else if (code == -2 || code == '8') action = 6; // DOWN
+            else if (code == -3 || code == '4') action = 2; // LEFT
+            else if (code == -4 || code == '6') action = 5; // RIGHT
+            else if (code == -5 || code == '5') action = 8; // FIRE
+            outResult = JavaValue(action);
+            return true;
+        }
+        if (methodName == "getKeyCode") {
+            int action = args.size() >= 2 ? args[1].asInt() : 0;
+            int code = 0;
+            if (action == 1) code = -1; // UP
+            else if (action == 6) code = -2; // DOWN
+            else if (action == 2) code = -3; // LEFT
+            else if (action == 5) code = -4; // RIGHT
+            else if (action == 8) code = -5; // FIRE
+            outResult = JavaValue(code);
+            return true;
+        }
     }
 
     if (className == "java/lang/Class") {
@@ -582,7 +910,10 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                     JavaArray* arr = getArray(arrRef);
                     if (arr) arr->byteData = std::move(bytes);
                     JavaObject* obj = getObject(isRef);
-                    if (obj) obj->fields["buf"] = JavaValue(arrRef, true);
+                    if (obj) {
+                        obj->fields["buf"] = JavaValue(arrRef, true);
+                        obj->fields["pos"] = JavaValue(0);
+                    }
                     outResult = JavaValue(isRef, true);
                     return true;
                 }
@@ -597,7 +928,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             outResult = JavaValue(allocObject("java/lang/Thread"), true);
             return true;
         }
-        if (methodName == "sleep" || methodName == "yield") return true;
+        if (methodName == "sleep" || methodName == "yield" || methodName == "start") return true;
     }
 
     if (className == "javax/microedition/rms/RecordStore") {
@@ -653,6 +984,20 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
     }
 
+    if (className == "javax/microedition/media/Manager") {
+        if (methodName == "createPlayer") {
+            outResult = JavaValue(allocObject("javax/microedition/media/Player"), true);
+            return true;
+        }
+        if (methodName == "playTone") return true;
+    }
+
+    if (className == "javax/microedition/media/Player") {
+        if (methodName == "start" || methodName == "stop" || methodName == "close" || methodName == "prefetch" || methodName == "realize" || methodName == "setLoopCount") {
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -702,7 +1047,9 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_LCONST_1: frame.push(JavaValue((int64_t)1)); break;
         case OP_FCONST_0: frame.push(JavaValue(0.0f)); break;
         case OP_FCONST_1: frame.push(JavaValue(1.0f)); break;
+        case OP_FCONST_2: frame.push(JavaValue(2.0f)); break;
         case OP_DCONST_0: frame.push(JavaValue(0.0)); break;
+        case OP_DCONST_1: frame.push(JavaValue(1.0)); break;
 
         case OP_BIPUSH: {
             int8_t b = (int8_t)code[frame.pc++];
@@ -723,34 +1070,56 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
                 const auto& cp = cls->constantPool[cpIdx];
                 if (cp.tag == CONSTANT_Integer) frame.push(JavaValue(cp.intVal));
                 else if (cp.tag == CONSTANT_Float) frame.push(JavaValue(cp.floatVal));
-                else if (cp.tag == CONSTANT_String) frame.push(JavaValue(allocObject("java/lang/String"), true));
+                else if (cp.tag == CONSTANT_String) {
+                    std::string s = (cp.stringIndex < cls->constantPool.size()) ? cls->constantPool[cp.stringIndex].strVal : "";
+                    frame.push(JavaValue(createString(s), true));
+                }
+                else frame.push(JavaValue(0));
+            }
+            break;
+        }
+        case OP_LDC2_W: {
+            uint16_t cpIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
+            frame.pc += 2;
+            if (cpIdx < cls->constantPool.size()) {
+                const auto& cp = cls->constantPool[cpIdx];
+                if (cp.tag == CONSTANT_Long) frame.push(JavaValue(cp.longVal));
+                else if (cp.tag == CONSTANT_Double) frame.push(JavaValue(cp.doubleVal));
                 else frame.push(JavaValue(0));
             }
             break;
         }
 
+        // Local Loads
         case OP_ILOAD:
-        case OP_ALOAD: {
+        case OP_FLOAD:
+        case OP_ALOAD:
+        case OP_LLOAD:
+        case OP_DLOAD: {
             uint8_t idx = code[frame.pc++];
             frame.push(idx < frame.locals.size() ? frame.locals[idx] : JavaValue(0));
             break;
         }
-        case OP_ILOAD_0: case OP_ALOAD_0: frame.push(frame.locals.size() > 0 ? frame.locals[0] : JavaValue(0)); break;
-        case OP_ILOAD_1: case OP_ALOAD_1: frame.push(frame.locals.size() > 1 ? frame.locals[1] : JavaValue(0)); break;
-        case OP_ILOAD_2: case OP_ALOAD_2: frame.push(frame.locals.size() > 2 ? frame.locals[2] : JavaValue(0)); break;
-        case OP_ILOAD_3: case OP_ALOAD_3: frame.push(frame.locals.size() > 3 ? frame.locals[3] : JavaValue(0)); break;
+        case OP_ILOAD_0: case OP_FLOAD_0: case OP_ALOAD_0: case OP_LLOAD_0: case OP_DLOAD_0: frame.push(frame.locals.size() > 0 ? frame.locals[0] : JavaValue(0)); break;
+        case OP_ILOAD_1: case OP_FLOAD_1: case OP_ALOAD_1: case OP_LLOAD_1: case OP_DLOAD_1: frame.push(frame.locals.size() > 1 ? frame.locals[1] : JavaValue(0)); break;
+        case OP_ILOAD_2: case OP_FLOAD_2: case OP_ALOAD_2: case OP_LLOAD_2: case OP_DLOAD_2: frame.push(frame.locals.size() > 2 ? frame.locals[2] : JavaValue(0)); break;
+        case OP_ILOAD_3: case OP_FLOAD_3: case OP_ALOAD_3: case OP_LLOAD_3: case OP_DLOAD_3: frame.push(frame.locals.size() > 3 ? frame.locals[3] : JavaValue(0)); break;
 
+        // Local Stores
         case OP_ISTORE:
-        case OP_ASTORE: {
+        case OP_FSTORE:
+        case OP_ASTORE:
+        case OP_LSTORE:
+        case OP_DSTORE: {
             uint8_t idx = code[frame.pc++];
             if (idx >= frame.locals.size()) frame.locals.resize(idx + 1, JavaValue(0));
             frame.locals[idx] = frame.pop();
             break;
         }
-        case OP_ISTORE_0: case OP_ASTORE_0: if (frame.locals.empty()) frame.locals.resize(1); frame.locals[0] = frame.pop(); break;
-        case OP_ISTORE_1: case OP_ASTORE_1: if (frame.locals.size() < 2) frame.locals.resize(2); frame.locals[1] = frame.pop(); break;
-        case OP_ISTORE_2: case OP_ASTORE_2: if (frame.locals.size() < 3) frame.locals.resize(3); frame.locals[2] = frame.pop(); break;
-        case OP_ISTORE_3: case OP_ASTORE_3: if (frame.locals.size() < 4) frame.locals.resize(4); frame.locals[3] = frame.pop(); break;
+        case OP_ISTORE_0: case OP_FSTORE_0: case OP_ASTORE_0: case OP_LSTORE_0: case OP_DSTORE_0: if (frame.locals.empty()) frame.locals.resize(1); frame.locals[0] = frame.pop(); break;
+        case OP_ISTORE_1: case OP_FSTORE_1: case OP_ASTORE_1: case OP_LSTORE_1: case OP_DSTORE_1: if (frame.locals.size() < 2) frame.locals.resize(2); frame.locals[1] = frame.pop(); break;
+        case OP_ISTORE_2: case OP_FSTORE_2: case OP_ASTORE_2: case OP_LSTORE_2: case OP_DSTORE_2: if (frame.locals.size() < 3) frame.locals.resize(3); frame.locals[2] = frame.pop(); break;
+        case OP_ISTORE_3: case OP_FSTORE_3: case OP_ASTORE_3: case OP_LSTORE_3: case OP_DSTORE_3: if (frame.locals.size() < 4) frame.locals.resize(4); frame.locals[3] = frame.pop(); break;
 
         // Array Ops
         case OP_IALOAD: {
@@ -762,7 +1131,19 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_BALOAD: {
             int idx = frame.pop().asInt();
             JavaArray* arr = getArray(frame.pop().asRef());
-            frame.push((arr && idx >= 0 && idx < (int)arr->byteData.size()) ? JavaValue((int32_t)arr->byteData[idx]) : JavaValue(0));
+            frame.push((arr && idx >= 0 && idx < (int)arr->byteData.size()) ? JavaValue((int32_t)(int8_t)arr->byteData[idx]) : JavaValue(0));
+            break;
+        }
+        case OP_CALOAD: {
+            int idx = frame.pop().asInt();
+            JavaArray* arr = getArray(frame.pop().asRef());
+            frame.push((arr && idx >= 0 && idx < (int)arr->charData.size()) ? JavaValue((int32_t)arr->charData[idx]) : JavaValue(0));
+            break;
+        }
+        case OP_SALOAD: {
+            int idx = frame.pop().asInt();
+            JavaArray* arr = getArray(frame.pop().asRef());
+            frame.push((arr && idx >= 0 && idx < (int)arr->shortData.size()) ? JavaValue((int32_t)arr->shortData[idx]) : JavaValue(0));
             break;
         }
         case OP_AALOAD: {
@@ -785,6 +1166,20 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             if (arr && idx >= 0 && idx < (int)arr->byteData.size()) arr->byteData[idx] = (uint8_t)val;
             break;
         }
+        case OP_CASTORE: {
+            int val = frame.pop().asInt();
+            int idx = frame.pop().asInt();
+            JavaArray* arr = getArray(frame.pop().asRef());
+            if (arr && idx >= 0 && idx < (int)arr->charData.size()) arr->charData[idx] = (uint16_t)val;
+            break;
+        }
+        case OP_SASTORE: {
+            int val = frame.pop().asInt();
+            int idx = frame.pop().asInt();
+            JavaArray* arr = getArray(frame.pop().asRef());
+            if (arr && idx >= 0 && idx < (int)arr->shortData.size()) arr->shortData[idx] = (int16_t)val;
+            break;
+        }
         case OP_AASTORE: {
             uint32_t ref = frame.pop().asRef();
             int idx = frame.pop().asInt();
@@ -803,6 +1198,16 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_POP2: frame.pop(); frame.pop(); break;
         case OP_DUP: { JavaValue v = frame.peek(); frame.push(v); break; }
         case OP_DUP_X1: { JavaValue v1 = frame.pop(); JavaValue v2 = frame.pop(); frame.push(v1); frame.push(v2); frame.push(v1); break; }
+        case OP_DUP_X2: { JavaValue v1 = frame.pop(); JavaValue v2 = frame.pop(); JavaValue v3 = frame.pop(); frame.push(v1); frame.push(v3); frame.push(v2); frame.push(v1); break; }
+        case OP_DUP2: {
+            if (frame.stack.size() >= 2) {
+                JavaValue v1 = frame.stack[frame.stack.size() - 1];
+                JavaValue v2 = frame.stack[frame.stack.size() - 2];
+                frame.push(v2);
+                frame.push(v1);
+            }
+            break;
+        }
         case OP_SWAP: { JavaValue v1 = frame.pop(); JavaValue v2 = frame.pop(); frame.push(v1); frame.push(v2); break; }
 
         // Math
@@ -825,6 +1230,55 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             break;
         }
 
+        // Conversions
+        case OP_I2B: { int32_t v = frame.pop().asInt(); frame.push(JavaValue((int32_t)(int8_t)v)); break; }
+        case OP_I2C: { int32_t v = frame.pop().asInt(); frame.push(JavaValue((int32_t)(uint16_t)v)); break; }
+        case OP_I2S: { int32_t v = frame.pop().asInt(); frame.push(JavaValue((int32_t)(int16_t)v)); break; }
+        case OP_I2L: { int32_t v = frame.pop().asInt(); frame.push(JavaValue((int64_t)v)); break; }
+        case OP_L2I: { frame.push(JavaValue(frame.pop().asInt())); break; }
+
+        // Field operations
+        case OP_GETSTATIC: {
+            uint16_t fIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
+            frame.pc += 2;
+            std::string fKey = getFieldKey(cls, fIdx);
+            frame.push(getStaticField(fKey));
+            break;
+        }
+        case OP_PUTSTATIC: {
+            uint16_t fIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
+            frame.pc += 2;
+            std::string fKey = getFieldKey(cls, fIdx);
+            setStaticField(fKey, frame.pop());
+            break;
+        }
+        case OP_GETFIELD: {
+            uint16_t fIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
+            frame.pc += 2;
+            std::string fName = getFieldName(cls, fIdx);
+            uint32_t objRef = frame.pop().asRef();
+            JavaObject* obj = getObject(objRef);
+            if (obj) {
+                auto fit = obj->fields.find(fName);
+                frame.push(fit != obj->fields.end() ? fit->second : JavaValue(0));
+            } else {
+                frame.push(JavaValue(0));
+            }
+            break;
+        }
+        case OP_PUTFIELD: {
+            uint16_t fIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
+            frame.pc += 2;
+            std::string fName = getFieldName(cls, fIdx);
+            JavaValue val = frame.pop();
+            uint32_t objRef = frame.pop().asRef();
+            JavaObject* obj = getObject(objRef);
+            if (obj) {
+                obj->fields[fName] = val;
+            }
+            break;
+        }
+
         // Branches
         case OP_IFEQ: { int16_t off = (int16_t)((code[frame.pc] << 8) | code[frame.pc + 1]); frame.pc += 2; if (frame.pop().asInt() == 0) frame.pc += off - 3; break; }
         case OP_IFNE: { int16_t off = (int16_t)((code[frame.pc] << 8) | code[frame.pc + 1]); frame.pc += 2; if (frame.pop().asInt() != 0) frame.pc += off - 3; break; }
@@ -840,9 +1294,59 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_IF_ICMPGT: { int16_t off = (int16_t)((code[frame.pc] << 8) | code[frame.pc + 1]); frame.pc += 2; int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); if (a > b) frame.pc += off - 3; break; }
         case OP_IF_ICMPLE: { int16_t off = (int16_t)((code[frame.pc] << 8) | code[frame.pc + 1]); frame.pc += 2; int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); if (a <= b) frame.pc += off - 3; break; }
 
+        case OP_IF_ACMPEQ: { int16_t off = (int16_t)((code[frame.pc] << 8) | code[frame.pc + 1]); frame.pc += 2; uint32_t b = frame.pop().asRef(), a = frame.pop().asRef(); if (a == b) frame.pc += off - 3; break; }
+        case OP_IF_ACMPNE: { int16_t off = (int16_t)((code[frame.pc] << 8) | code[frame.pc + 1]); frame.pc += 2; uint32_t b = frame.pop().asRef(), a = frame.pop().asRef(); if (a != b) frame.pc += off - 3; break; }
+
+        case OP_IFNULL: { int16_t off = (int16_t)((code[frame.pc] << 8) | code[frame.pc + 1]); frame.pc += 2; if (frame.pop().asRef() == 0) frame.pc += off - 3; break; }
+        case OP_IFNONNULL: { int16_t off = (int16_t)((code[frame.pc] << 8) | code[frame.pc + 1]); frame.pc += 2; if (frame.pop().asRef() != 0) frame.pc += off - 3; break; }
+
         case OP_GOTO: {
             int16_t off = (int16_t)((code[frame.pc] << 8) | code[frame.pc + 1]);
             frame.pc += off - 1;
+            break;
+        }
+        case OP_GOTO_W: {
+            int32_t off = (int32_t)((code[frame.pc] << 24) | (code[frame.pc+1] << 16) | (code[frame.pc+2] << 8) | code[frame.pc+3]);
+            frame.pc += off - 1;
+            break;
+        }
+
+        // Switch Instructions
+        case OP_TABLESWITCH: {
+            int tableStart = frame.pc - 1;
+            while ((frame.pc % 4) != 0) frame.pc++;
+            int32_t defaultOff = (int32_t)((code[frame.pc] << 24) | (code[frame.pc+1] << 16) | (code[frame.pc+2] << 8) | code[frame.pc+3]); frame.pc += 4;
+            int32_t low = (int32_t)((code[frame.pc] << 24) | (code[frame.pc+1] << 16) | (code[frame.pc+2] << 8) | code[frame.pc+3]); frame.pc += 4;
+            int32_t high = (int32_t)((code[frame.pc] << 24) | (code[frame.pc+1] << 16) | (code[frame.pc+2] << 8) | code[frame.pc+3]); frame.pc += 4;
+            int val = frame.pop().asInt();
+            if (val >= low && val <= high) {
+                int idx = val - low;
+                int jumpPos = frame.pc + idx * 4;
+                int32_t off = (int32_t)((code[jumpPos] << 24) | (code[jumpPos+1] << 16) | (code[jumpPos+2] << 8) | code[jumpPos+3]);
+                frame.pc = tableStart + off;
+            } else {
+                frame.pc = tableStart + defaultOff;
+            }
+            break;
+        }
+        case OP_LOOKUPSWITCH: {
+            int switchStart = frame.pc - 1;
+            while ((frame.pc % 4) != 0) frame.pc++;
+            int32_t defaultOff = (int32_t)((code[frame.pc] << 24) | (code[frame.pc+1] << 16) | (code[frame.pc+2] << 8) | code[frame.pc+3]); frame.pc += 4;
+            int32_t npairs = (int32_t)((code[frame.pc] << 24) | (code[frame.pc+1] << 16) | (code[frame.pc+2] << 8) | code[frame.pc+3]); frame.pc += 4;
+            int val = frame.pop().asInt();
+            bool matched = false;
+            for (int i = 0; i < npairs; ++i) {
+                int32_t match = (int32_t)((code[frame.pc] << 24) | (code[frame.pc+1] << 16) | (code[frame.pc+2] << 8) | code[frame.pc+3]); frame.pc += 4;
+                int32_t off = (int32_t)((code[frame.pc] << 24) | (code[frame.pc+1] << 16) | (code[frame.pc+2] << 8) | code[frame.pc+3]); frame.pc += 4;
+                if (!matched && val == match) {
+                    frame.pc = switchStart + off;
+                    matched = true;
+                }
+            }
+            if (!matched) {
+                frame.pc = switchStart + defaultOff;
+            }
             break;
         }
 
@@ -868,6 +1372,25 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             int count = frame.pop().asInt();
             frame.push(JavaValue(allocArray(0, std::max(0, count)), true));
             break;
+        }
+        case OP_CHECKCAST: {
+            frame.pc += 2;
+            break;
+        }
+        case OP_INSTANCEOF: {
+            frame.pc += 2;
+            uint32_t ref = frame.pop().asRef();
+            frame.push(JavaValue(ref != 0 ? 1 : 0));
+            break;
+        }
+        case OP_MONITORENTER:
+        case OP_MONITOREXIT: {
+            frame.pop();
+            break;
+        }
+        case OP_ATHROW: {
+            frame.pop();
+            return JavaValue(0);
         }
 
         // Invocations
@@ -915,12 +1438,34 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             JavaValue retVal;
             if (dispatchNativeMethod(targetClass, targetMethod, targetDesc, callArgs, retVal, display)) {
                 if (targetDesc.find(")V") == std::string::npos) frame.push(retVal);
+            } else {
+                // If this is a virtual call on an object instance, use actual object's class if available
+                std::string actualClass = targetClass;
+                if (op != OP_INVOKESTATIC && !callArgs.empty() && callArgs[0].asRef() != 0) {
+                    JavaObject* thisObj = getObject(callArgs[0].asRef());
+                    if (thisObj && !thisObj->className.empty()) {
+                        actualClass = thisObj->className;
+                    }
+                }
+                auto targetCls = findOrLoadClass(actualClass, m_activeJar);
+                if (!targetCls && actualClass != targetClass) {
+                    targetCls = findOrLoadClass(targetClass, m_activeJar);
+                }
+                if (targetCls) {
+                    retVal = executeMethod(targetCls, targetMethod, targetDesc, callArgs, display);
+                    if (targetDesc.find(")V") == std::string::npos) frame.push(retVal);
+                } else {
+                    if (targetDesc.find(")V") == std::string::npos) frame.push(JavaValue(0));
+                }
             }
             break;
         }
 
         case OP_IRETURN:
         case OP_ARETURN:
+        case OP_LRETURN:
+        case OP_FRETURN:
+        case OP_DRETURN:
             return frame.pop();
 
         case OP_RETURN:

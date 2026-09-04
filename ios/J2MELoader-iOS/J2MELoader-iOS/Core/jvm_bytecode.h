@@ -1,4 +1,4 @@
-﻿#ifndef JVM_BYTECODE_H
+#ifndef JVM_BYTECODE_H
 #define JVM_BYTECODE_H
 
 #include <vector>
@@ -312,11 +312,19 @@ struct JavaArray {
     std::vector<int32_t> intData;
     std::vector<uint8_t> byteData;
     std::vector<uint16_t> charData;
+    std::vector<int16_t> shortData;
+    std::vector<int64_t> longData;
+    std::vector<float> floatData;
+    std::vector<double> doubleData;
     std::vector<uint32_t> refData;
     int length() const {
         if (!intData.empty()) return (int)intData.size();
         if (!byteData.empty()) return (int)byteData.size();
         if (!charData.empty()) return (int)charData.size();
+        if (!shortData.empty()) return (int)shortData.size();
+        if (!longData.empty()) return (int)longData.size();
+        if (!floatData.empty()) return (int)floatData.size();
+        if (!doubleData.empty()) return (int)doubleData.size();
         return (int)refData.size();
     }
 };
@@ -376,6 +384,13 @@ public:
     void setJarLoader(JarLoader* jar) { m_activeJar = jar; }
     JarLoader* getJarLoader() const { return m_activeJar; }
 
+    // Static fields storage
+    void setStaticField(const std::string& key, const JavaValue& val) { m_staticFields[key] = val; }
+    JavaValue getStaticField(const std::string& key) const {
+        auto it = m_staticFields.find(key);
+        return (it != m_staticFields.end()) ? it->second : JavaValue(0);
+    }
+
     // Reset Engine State
     void reset();
 
@@ -385,6 +400,7 @@ private:
     std::map<uint32_t, JavaObject> m_heapObjects;
     std::map<uint32_t, JavaArray> m_heapArrays;
     std::map<uint32_t, NativeImage> m_nativeImages;
+    std::map<std::string, JavaValue> m_staticFields;
     JarLoader* m_activeJar = nullptr;
     uint32_t m_nextRef = 1;
 

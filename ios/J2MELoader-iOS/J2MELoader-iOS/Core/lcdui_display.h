@@ -19,7 +19,7 @@ public:
     ~LcduiDisplay();
 
     void resize(int width, int height);
-    void clear(uint32_t color = 0xFFFFFFFF);
+    void clear(uint32_t color = 0xFF050814);
 
     void setColor(uint32_t color) { m_currentColor = color; }
     uint32_t getColor() const { return m_currentColor; }

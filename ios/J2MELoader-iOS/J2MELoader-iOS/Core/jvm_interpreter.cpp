@@ -187,6 +187,11 @@ void JvmInterpreter::findAndBindCanvas() {
                     m_canvasRef = jvm.allocObject(className);
                     jvm.executeMethod(m_canvasClass, "<init>", "()V", { JavaValue(m_canvasRef, true) }, m_display.get());
 
+                    // Call showNotify() if defined
+                    if (cls->methods.find("showNotify:()V") != cls->methods.end()) {
+                        jvm.executeMethod(cls, "showNotify", "()V", { JavaValue(m_canvasRef, true) }, m_display.get());
+                    }
+
                     // Check if class implements Runnable
                     if (cls->methods.find("run:()V") != cls->methods.end()) {
                         m_runnableClass = cls;
@@ -205,6 +210,7 @@ void JvmInterpreter::executionLoop() {
 
     findAndBindCanvas();
 
+    int tickCount = 0;
     while (m_running) {
         if (!m_paused) {
             processEvents();
@@ -228,10 +234,17 @@ void JvmInterpreter::executionLoop() {
                     m_display.get()
                 );
             } else {
-                // Loading / splash indicator for game initializing
+                // Retro LCD loading splash screen with spinner animation
+                tickCount++;
                 int w = m_display->getWidth(), h = m_display->getHeight();
-                m_display->clear(0xFF0F172A);
-                m_display->drawString("Loading Java Game...", w / 2, h / 2, 1 | 2, 0xFF38BDF8);
+                m_display->clear(0xFF0A0F1D);
+                
+                std::string loadingText = "Dang tai game Java";
+                int dots = (tickCount / 15) % 4;
+                for (int d = 0; d < dots; ++d) loadingText += ".";
+                
+                m_display->drawString(loadingText, w / 2, h / 2 - 10, 1 | 2, 0xFF38BDF8);
+                m_display->drawString("J2HienLoader", w / 2, h / 2 + 15, 1 | 2, 0xFF94A3B8);
             }
         }
 

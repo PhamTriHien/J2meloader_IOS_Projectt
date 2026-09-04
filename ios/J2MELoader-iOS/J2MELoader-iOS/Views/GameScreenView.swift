@@ -7,8 +7,8 @@ public struct GameScreenView: View {
     @State private var isPaused: Bool = false
     @State private var speedMultiplier: Int = 1 // 1x, 2x, 4x
     @State private var showingSettings: Bool = false
+    @State private var showingKeyMapper: Bool = false
     @State private var currentConfig: EmulatorConfig
-    @State private var showingScreenshotToast: Bool = false
     @Environment(\.presentationMode) var presentationMode
     
     public init(game: GameItem, gameManager: GameManager) {
@@ -23,14 +23,14 @@ public struct GameScreenView: View {
             
             VStack(spacing: 0) {
                 // Thanh điều khiển trên cùng (Retro Action Bar)
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Button(action: {
                         gameManager.stopEmulation()
                         presentationMode.wrappedValue.dismiss()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.backward")
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                             Text("Thư viện")
                                 .font(.system(size: 13, weight: .semibold))
                         }
@@ -39,7 +39,7 @@ public struct GameScreenView: View {
                     
                     VStack(alignment: .leading, spacing: 1) {
                         Text(game.title)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(1)
                         
@@ -57,18 +57,71 @@ public struct GameScreenView: View {
                         else { speedMultiplier = 1 }
                     }) {
                         Text("\(speedMultiplier)x")
-                            .font(.system(size: 12, weight: .bold))
-                            .padding(.horizontal, 7)
+                            .font(.system(size: 11, weight: .bold))
+                            .padding(.horizontal, 6)
                             .padding(.vertical, 3)
                             .background(speedMultiplier > 1 ? J2MEColors.accent : Color.white.opacity(0.2))
                             .foregroundColor(.white)
-                            .cornerRadius(6)
+                            .cornerRadius(5)
+                    }
+                    
+                    // Menu chọn nhanh kiểu bàn phím ảo
+                    Menu {
+                        ForEach(KeypadLayout.allCases, id: \.self) { layout in
+                            Button(action: {
+                                currentConfig.keypadLayout = layout
+                                var updated = game
+                                updated.config = currentConfig
+                                gameManager.updateGame(updated)
+                            }) {
+                                HStack {
+                                    Text(layout.displayName)
+                                    if currentConfig.keypadLayout == layout {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "keyboard.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    
+                    // Menu chọn nhanh tỉ lệ màn hình
+                    Menu {
+                        ForEach(ScalingMode.allCases, id: \.self) { mode in
+                            Button(action: {
+                                currentConfig.scalingMode = mode
+                                var updated = game
+                                updated.config = currentConfig
+                                gameManager.updateGame(updated)
+                            }) {
+                                HStack {
+                                    Text(mode.displayName)
+                                    if currentConfig.scalingMode == mode {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "aspectratio.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    
+                    // Nút Ánh xạ phím tay cầm
+                    Button(action: { showingKeyMapper = true }) {
+                        Image(systemName: "gamecontroller.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white.opacity(0.85))
                     }
                     
                     // Nút Khởi động lại game
                     Button(action: { restartEmulation() }) {
                         Image(systemName: "arrow.counterclockwise.circle.fill")
-                            .font(.system(size: 22))
+                            .font(.system(size: 20))
                             .foregroundColor(.white.opacity(0.85))
                     }
                     
@@ -78,18 +131,18 @@ public struct GameScreenView: View {
                         J2MEBridge.setPaused(isPaused)
                     }) {
                         Image(systemName: isPaused ? "play.circle.fill" : "pause.circle.fill")
-                            .font(.system(size: 24))
+                            .font(.system(size: 22))
                             .foregroundColor(isPaused ? .yellow : .white.opacity(0.85))
                     }
                     
-                    // Nút Cài đặt nhanh
+                    // Nút Cài đặt toàn diện
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: 18))
                             .foregroundColor(.white.opacity(0.85))
                     }
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .background(Color(red: 0x21/255.0, green: 0x21/255.0, blue: 0x21/255.0))
                 
@@ -100,7 +153,7 @@ public struct GameScreenView: View {
                     MetalView(config: currentConfig) { x, y, action in
                         J2MEBridge.sendTouchEvent(x, y: y, action: action)
                     }
-                    .aspectRatio(CGFloat(currentConfig.effectiveWidth) / CGFloat(currentConfig.effectiveHeight), contentMode: .fit)
+                    .aspectRatio(CGFloat(currentConfig.effectiveWidth) / CGFloat(currentConfig.effectiveHeight), contentMode: currentConfig.scalingMode == .stretch ? .fill : .fit)
                     .clipped()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -121,10 +174,13 @@ public struct GameScreenView: View {
             J2MEBridge.stopEmulator()
         }
         .sheet(isPresented: $showingSettings) {
-            SettingsView(game: game) { updated in
+            SettingsView(game: game, onSave: { updated in
                 self.currentConfig = updated.config
                 gameManager.updateGame(updated)
-            }
+            })
+        }
+        .sheet(isPresented: $showingKeyMapper) {
+            KeyMapperView()
         }
         .statusBar(hidden: true)
     }
