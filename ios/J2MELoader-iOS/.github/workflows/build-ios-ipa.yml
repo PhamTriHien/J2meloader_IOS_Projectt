@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   build-ipa:
@@ -17,8 +18,6 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -42,18 +41,26 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=YES > xcodebuild_raw.log 2>&1 || BUILD_FAILED=1
 
           if [ "$BUILD_FAILED" = "1" ]; then
-            echo "## ❌ Xcodebuild Log (Errors & Warnings)" >> $GITHUB_STEP_SUMMARY
-            echo '```text' >> $GITHUB_STEP_SUMMARY
-            grep -E "(error:|fatal error:|BUILD FAILED|\*\* BUILD FAILED \*\*|warning:)" xcodebuild_raw.log >> $GITHUB_STEP_SUMMARY || true
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "## 📋 Full Tail" >> $GITHUB_STEP_SUMMARY
-            echo '```text' >> $GITHUB_STEP_SUMMARY
-            tail -n 80 xcodebuild_raw.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+            python3 -c "
+import json, urllib.request, os
+with open('xcodebuild_raw.log', 'r', errors='ignore') as f:
+    lines = f.readlines()
+errs = [l for l in lines if any(k in l for k in ['error:', 'fatal error:', 'BUILD FAILED', 'warning:'])]
+body = '### Xcode Build Failure Log\n\n```text\n' + ''.join(errs[-80:]) + '\n```\n\n### Last Lines:\n```text\n' + ''.join(lines[-40:]) + '\n```'
+data = json.dumps({'title': 'CI Build Log', 'body': body[:65000]}).encode('utf-8')
+req = urllib.request.Request(
+    'https://api.github.com/repos/${{ github.repository }}/issues',
+    data=data,
+    headers={'Authorization': 'token ${{ secrets.GITHUB_TOKEN }}', 'Content-Type': 'application/json', 'User-Agent': 'CI'}
+)
+try:
+    urllib.request.urlopen(req)
+except Exception as e:
+    print('Issue error:', e)
+"
             cat xcodebuild_raw.log
             exit 1
           fi
-          echo "## ✅ Build Succeeded!" >> $GITHUB_STEP_SUMMARY
 
       - name: Package Payload to IPA
         run: |
