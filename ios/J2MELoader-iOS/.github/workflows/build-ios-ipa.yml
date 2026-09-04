@@ -39,17 +39,21 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES > xcodebuild_raw.log 2>&1 || true
+            AD_HOC_CODE_SIGNING_ALLOWED=YES > xcodebuild_raw.log 2>&1 || BUILD_FAILED=1
 
-          echo "=== XCODEBUILD COMPILATION MESSAGES ==="
-          grep -E "(error:|fatal error:|BUILD FAILED|\*\* BUILD FAILED \*\*|warning:)" xcodebuild_raw.log || tail -n 80 xcodebuild_raw.log
-
-          if [ ! -d "build/Release-iphoneos/J2MELoader-iOS.app" ]; then
-            echo "::error::Build Failed! Dumping tail of log:"
-            tail -n 150 xcodebuild_raw.log
+          if [ "$BUILD_FAILED" = "1" ]; then
+            echo "## ❌ Xcodebuild Log (Errors & Warnings)" >> $GITHUB_STEP_SUMMARY
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            grep -E "(error:|fatal error:|BUILD FAILED|\*\* BUILD FAILED \*\*|warning:)" xcodebuild_raw.log >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "## 📋 Full Tail" >> $GITHUB_STEP_SUMMARY
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            tail -n 80 xcodebuild_raw.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat xcodebuild_raw.log
             exit 1
           fi
-          echo "App bundle built successfully at build/Release-iphoneos/J2MELoader-iOS.app"
+          echo "## ✅ Build Succeeded!" >> $GITHUB_STEP_SUMMARY
 
       - name: Package Payload to IPA
         run: |
