@@ -39,7 +39,17 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            AD_HOC_CODE_SIGNING_ALLOWED=YES > xcodebuild_raw.log 2>&1 || true
+
+          echo "=== XCODEBUILD COMPILATION MESSAGES ==="
+          grep -E "(error:|fatal error:|BUILD FAILED|\*\* BUILD FAILED \*\*|warning:)" xcodebuild_raw.log || tail -n 80 xcodebuild_raw.log
+
+          if [ ! -d "build/Release-iphoneos/J2MELoader-iOS.app" ]; then
+            echo "::error::Build Failed! Dumping tail of log:"
+            tail -n 150 xcodebuild_raw.log
+            exit 1
+          fi
+          echo "App bundle built successfully at build/Release-iphoneos/J2MELoader-iOS.app"
 
       - name: Package Payload to IPA
         run: |
