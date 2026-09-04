@@ -1,0 +1,457 @@
+﻿// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 54;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AA0000012C88000100000001 /* J2MELoaderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000012C88000100000001 /* J2MELoaderApp.swift */; };
+		AA0000022C88000100000001 /* GameItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000022C88000100000001 /* GameItem.swift */; };
+		AA0000032C88000100000001 /* EmulatorConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000032C88000100000001 /* EmulatorConfig.swift */; };
+		AA0000042C88000100000001 /* KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000042C88000100000001 /* KeyMapping.swift */; };
+		AA0000052C88000100000001 /* GameManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000052C88000100000001 /* GameManager.swift */; };
+		AA0000062C88000100000001 /* ProfileManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000062C88000100000002 /* ProfileManager.swift */; };
+		AA0000072C88000100000001 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000072C88000100000001 /* LibraryView.swift */; };
+		AA0000082C88000100000001 /* GameScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000082C88000100000001 /* GameScreenView.swift */; };
+		AA0000092C88000100000001 /* VirtualKeypadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000092C88000100000001 /* VirtualKeypadView.swift */; };
+		AA00000A2C88000100000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000A2C88000100000001 /* SettingsView.swift */; };
+		AA00000B2C88000100000001 /* KeyMapperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000B2C88000100000002 /* KeyMapperView.swift */; };
+		AA00000C2C88000100000001 /* ShaderTuneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000C2C88000100000002 /* ShaderTuneView.swift */; };
+		AA00000D2C88000100000001 /* DocumentPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000D2C88000100000001 /* DocumentPickerView.swift */; };
+		AA00000E2C88000100000001 /* MetalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000E2C88000100000001 /* MetalView.swift */; };
+		AA00000F2C88000100000001 /* J2MEBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB00000F2C88000100000001 /* J2MEBridge.mm */; };
+		AA0000102C88000100000001 /* AudioBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0000102C88000100000001 /* AudioBridge.mm */; };
+		AA0000112C88000100000001 /* jar_loader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB0000112C88000100000001 /* jar_loader.cpp */; };
+		AA0000122C88000100000001 /* lcdui_display.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB0000122C88000100000001 /* lcdui_display.cpp */; };
+		AA0000132C88000100000001 /* game_canvas.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB0000132C88000100000002 /* game_canvas.cpp */; };
+		AA0000142C88000100000001 /* m3g_engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB0000142C88000100000002 /* m3g_engine.cpp */; };
+		AA0000152C88000100000001 /* micro3d_engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB0000152C88000100000002 /* micro3d_engine.cpp */; };
+		AA0000162C88000100000001 /* rms_storage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB0000162C88000100000001 /* rms_storage.cpp */; };
+		AA0000172C88000100000001 /* jvm_interpreter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB0000172C88000100000001 /* jvm_interpreter.cpp */; };
+		AA0000182C88000100000001 /* jvm_bytecode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB0000182C88000100000002 /* jvm_bytecode.cpp */; };
+		AA0000192C88000100000001 /* eas_engine_bridge.c in Sources */ = {isa = PBXBuildFile; fileRef = BB0000192C88000100000002 /* eas_engine_bridge.c */; };
+		AA00001A2C88000100000001 /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = BB00001A2C88000100000001 /* Shaders.metal */; };
+		AA00001B2C88000100000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB00001B2C88000100000001 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		CC0000012C88000100000001 /* J2MELoader-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "J2MELoader-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB0000012C88000100000001 /* J2MELoaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = J2MELoaderApp.swift; sourceTree = "<group>"; };
+		BB0000022C88000100000001 /* GameItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameItem.swift; sourceTree = "<group>"; };
+		BB0000032C88000100000001 /* EmulatorConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmulatorConfig.swift; sourceTree = "<group>"; };
+		BB0000042C88000100000001 /* KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyMapping.swift; sourceTree = "<group>"; };
+		BB0000052C88000100000001 /* GameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameManager.swift; sourceTree = "<group>"; };
+		BB0000062C88000100000002 /* ProfileManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileManager.swift; sourceTree = "<group>"; };
+		BB0000072C88000100000001 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		BB0000082C88000100000001 /* GameScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameScreenView.swift; sourceTree = "<group>"; };
+		BB0000092C88000100000001 /* VirtualKeypadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VirtualKeypadView.swift; sourceTree = "<group>"; };
+		BB00000A2C88000100000001 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		BB00000B2C88000100000002 /* KeyMapperView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyMapperView.swift; sourceTree = "<group>"; };
+		BB00000C2C88000100000002 /* ShaderTuneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShaderTuneView.swift; sourceTree = "<group>"; };
+		BB00000D2C88000100000001 /* DocumentPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPickerView.swift; sourceTree = "<group>"; };
+		BB00000E2C88000100000001 /* MetalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalView.swift; sourceTree = "<group>"; };
+		BB00000F2C88000100000001 /* J2MEBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = J2MEBridge.mm; sourceTree = "<group>"; };
+		BB0000102C88000100000001 /* AudioBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AudioBridge.mm; sourceTree = "<group>"; };
+		BB0000202C88000100000001 /* J2MEBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = J2MEBridge.h; sourceTree = "<group>"; };
+		BB0000212C88000100000001 /* AudioBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AudioBridge.h; sourceTree = "<group>"; };
+		BB0000222C88000100000001 /* J2MELoader-iOS-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "J2MELoader-iOS-Bridging-Header.h"; sourceTree = "<group>"; };
+		BB0000112C88000100000001 /* jar_loader.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = jar_loader.cpp; sourceTree = "<group>"; };
+		BB0000232C88000100000001 /* jar_loader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = jar_loader.h; sourceTree = "<group>"; };
+		BB0000122C88000100000001 /* lcdui_display.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = lcdui_display.cpp; sourceTree = "<group>"; };
+		BB0000242C88000100000001 /* lcdui_display.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = lcdui_display.h; sourceTree = "<group>"; };
+		BB0000132C88000100000002 /* game_canvas.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = game_canvas.cpp; sourceTree = "<group>"; };
+		BB0000252C88000100000002 /* game_canvas.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = game_canvas.h; sourceTree = "<group>"; };
+		BB0000142C88000100000002 /* m3g_engine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = m3g_engine.cpp; sourceTree = "<group>"; };
+		BB0000262C88000100000002 /* m3g_engine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = m3g_engine.h; sourceTree = "<group>"; };
+		BB0000152C88000100000002 /* micro3d_engine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = micro3d_engine.cpp; sourceTree = "<group>"; };
+		BB0000272C88000100000002 /* micro3d_engine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = micro3d_engine.h; sourceTree = "<group>"; };
+		BB0000162C88000100000001 /* rms_storage.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = rms_storage.cpp; sourceTree = "<group>"; };
+		BB0000282C88000100000001 /* rms_storage.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = rms_storage.h; sourceTree = "<group>"; };
+		BB0000172C88000100000001 /* jvm_interpreter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = jvm_interpreter.cpp; sourceTree = "<group>"; };
+		BB0000292C88000100000001 /* jvm_interpreter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = jvm_interpreter.h; sourceTree = "<group>"; };
+		BB0000182C88000100000002 /* jvm_bytecode.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = jvm_bytecode.cpp; sourceTree = "<group>"; };
+		BB00002A2C88000100000002 /* jvm_bytecode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = jvm_bytecode.h; sourceTree = "<group>"; };
+		BB0000192C88000100000002 /* eas_engine_bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = eas_engine_bridge.c; sourceTree = "<group>"; };
+		BB00002B2C88000100000002 /* eas_engine_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = eas_engine_bridge.h; sourceTree = "<group>"; };
+		BB00001A2C88000100000001 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders.metal; sourceTree = "<group>"; };
+		BB00002C2C88000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BB00001B2C88000100000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		DD0000012C88000100000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		EE0000012C88000100000001 = {
+			isa = PBXGroup;
+			children = (
+				EE0000022C88000100000001 /* J2MELoader-iOS */,
+				EE0000092C88000100000001 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EE0000022C88000100000001 /* J2MELoader-iOS */ = {
+			isa = PBXGroup;
+			children = (
+				EE0000032C88000100000001 /* App */,
+				EE0000042C88000100000001 /* Models */,
+				EE0000052C88000100000001 /* Views */,
+				EE0000062C88000100000001 /* Bridge */,
+				EE0000072C88000100000001 /* Core */,
+				EE0000082C88000100000001 /* Audio */,
+				BB00001A2C88000100000001 /* Shaders.metal */,
+				BB00001B2C88000100000001 /* Assets.xcassets */,
+				BB00002C2C88000100000001 /* Info.plist */,
+			);
+			path = "J2MELoader-iOS";
+			sourceTree = "<group>";
+		};
+		EE0000032C88000100000001 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000012C88000100000001 /* J2MELoaderApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		EE0000042C88000100000001 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000022C88000100000001 /* GameItem.swift */,
+				BB0000032C88000100000001 /* EmulatorConfig.swift */,
+				BB0000042C88000100000001 /* KeyMapping.swift */,
+				BB0000052C88000100000001 /* GameManager.swift */,
+				BB0000062C88000100000002 /* ProfileManager.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		EE0000052C88000100000001 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000072C88000100000001 /* LibraryView.swift */,
+				BB0000082C88000100000001 /* GameScreenView.swift */,
+				BB0000092C88000100000001 /* VirtualKeypadView.swift */,
+				BB00000A2C88000100000001 /* SettingsView.swift */,
+				BB00000B2C88000100000002 /* KeyMapperView.swift */,
+				BB00000C2C88000100000002 /* ShaderTuneView.swift */,
+				BB00000D2C88000100000001 /* DocumentPickerView.swift */,
+				BB00000E2C88000100000001 /* MetalView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		EE0000062C88000100000001 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000202C88000100000001 /* J2MEBridge.h */,
+				BB00000F2C88000100000001 /* J2MEBridge.mm */,
+				BB0000212C88000100000001 /* AudioBridge.h */,
+				BB0000102C88000100000001 /* AudioBridge.mm */,
+				BB0000222C88000100000001 /* J2MELoader-iOS-Bridging-Header.h */,
+			);
+			path = Bridge;
+			sourceTree = "<group>";
+		};
+		EE0000072C88000100000001 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000232C88000100000001 /* jar_loader.h */,
+				BB0000112C88000100000001 /* jar_loader.cpp */,
+				BB0000242C88000100000001 /* lcdui_display.h */,
+				BB0000122C88000100000001 /* lcdui_display.cpp */,
+				BB0000252C88000100000002 /* game_canvas.h */,
+				BB0000132C88000100000002 /* game_canvas.cpp */,
+				BB0000262C88000100000002 /* m3g_engine.h */,
+				BB0000142C88000100000002 /* m3g_engine.cpp */,
+				BB0000272C88000100000002 /* micro3d_engine.h */,
+				BB0000152C88000100000002 /* micro3d_engine.cpp */,
+				BB0000282C88000100000001 /* rms_storage.h */,
+				BB0000162C88000100000001 /* rms_storage.cpp */,
+				BB0000292C88000100000001 /* jvm_interpreter.h */,
+				BB0000172C88000100000001 /* jvm_interpreter.cpp */,
+				BB00002A2C88000100000002 /* jvm_bytecode.h */,
+				BB0000182C88000100000002 /* jvm_bytecode.cpp */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		EE0000082C88000100000001 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				BB00002B2C88000100000002 /* eas_engine_bridge.h */,
+				BB0000192C88000100000002 /* eas_engine_bridge.c */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		EE0000092C88000100000001 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CC0000012C88000100000001 /* J2MELoader-iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		FF0000012C88000100000001 /* J2MELoader-iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = GG0000012C88000100000001 /* Build configuration list for PBXNativeTarget "J2MELoader-iOS" */;
+			buildPhases = (
+				DD0000022C88000100000001 /* Sources */,
+				DD0000012C88000100000001 /* Frameworks */,
+				DD0000032C88000100000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "J2MELoader-iOS";
+			productName = "J2MELoader-iOS";
+			productReference = CC0000012C88000100000001 /* J2MELoader-iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		000000012C88000100000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					FF0000012C88000100000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = GG0000022C88000100000001 /* Build configuration list for PBXProject "J2MELoader-iOS" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = EE0000012C88000100000001;
+			productRefGroup = EE0000092C88000100000001 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				FF0000012C88000100000001 /* J2MELoader-iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		DD0000032C88000100000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA00001B2C88000100000001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		DD0000022C88000100000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000012C88000100000001 /* J2MELoaderApp.swift in Sources */,
+				AA0000022C88000100000001 /* GameItem.swift in Sources */,
+				AA0000032C88000100000001 /* EmulatorConfig.swift in Sources */,
+				AA0000042C88000100000001 /* KeyMapping.swift in Sources */,
+				AA0000052C88000100000001 /* GameManager.swift in Sources */,
+				AA0000062C88000100000001 /* ProfileManager.swift in Sources */,
+				AA0000072C88000100000001 /* LibraryView.swift in Sources */,
+				AA0000082C88000100000001 /* GameScreenView.swift in Sources */,
+				AA0000092C88000100000001 /* VirtualKeypadView.swift in Sources */,
+				AA00000A2C88000100000001 /* SettingsView.swift in Sources */,
+				AA00000B2C88000100000001 /* KeyMapperView.swift in Sources */,
+				AA00000C2C88000100000001 /* ShaderTuneView.swift in Sources */,
+				AA00000D2C88000100000001 /* DocumentPickerView.swift in Sources */,
+				AA00000E2C88000100000001 /* MetalView.swift in Sources */,
+				AA00000F2C88000100000001 /* J2MEBridge.mm in Sources */,
+				AA0000102C88000100000001 /* AudioBridge.mm in Sources */,
+				AA0000112C88000100000001 /* jar_loader.cpp in Sources */,
+				AA0000122C88000100000001 /* lcdui_display.cpp in Sources */,
+				AA0000132C88000100000001 /* game_canvas.cpp in Sources */,
+				AA0000142C88000100000001 /* m3g_engine.cpp in Sources */,
+				AA0000152C88000100000001 /* micro3d_engine.cpp in Sources */,
+				AA0000162C88000100000001 /* rms_storage.cpp in Sources */,
+				AA0000172C88000100000001 /* jvm_interpreter.cpp in Sources */,
+				AA0000182C88000100000001 /* jvm_bytecode.cpp in Sources */,
+				AA0000192C88000100000001 /* eas_engine_bridge.c in Sources */,
+				AA00001A2C88000100000001 /* Shaders.metal in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		110000012C88000100000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/J2MELoader-iOS/Audio",
+					"$(SRCROOT)/J2MELoader-iOS/Core",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		110000022C88000100000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/J2MELoader-iOS/Audio",
+					"$(SRCROOT)/J2MELoader-iOS/Core",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		110000032C88000100000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "J2MELoader-iOS/Resources/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.8.2;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lz",
+					"-framework", "Metal",
+					"-framework", "MetalKit",
+					"-framework", "AVFoundation",
+					"-framework", "AudioToolbox",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.playsoftware.j2meloader;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "J2MELoader-iOS/Bridge/J2MELoader-iOS-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		110000042C88000100000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "J2MELoader-iOS/Resources/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.8.2;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lz",
+					"-framework", "Metal",
+					"-framework", "MetalKit",
+					"-framework", "AVFoundation",
+					"-framework", "AudioToolbox",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.playsoftware.j2meloader;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "J2MELoader-iOS/Bridge/J2MELoader-iOS-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		GG0000012C88000100000001 /* Build configuration list for PBXNativeTarget "J2MELoader-iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				110000032C88000100000001 /* Debug */,
+				110000042C88000100000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		GG0000022C88000100000001 /* Build configuration list for PBXProject "J2MELoader-iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				110000012C88000100000001 /* Debug */,
+				110000022C88000100000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = 000000012C88000100000001 /* Project object */;
+}

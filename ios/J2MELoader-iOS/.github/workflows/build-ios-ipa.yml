@@ -1,0 +1,56 @@
+﻿name: Build iOS IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.4'
+
+      - name: Build and Archive
+        run: |
+          if [ -d "ios/J2MELoader-iOS" ]; then
+            cd ios/J2MELoader-iOS
+          fi
+          xcodebuild clean archive \
+            -project J2MELoader-iOS.xcodeproj \
+            -scheme J2MELoader-iOS \
+            -configuration Release \
+            -archivePath build/J2MELoader-iOS.xcarchive \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE=""
+
+      - name: Package Payload to IPA
+        run: |
+          if [ -d "ios/J2MELoader-iOS" ]; then
+            cd ios/J2MELoader-iOS
+          fi
+          mkdir -p build/Payload
+          cp -R build/J2MELoader-iOS.xcarchive/Products/Applications/J2MELoader-iOS.app build/Payload/
+          cd build
+          zip -r -y J2MELoader-iOS.ipa Payload
+          echo "IPA created successfully at $(pwd)/J2MELoader-iOS.ipa"
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: J2MELoader-iOS-ipa
+          path: |
+            build/J2MELoader-iOS.ipa
+            ios/J2MELoader-iOS/build/J2MELoader-iOS.ipa

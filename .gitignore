@@ -1,0 +1,13 @@
+﻿# Binaries and Large dumps
+*.xapk
+*.zip
+dump/
+tool/
+upstream/
+build/
+*.xcarchive
+*.ipa
+.DS_Store
+*.xcuserstate
+xcuserdata/
+DerivedData/
