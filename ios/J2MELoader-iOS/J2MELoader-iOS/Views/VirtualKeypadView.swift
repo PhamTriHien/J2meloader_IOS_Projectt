@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 
 public struct VirtualKeypadView: View {
     public var config: EmulatorConfig
@@ -98,14 +98,23 @@ public struct VirtualKeypadView: View {
 
 struct KeyButton: View {
     let title: String
-    var sub: String? = nil
+    var sub: String?
     let key: J2MEKey
-    var color: Color = Color(.systemGray5)
+    var color: Color
     let haptic: Bool
     let onEvent: (Int32, Bool) -> Void
     
     @State private var isPressed: Bool = false
     private let generator = UIImpactFeedbackGenerator(style: .medium)
+    
+    init(title: String, sub: String? = nil, key: J2MEKey, color: Color = Color(.systemGray5), haptic: Bool, onEvent: @escaping (Int32, Bool) -> Void) {
+        self.title = title
+        self.sub = sub
+        self.key = key
+        self.color = color
+        self.haptic = haptic
+        self.onEvent = onEvent
+    }
     
     var body: some View {
         GeometryReader { geo in

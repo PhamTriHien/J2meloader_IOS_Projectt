@@ -1,4 +1,4 @@
-﻿#include <metal_stdlib>
+#include <metal_stdlib>
 using namespace metal;
 
 struct VertexOut {
@@ -42,7 +42,7 @@ fragment float4 crtFragmentShader(VertexOut in [[stage_in]],
     float4 color = colorTexture.sample(textureSampler, in.texCoord);
     
     // Scanline calculation
-    float scanline = sin(in.position.y * 3.14159265) * 0.15;
+    float scanline = sin(float(in.position.y) * 3.14159265f) * 0.15f;
     color.rgb -= scanline;
     return color;
 }
@@ -53,9 +53,10 @@ fragment float4 lcdGridFragmentShader(VertexOut in [[stage_in]],
     constexpr sampler textureSampler(mag_filter::nearest, min_filter::nearest);
     float4 color = colorTexture.sample(textureSampler, in.texCoord);
     
-    int2 pixelPos = int2(in.position.xy);
-    if ((pixelPos.x % 3 == 0) || (pixelPos.y % 3 == 0)) {
-        color.rgb *= 0.82; // Subtle LCD dark grid boundary
+    int px = int(in.position.x);
+    int py = int(in.position.y);
+    if ((px % 3 == 0) || (py % 3 == 0)) {
+        color.rgb *= 0.82f; // Subtle LCD dark grid boundary
     }
     return color;
 }

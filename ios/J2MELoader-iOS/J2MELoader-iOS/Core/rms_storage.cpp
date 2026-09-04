@@ -1,9 +1,7 @@
-﻿#include "rms_storage.h"
+#include "rms_storage.h"
 #include <fstream>
 #include <sstream>
-#include <filesystem>
-
-namespace fs = std::filesystem;
+#include <sys/stat.h>
 
 RmsStorage::RmsStorage() : m_baseDir("./RMS") {}
 RmsStorage::~RmsStorage() {}
@@ -16,11 +14,7 @@ RmsStorage& RmsStorage::getInstance() {
 void RmsStorage::setBaseDirectory(const std::string& path) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_baseDir = path;
-    try {
-        if (!fs::exists(m_baseDir)) {
-            fs::create_directories(m_baseDir);
-        }
-    } catch (...) {}
+    mkdir(m_baseDir.c_str(), 0755);
 }
 
 std::string RmsStorage::getStoreFilePath(const std::string& suiteName, const std::string& storeName) {
@@ -84,7 +78,8 @@ bool RmsStorage::openRecordStore(const std::string& suiteName, const std::string
     if (m_openStores.find(storeName) != m_openStores.end()) return true;
 
     std::string path = getStoreFilePath(suiteName, storeName);
-    if (!fs::exists(path) && !createIfNecessary) return false;
+    bool fileExists = std::ifstream(path).good();
+    if (!fileExists && !createIfNecessary) return false;
 
     loadFromDisk(suiteName, storeName);
     if (m_nextRecordIds.find(storeName) == m_nextRecordIds.end()) {
