@@ -1,4 +1,4 @@
-#ifndef JVM_BYTECODE_H
+﻿#ifndef JVM_BYTECODE_H
 #define JVM_BYTECODE_H
 
 #include <vector>
@@ -301,8 +301,9 @@ struct JavaValue {
 struct JavaObject {
     uint32_t id = 0;
     std::string className;
+    std::string stringVal; // For java/lang/String
     std::map<std::string, JavaValue> fields;
-    void* nativePtr = nullptr; // For native bridged instances (Images, Graphics, RMS, Player)
+    void* nativePtr = nullptr;
 };
 
 struct JavaArray {
@@ -318,6 +319,13 @@ struct JavaArray {
         if (!charData.empty()) return (int)charData.size();
         return (int)refData.size();
     }
+};
+
+struct NativeImage {
+    int width = 0;
+    int height = 0;
+    bool isMutable = false;
+    std::vector<uint32_t> pixels; // 0xAARRGGBB
 };
 
 struct StackFrame {
@@ -348,11 +356,25 @@ public:
     // Execution
     JavaValue executeMethod(std::shared_ptr<ClassFile> cls, const std::string& methodName, const std::string& desc, const std::vector<JavaValue>& args, LcduiDisplay* display);
 
-    // Object Allocation
+    // Object & String Allocation
     uint32_t allocObject(const std::string& className);
+    uint32_t createString(const std::string& str);
+    std::string getString(uint32_t ref);
+
+    // Array Allocation
     uint32_t allocArray(uint8_t type, int length);
     JavaObject* getObject(uint32_t ref);
     JavaArray* getArray(uint32_t ref);
+
+    // Image Subsystem
+    uint32_t allocateNativeImage(int w, int h, bool isMutable);
+    NativeImage* getNativeImage(uint32_t ref);
+    uint32_t loadNativeImageFromJar(const std::string& path);
+    uint32_t loadNativeImageFromBytes(const uint8_t* data, size_t size);
+
+    // Active JAR reference
+    void setJarLoader(JarLoader* jar) { m_activeJar = jar; }
+    JarLoader* getJarLoader() const { return m_activeJar; }
 
     // Reset Engine State
     void reset();
@@ -362,6 +384,8 @@ private:
     std::map<std::string, std::shared_ptr<ClassFile>> m_loadedClasses;
     std::map<uint32_t, JavaObject> m_heapObjects;
     std::map<uint32_t, JavaArray> m_heapArrays;
+    std::map<uint32_t, NativeImage> m_nativeImages;
+    JarLoader* m_activeJar = nullptr;
     uint32_t m_nextRef = 1;
 
     // Native Dispatcher (MIDP 2.0 / CLDC 1.1)

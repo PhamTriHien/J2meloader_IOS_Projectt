@@ -1,6 +1,8 @@
 #include "jvm_bytecode.h"
 #include "lcdui_display.h"
 #include "jar_loader.h"
+#include "png_decoder.h"
+#include "rms_storage.h"
 #include <chrono>
 #include <cstring>
 #include <cmath>
@@ -64,6 +66,8 @@ void JvmBytecodeEngine::reset() {
     m_loadedClasses.clear();
     m_heapObjects.clear();
     m_heapArrays.clear();
+    m_nativeImages.clear();
+    m_activeJar = nullptr;
     m_nextRef = 1;
 }
 
@@ -74,6 +78,18 @@ uint32_t JvmBytecodeEngine::allocObject(const std::string& className) {
     obj.className = className;
     m_heapObjects[ref] = std::move(obj);
     return ref;
+}
+
+uint32_t JvmBytecodeEngine::createString(const std::string& str) {
+    uint32_t ref = allocObject("java/lang/String");
+    JavaObject* obj = getObject(ref);
+    if (obj) obj->stringVal = str;
+    return ref;
+}
+
+std::string JvmBytecodeEngine::getString(uint32_t ref) {
+    JavaObject* obj = getObject(ref);
+    return obj ? obj->stringVal : "";
 }
 
 uint32_t JvmBytecodeEngine::allocArray(uint8_t type, int length) {
@@ -97,6 +113,51 @@ JavaObject* JvmBytecodeEngine::getObject(uint32_t ref) {
 JavaArray* JvmBytecodeEngine::getArray(uint32_t ref) {
     auto it = m_heapArrays.find(ref);
     return (it != m_heapArrays.end()) ? &it->second : nullptr;
+}
+
+uint32_t JvmBytecodeEngine::allocateNativeImage(int w, int h, bool isMutable) {
+    uint32_t ref = allocObject("javax/microedition/lcdui/Image");
+    NativeImage img;
+    img.width = w > 0 ? w : 16;
+    img.height = h > 0 ? h : 16;
+    img.isMutable = isMutable;
+    img.pixels.resize(img.width * img.height, 0xFF000000);
+    m_nativeImages[ref] = std::move(img);
+    return ref;
+}
+
+NativeImage* JvmBytecodeEngine::getNativeImage(uint32_t ref) {
+    auto it = m_nativeImages.find(ref);
+    return (it != m_nativeImages.end()) ? &it->second : nullptr;
+}
+
+uint32_t JvmBytecodeEngine::loadNativeImageFromBytes(const uint8_t* data, size_t size) {
+    int w = 0, h = 0;
+    std::vector<uint32_t> pixels;
+    if (!PngDecoder::decode(data, size, w, h, pixels)) {
+        return allocateNativeImage(16, 16, false);
+    }
+    uint32_t ref = allocObject("javax/microedition/lcdui/Image");
+    NativeImage img;
+    img.width = w;
+    img.height = h;
+    img.isMutable = false;
+    img.pixels = std::move(pixels);
+    m_nativeImages[ref] = std::move(img);
+    return ref;
+}
+
+uint32_t JvmBytecodeEngine::loadNativeImageFromJar(const std::string& path) {
+    if (!m_activeJar) return allocateNativeImage(16, 16, false);
+
+    std::string entryName = path;
+    if (!entryName.empty() && entryName[0] == '/') entryName.erase(0, 1);
+
+    std::vector<uint8_t> bytes;
+    if (m_activeJar->extractEntry(entryName, bytes)) {
+        return loadNativeImageFromBytes(bytes.data(), bytes.size());
+    }
+    return allocateNativeImage(16, 16, false);
 }
 
 // ----------------------------------------------------
@@ -269,62 +330,139 @@ std::shared_ptr<ClassFile> JvmBytecodeEngine::findOrLoadClass(const std::string&
 // Native Dispatcher for Standard CLDC 1.1 / MIDP 2.0
 // ----------------------------------------------------
 bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const std::string& methodName, const std::string& desc, const std::vector<JavaValue>& args, JavaValue& outResult, LcduiDisplay* display) {
-    // java/lang/System
     if (className == "java/lang/System") {
         if (methodName == "currentTimeMillis") {
             auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
             outResult = JavaValue((int32_t)now);
             return true;
         }
-        if (methodName == "arraycopy") {
-            // src, srcPos, dest, destPos, length
-            if (args.size() >= 5) {
-                JavaArray* src = getArray(args[0].asRef());
-                int srcPos = args[1].asInt();
-                JavaArray* dst = getArray(args[2].asRef());
-                int dstPos = args[3].asInt();
-                int len = args[4].asInt();
-                if (src && dst && len > 0) {
-                    if (!src->intData.empty() && !dst->intData.empty()) {
-                        for (int k = 0; k < len; ++k) dst->intData[dstPos + k] = src->intData[srcPos + k];
-                    } else if (!src->byteData.empty() && !dst->byteData.empty()) {
-                        for (int k = 0; k < len; ++k) dst->byteData[dstPos + k] = src->byteData[srcPos + k];
+        if (methodName == "arraycopy" && args.size() >= 5) {
+            JavaArray* src = getArray(args[0].asRef());
+            int srcPos = args[1].asInt();
+            JavaArray* dst = getArray(args[2].asRef());
+            int dstPos = args[3].asInt();
+            int len = args[4].asInt();
+            if (src && dst && len > 0) {
+                if (!src->intData.empty() && !dst->intData.empty()) {
+                    for (int k = 0; k < len; ++k) {
+                        if (srcPos + k < (int)src->intData.size() && dstPos + k < (int)dst->intData.size()) {
+                            dst->intData[dstPos + k] = src->intData[srcPos + k];
+                        }
+                    }
+                } else if (!src->byteData.empty() && !dst->byteData.empty()) {
+                    for (int k = 0; k < len; ++k) {
+                        if (srcPos + k < (int)src->byteData.size() && dstPos + k < (int)dst->byteData.size()) {
+                            dst->byteData[dstPos + k] = src->byteData[srcPos + k];
+                        }
                     }
                 }
             }
             return true;
         }
-        if (methodName == "gc") {
+        if (methodName == "gc") return true;
+        if (methodName == "getProperty") {
+            std::string prop = args.size() >= 1 ? getString(args[0].asRef()) : "";
+            if (prop == "microedition.platform") outResult = JavaValue(createString("NokiaN73"), true);
+            else if (prop == "microedition.profiles") outResult = JavaValue(createString("MIDP-2.0"), true);
+            else if (prop == "microedition.configuration") outResult = JavaValue(createString("CLDC-1.1"), true);
+            else outResult = JavaValue(createString(""), true);
             return true;
         }
     }
 
-    // javax/microedition/lcdui/Canvas / GameCanvas
-    if (className.find("Canvas") != std::string::npos) {
-        if (methodName == "repaint" || methodName == "flushGraphics") {
-            if (display) {
-                // Trigger display refresh
-            }
+    if (className == "java/lang/Math") {
+        if (methodName == "abs") { outResult = JavaValue(std::abs(args[0].asInt())); return true; }
+        if (methodName == "min") { outResult = JavaValue(std::min(args[0].asInt(), args[1].asInt())); return true; }
+        if (methodName == "max") { outResult = JavaValue(std::max(args[0].asInt(), args[1].asInt())); return true; }
+    }
+
+    if (className == "javax/microedition/lcdui/Display") {
+        if (methodName == "getDisplay") {
+            outResult = JavaValue(allocObject("javax/microedition/lcdui/Display"), true);
             return true;
         }
+        if (methodName == "setCurrent") return true;
+        if (methodName == "getCurrent") { outResult = JavaValue(0, true); return true; }
+        if (methodName == "isColor") { outResult = JavaValue(1); return true; }
+        if (methodName == "numColors") { outResult = JavaValue(16777216); return true; }
+        if (methodName == "vibrate" || methodName == "flashBacklight") { outResult = JavaValue(1); return true; }
+    }
+
+    if (className == "javax/microedition/lcdui/Image") {
+        if (methodName == "createImage") {
+            if (desc.find("(Ljava/lang/String;)") != std::string::npos) {
+                std::string path = getString(args[0].asRef());
+                outResult = JavaValue(loadNativeImageFromJar(path), true);
+                return true;
+            }
+            if (desc.find("([BII)") != std::string::npos) {
+                JavaArray* arr = getArray(args[0].asRef());
+                int offset = args[1].asInt();
+                int len = args[2].asInt();
+                if (arr && offset >= 0 && offset + len <= (int)arr->byteData.size()) {
+                    outResult = JavaValue(loadNativeImageFromBytes(arr->byteData.data() + offset, len), true);
+                } else {
+                    outResult = JavaValue(allocateNativeImage(16, 16, false), true);
+                }
+                return true;
+            }
+            if (desc.find("(II)") != std::string::npos) {
+                int w = args[0].asInt(), h = args[1].asInt();
+                outResult = JavaValue(allocateNativeImage(w, h, true), true);
+                return true;
+            }
+        }
         if (methodName == "getWidth") {
-            outResult = JavaValue(display ? display->getWidth() : 240);
+            NativeImage* img = getNativeImage(args[0].asRef());
+            outResult = JavaValue(img ? img->width : 16);
             return true;
         }
         if (methodName == "getHeight") {
-            outResult = JavaValue(display ? display->getHeight() : 320);
+            NativeImage* img = getNativeImage(args[0].asRef());
+            outResult = JavaValue(img ? img->height : 16);
             return true;
         }
-        if (methodName == "setFullScreenMode") {
+        if (methodName == "getGraphics") {
+            outResult = JavaValue(allocObject("javax/microedition/lcdui/Graphics"), true);
+            return true;
+        }
+        if (methodName == "isMutable") {
+            NativeImage* img = getNativeImage(args[0].asRef());
+            outResult = JavaValue(img && img->isMutable ? 1 : 0);
+            return true;
+        }
+        if (methodName == "getRGB") {
+            NativeImage* img = getNativeImage(args[0].asRef());
+            JavaArray* arr = getArray(args[1].asRef());
+            int offset = args[2].asInt(), scanlength = args[3].asInt(), x = args[4].asInt(), y = args[5].asInt(), width = args[6].asInt(), height = args[7].asInt();
+            if (img && arr) {
+                for (int r = 0; r < height; ++r) {
+                    for (int c = 0; c < width; ++c) {
+                        int srcIdx = (y + r) * img->width + (x + c);
+                        int dstIdx = offset + r * scanlength + c;
+                        if (srcIdx < (int)img->pixels.size() && dstIdx < (int)arr->intData.size()) {
+                            arr->intData[dstIdx] = img->pixels[srcIdx];
+                        }
+                    }
+                }
+            }
             return true;
         }
     }
 
-    // javax/microedition/lcdui/Graphics
     if (className == "javax/microedition/lcdui/Graphics") {
         if (!display) return true;
         if (methodName == "setColor") {
-            if (args.size() >= 2) display->setColor((uint32_t)(args[1].asInt() | 0xFF000000));
+            if (args.size() == 2) {
+                display->setColor((uint32_t)(args[1].asInt() | 0xFF000000));
+            } else if (args.size() >= 4) {
+                uint32_t r = (args[1].asInt() & 0xFF), g = (args[2].asInt() & 0xFF), b = (args[3].asInt() & 0xFF);
+                display->setColor(0xFF000000 | (r << 16) | (g << 8) | b);
+            }
+            return true;
+        }
+        if (methodName == "getColor") {
+            outResult = JavaValue((int32_t)(display->getColor() & 0x00FFFFFF));
             return true;
         }
         if (methodName == "fillRect" && args.size() >= 5) {
@@ -339,20 +477,178 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             display->drawLine(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), display->getColor());
             return true;
         }
-        if (methodName == "drawString" && args.size() >= 5) {
-            // text, x, y, anchor
-            display->drawString("MIDP", args[2].asInt(), args[3].asInt(), args[4].asInt(), display->getColor());
+        if (methodName == "drawRoundRect" && args.size() >= 7) {
+            display->drawRoundRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), display->getColor());
             return true;
         }
-        if (methodName == "setClip" || methodName == "clipRect") {
+        if (methodName == "fillRoundRect" && args.size() >= 7) {
+            display->fillRoundRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), display->getColor());
+            return true;
+        }
+        if (methodName == "drawArc" && args.size() >= 7) {
+            display->drawArc(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), display->getColor());
+            return true;
+        }
+        if (methodName == "fillArc" && args.size() >= 7) {
+            display->fillArc(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), display->getColor());
+            return true;
+        }
+        if (methodName == "drawString" && args.size() >= 5) {
+            std::string text = getString(args[1].asRef());
+            display->drawString(text, args[2].asInt(), args[3].asInt(), args[4].asInt(), display->getColor());
+            return true;
+        }
+        if (methodName == "drawSubstring" && args.size() >= 7) {
+            std::string text = getString(args[1].asRef());
+            int off = args[2].asInt(), len = args[3].asInt();
+            if (off >= 0 && off + len <= (int)text.length()) {
+                display->drawString(text.substr(off, len), args[4].asInt(), args[5].asInt(), args[6].asInt(), display->getColor());
+            }
+            return true;
+        }
+        if (methodName == "drawChar" && args.size() >= 5) {
+            display->drawChar((char)args[1].asInt(), args[2].asInt(), args[3].asInt(), display->getColor());
+            return true;
+        }
+        if (methodName == "drawImage" && args.size() >= 5) {
+            NativeImage* img = getNativeImage(args[1].asRef());
+            if (img && !img->pixels.empty()) {
+                display->drawRegion(img->pixels.data(), img->width, img->height, 0, 0, img->width, img->height, 0, args[2].asInt(), args[3].asInt(), args[4].asInt());
+            }
+            return true;
+        }
+        if (methodName == "drawRegion" && args.size() >= 10) {
+            NativeImage* img = getNativeImage(args[1].asRef());
+            if (img && !img->pixels.empty()) {
+                display->drawRegion(img->pixels.data(), img->width, img->height, args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), args[7].asInt(), args[8].asInt(), args[9].asInt());
+            }
+            return true;
+        }
+        if (methodName == "drawRGB" && args.size() >= 9) {
+            JavaArray* arr = getArray(args[1].asRef());
+            if (arr && !arr->intData.empty()) {
+                display->drawRGB(arr->intData.data(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), args[7].asInt(), args[8].asInt() != 0);
+            }
+            return true;
+        }
+        if (methodName == "setClip" && args.size() >= 5) {
+            display->setClip(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt());
+            return true;
+        }
+        if (methodName == "clipRect" && args.size() >= 5) {
+            display->clipRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt());
+            return true;
+        }
+        if (methodName == "getClipX") { outResult = JavaValue(display->getClip().x); return true; }
+        if (methodName == "getClipY") { outResult = JavaValue(display->getClip().y); return true; }
+        if (methodName == "getClipWidth") { outResult = JavaValue(display->getClip().width); return true; }
+        if (methodName == "getClipHeight") { outResult = JavaValue(display->getClip().height); return true; }
+        if (methodName == "setFont" || methodName == "translate") return true;
+    }
+
+    if (className == "javax/microedition/lcdui/Font") {
+        if (methodName == "getFont" || methodName == "getDefaultFont") {
+            outResult = JavaValue(allocObject("javax/microedition/lcdui/Font"), true);
+            return true;
+        }
+        if (methodName == "getHeight") { outResult = JavaValue(12); return true; }
+        if (methodName == "getBaselinePosition") { outResult = JavaValue(10); return true; }
+        if (methodName == "stringWidth") {
+            std::string s = getString(args[1].asRef());
+            outResult = JavaValue((int32_t)(s.length() * 7));
+            return true;
+        }
+        if (methodName == "charWidth") { outResult = JavaValue(7); return true; }
+    }
+
+    if (className.find("Canvas") != std::string::npos) {
+        if (methodName == "repaint" || methodName == "flushGraphics") return true;
+        if (methodName == "getWidth") { outResult = JavaValue(display ? display->getWidth() : 240); return true; }
+        if (methodName == "getHeight") { outResult = JavaValue(display ? display->getHeight() : 320); return true; }
+        if (methodName == "isDoubleBuffered") { outResult = JavaValue(1); return true; }
+        if (methodName == "hasPointerEvents") { outResult = JavaValue(1); return true; }
+        if (methodName == "setFullScreenMode") return true;
+    }
+
+    if (className == "java/lang/Class") {
+        if (methodName == "getResourceAsStream") {
+            std::string path = getString(args[1].asRef());
+            if (m_activeJar) {
+                if (!path.empty() && path[0] == '/') path.erase(0, 1);
+                std::vector<uint8_t> bytes;
+                if (m_activeJar->extractEntry(path, bytes)) {
+                    uint32_t isRef = allocObject("java/io/ByteArrayInputStream");
+                    uint32_t arrRef = allocArray(8, (int)bytes.size());
+                    JavaArray* arr = getArray(arrRef);
+                    if (arr) arr->byteData = std::move(bytes);
+                    JavaObject* obj = getObject(isRef);
+                    if (obj) obj->fields["buf"] = JavaValue(arrRef, true);
+                    outResult = JavaValue(isRef, true);
+                    return true;
+                }
+            }
+            outResult = JavaValue(0, true);
             return true;
         }
     }
 
-    // javax/microedition/media/Manager
-    if (className == "javax/microedition/media/Manager") {
-        if (methodName == "playTone") {
-            // note, duration, volume
+    if (className == "java/lang/Thread") {
+        if (methodName == "currentThread") {
+            outResult = JavaValue(allocObject("java/lang/Thread"), true);
+            return true;
+        }
+        if (methodName == "sleep" || methodName == "yield") return true;
+    }
+
+    if (className == "javax/microedition/rms/RecordStore") {
+        if (methodName == "openRecordStore") {
+            std::string name = getString(args[0].asRef());
+            bool create = args.size() > 1 ? (args[1].asInt() != 0) : true;
+            int handle = RmsStorage::getInstance().openRecordStore(name, create);
+            if (handle >= 0) {
+                uint32_t ref = allocObject("javax/microedition/rms/RecordStore");
+                JavaObject* obj = getObject(ref);
+                if (obj) obj->fields["handle"] = JavaValue(handle);
+                outResult = JavaValue(ref, true);
+            } else {
+                outResult = JavaValue(0, true);
+            }
+            return true;
+        }
+        if (methodName == "closeRecordStore") {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (obj) RmsStorage::getInstance().closeRecordStore(obj->fields["handle"].asInt());
+            return true;
+        }
+        if (methodName == "addRecord") {
+            JavaObject* obj = getObject(args[0].asRef());
+            JavaArray* arr = getArray(args[1].asRef());
+            int off = args[2].asInt(), len = args[3].asInt();
+            if (obj && arr && off >= 0 && off + len <= (int)arr->byteData.size()) {
+                int recId = RmsStorage::getInstance().addRecord(obj->fields["handle"].asInt(), arr->byteData.data() + off, len);
+                outResult = JavaValue(recId);
+            } else {
+                outResult = JavaValue(1);
+            }
+            return true;
+        }
+        if (methodName == "getRecord") {
+            JavaObject* obj = getObject(args[0].asRef());
+            int recId = args[1].asInt();
+            if (obj) {
+                auto data = RmsStorage::getInstance().getRecord(obj->fields["handle"].asInt(), recId);
+                uint32_t arrRef = allocArray(8, (int)data.size());
+                JavaArray* arr = getArray(arrRef);
+                if (arr) arr->byteData = std::move(data);
+                outResult = JavaValue(arrRef, true);
+            } else {
+                outResult = JavaValue(0, true);
+            }
+            return true;
+        }
+        if (methodName == "getNumRecords") {
+            JavaObject* obj = getObject(args[0].asRef());
+            outResult = JavaValue(obj ? RmsStorage::getInstance().getNumRecords(obj->fields["handle"].asInt()) : 0);
             return true;
         }
     }

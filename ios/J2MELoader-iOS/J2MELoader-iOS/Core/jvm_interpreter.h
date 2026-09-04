@@ -48,6 +48,16 @@ public:
         m_playToneCallback = playToneCb;
     }
 
+    void setCurrentCanvas(uint32_t ref, std::shared_ptr<ClassFile> cls) {
+        m_canvasRef = ref;
+        m_canvasClass = cls;
+    }
+
+    void registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> cls) {
+        m_runnableRef = ref;
+        m_runnableClass = cls;
+    }
+
 private:
     JvmInterpreter();
     ~JvmInterpreter();
@@ -70,12 +80,15 @@ private:
 
     uint32_t m_midletRef = 0;
     uint32_t m_canvasRef = 0;
+    uint32_t m_graphicsRef = 0;
+    uint32_t m_runnableRef = 0;
     std::shared_ptr<ClassFile> m_midletClass;
     std::shared_ptr<ClassFile> m_canvasClass;
+    std::shared_ptr<ClassFile> m_runnableClass;
 
     void executionLoop();
     void processEvents();
-    void renderEngineFrame(const std::string& title);
+    void findAndBindCanvas();
 };
 
 #endif // JVM_INTERPRETER_H
