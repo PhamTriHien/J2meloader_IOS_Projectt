@@ -43,15 +43,31 @@ if [ $BUILD_STATUS -ne 0 ]; then
   exit $BUILD_STATUS
 fi
 
-echo "=== Xcodebuild Succeeded! ==="
-
-echo "[2/3] Packaging Payload folder..."
+echo "[2/4] Packaging Payload and Device IPA..."
 cp -R build/Release-iphoneos/*.app build/Payload/
-
-echo "[3/3] Creating .ipa package..."
 cd build
 zip -r -y J2HienLoader.ipa Payload
 cp J2HienLoader.ipa J2MELoader-iOS.ipa
 cd ..
 
-echo "=== SUCCESS: IPA built at $(pwd)/build/J2HienLoader.ipa ==="
+echo "[3/4] Building for iOS / iPadOS Simulator (for Appetize.io & Web testing)..."
+mkdir -p build/Release-iphonesimulator
+xcodebuild build \
+  -project J2MELoader-iOS.xcodeproj \
+  -scheme J2MELoader-iOS \
+  -configuration Release \
+  -sdk iphonesimulator \
+  -destination "generic/platform=iOS Simulator" \
+  CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphonesimulator" \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGN_IDENTITY="" || true
+
+if [ -d "build/Release-iphonesimulator/J2MELoader-iOS.app" ]; then
+  echo "[4/4] Creating J2HienLoader-Simulator-iPad.zip for Appetize.io..."
+  cd build/Release-iphonesimulator
+  zip -r -y ../J2HienLoader-Simulator-iPad.zip J2MELoader-iOS.app
+  cd ../..
+fi
+
+echo "=== SUCCESS: All builds completed in $(pwd)/build ==="

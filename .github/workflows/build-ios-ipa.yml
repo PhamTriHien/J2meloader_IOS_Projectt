@@ -31,11 +31,13 @@ jobs:
           chmod +x build_ipa.sh
           ./build_ipa.sh
 
-      - name: Upload IPA Artifact
+      - name: Upload IPA & Simulator Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: J2HienLoader-iOS-ipa
-          path: "**/build/*.ipa"
+          name: J2HienLoader-iOS-Artifacts
+          path: |
+            **/build/*.ipa
+            **/build/*.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -60,11 +62,12 @@ jobs:
             - **Hỗ trợ toàn diện thiết bị**:
               - Tương thích 100% với iPhone & iPad / iPadOS (xoay ngang / dọc, đa độ phân giải).
             
-            ### 📲 Hướng dẫn cài đặt:
-            1. Tải file `J2HienLoader.ipa` hoặc `J2MELoader-iOS.ipa` đính kèm bên dưới.
-            2. Cài đặt qua **TrollStore**, **Sideloadly**, **AltStore**, **Esign**, **Scarlet**, hoặc **Feather**.
-            3. Mở app và bấm nút `+` (màu đỏ cam) để chọn file game `.jar` và bắt đầu chơi!
-          files: "**/build/*.ipa"
+            ### 📲 Hướng dẫn cài đặt & Kiểm thử:
+            1. **Cài lên iPhone/iPad thật**: Tải `J2HienLoader.ipa` cài qua **TrollStore**, **Sideloadly**, **AltStore**, **Esign**, **Scarlet**, hoặc **Feather**.
+            2. **Chạy thử trên Trình duyệt Web (Appetize.io)**: Tải file `J2HienLoader-Simulator-iPad.zip` và upload lên **Appetize.io**.
+          files: |
+            **/build/*.ipa
+            **/build/*.zip
           draft: false
           prerelease: false
         env:
