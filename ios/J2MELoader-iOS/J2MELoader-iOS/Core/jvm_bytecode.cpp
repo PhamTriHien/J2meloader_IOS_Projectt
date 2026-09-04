@@ -604,11 +604,11 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         if (methodName == "openRecordStore") {
             std::string name = getString(args[0].asRef());
             bool create = args.size() > 1 ? (args[1].asInt() != 0) : true;
-            int handle = RmsStorage::getInstance().openRecordStore(name, create);
-            if (handle >= 0) {
+            bool ok = RmsStorage::getInstance().openRecordStore("J2MEApp", name, create);
+            if (ok) {
                 uint32_t ref = allocObject("javax/microedition/rms/RecordStore");
                 JavaObject* obj = getObject(ref);
-                if (obj) obj->fields["handle"] = JavaValue(handle);
+                if (obj) obj->stringVal = name;
                 outResult = JavaValue(ref, true);
             } else {
                 outResult = JavaValue(0, true);
@@ -617,7 +617,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "closeRecordStore") {
             JavaObject* obj = getObject(args[0].asRef());
-            if (obj) RmsStorage::getInstance().closeRecordStore(obj->fields["handle"].asInt());
+            if (obj) RmsStorage::getInstance().closeRecordStore(obj->stringVal);
             return true;
         }
         if (methodName == "addRecord") {
@@ -625,7 +625,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             JavaArray* arr = getArray(args[1].asRef());
             int off = args[2].asInt(), len = args[3].asInt();
             if (obj && arr && off >= 0 && off + len <= (int)arr->byteData.size()) {
-                int recId = RmsStorage::getInstance().addRecord(obj->fields["handle"].asInt(), arr->byteData.data() + off, len);
+                int recId = RmsStorage::getInstance().addRecord(obj->stringVal, arr->byteData.data() + off, len);
                 outResult = JavaValue(recId);
             } else {
                 outResult = JavaValue(1);
@@ -635,8 +635,8 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         if (methodName == "getRecord") {
             JavaObject* obj = getObject(args[0].asRef());
             int recId = args[1].asInt();
-            if (obj) {
-                auto data = RmsStorage::getInstance().getRecord(obj->fields["handle"].asInt(), recId);
+            std::vector<uint8_t> data;
+            if (obj && RmsStorage::getInstance().getRecord(obj->stringVal, recId, data)) {
                 uint32_t arrRef = allocArray(8, (int)data.size());
                 JavaArray* arr = getArray(arrRef);
                 if (arr) arr->byteData = std::move(data);
@@ -648,7 +648,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "getNumRecords") {
             JavaObject* obj = getObject(args[0].asRef());
-            outResult = JavaValue(obj ? RmsStorage::getInstance().getNumRecords(obj->fields["handle"].asInt()) : 0);
+            outResult = JavaValue(obj ? RmsStorage::getInstance().getNumRecords(obj->stringVal) : 0);
             return true;
         }
     }
