@@ -24,41 +24,10 @@ jobs:
         with:
           xcode-version: '15.4'
 
-      - name: Build App
+      - name: Build and Package IPA
         run: |
-          mkdir -p build/Release-iphoneos
-          echo "Starting xcodebuild..."
-          xcodebuild build \
-            -project J2MELoader-iOS.xcodeproj \
-            -scheme J2MELoader-iOS \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination "generic/platform=iOS" \
-            CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphoneos" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES > xcodebuild_raw.log 2>&1 || BUILD_FAILED=1
-
-          if [ "$BUILD_FAILED" = "1" ]; then
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-            cp xcodebuild_raw.log xcodebuild_output.txt
-            git add xcodebuild_output.txt
-            git commit -m "chore: save xcodebuild output [skip ci]" || true
-            git push origin main || true
-            cat xcodebuild_raw.log
-            exit 1
-          fi
-
-      - name: Package Payload to IPA
-        run: |
-          mkdir -p build/Payload
-          cp -R build/Release-iphoneos/J2MELoader-iOS.app build/Payload/
-          cd build
-          zip -r -y J2MELoader-iOS.ipa Payload
-          echo "IPA created successfully at $(pwd)/J2MELoader-iOS.ipa"
+          chmod +x build_ipa.sh
+          ./build_ipa.sh
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
