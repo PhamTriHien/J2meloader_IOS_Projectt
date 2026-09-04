@@ -51,12 +51,12 @@ public struct LibraryView: View {
                     .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
-                    // Search Bar if active
+                    // Thanh tìm kiếm
                     if isSearching {
                         HStack {
                             Image(systemName: "magnifyingglass")
                                 .foregroundColor(.secondary)
-                            TextField("Search games or vendors...", text: $searchText)
+                            TextField("Tìm kiếm game hoặc nhà phát triển...", text: $searchText)
                                 .textFieldStyle(PlainTextFieldStyle())
                             if !searchText.isEmpty {
                                 Button(action: { searchText = "" }) {
@@ -64,7 +64,7 @@ public struct LibraryView: View {
                                         .foregroundColor(.secondary)
                                 }
                             }
-                            Button("Cancel") {
+                            Button("Huỷ") {
                                 searchText = ""
                                 isSearching = false
                             }
@@ -78,17 +78,25 @@ public struct LibraryView: View {
                     }
                     
                     if gameManager.games.isEmpty {
-                        // Empty State (Matches Android @string/no_data_for_display)
+                        // Trạng thái thư viện trống
                         VStack(spacing: 16) {
                             Spacer()
-                            Text("No data for display")
-                                .font(.system(size: 18, weight: .regular))
+                            Image(systemName: "square.grid.2x2")
+                                .font(.system(size: 48))
+                                .foregroundColor(.secondary.opacity(0.6))
+                            Text("Chưa có ứng dụng nào trong thư viện")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(.primary)
+                            Text("Nhấn vào nút '+' màu đỏ ở góc dưới để cài đặt\nfile game Java (.jar hoặc .jad) từ máy của bạn.")
+                                .font(.system(size: 14))
+                                .multilineTextAlignment(.center)
                                 .foregroundColor(.secondary)
+                                .padding(.horizontal, 32)
                             Spacer()
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
-                        // App List (100% Android ListView Layout list_row_jar.xml)
+                        // Danh sách ứng dụng chuẩn list_row_jar
                         List {
                             ForEach(filteredGames) { game in
                                 OriginalListRowJar(
@@ -114,7 +122,7 @@ public struct LibraryView: View {
                     }
                 }
                 
-                // Android Red Floating Action Button (FAB) - Bottom Right (#ff2e51)
+                // Nút nổi FAB thêm game màu đỏ (#ff2e51)
                 VStack {
                     Spacer()
                     HStack {
@@ -133,12 +141,12 @@ public struct LibraryView: View {
                     }
                 }
             }
-            // Android Dark Material Toolbar (#212121)
+            // Thanh công cụ Dark Toolbar (#212121)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     HStack {
-                        Text("J2ME-Loader")
+                        Text("J2HienLoader")
                             .font(.system(size: 19, weight: .bold))
                             .foregroundColor(.white)
                         Spacer()
@@ -155,13 +163,13 @@ public struct LibraryView: View {
                         
                         Menu {
                             Button(action: { showingSettingsGeneral = true }) {
-                                Label("Settings", systemImage: "gearshape")
+                                Label("Cài đặt chung", systemImage: "gearshape")
                             }
                             Button(action: { showingHelp = true }) {
-                                Label("Help", systemImage: "questionmark.circle")
+                                Label("Hướng dẫn sử dụng", systemImage: "questionmark.circle")
                             }
                             Button(action: { showingAbout = true }) {
-                                Label("About", systemImage: "info.circle")
+                                Label("Thông tin ứng dụng", systemImage: "info.circle")
                             }
                         } label: {
                             Image(systemName: "ellipsis")
@@ -189,19 +197,19 @@ public struct LibraryView: View {
                     GameScreenView(game: current, gameManager: gameManager)
                 }
             }
-            .alert("Change MIDlet Name", isPresented: $showingRenameAlert) {
-                TextField("MIDlet Name", text: $newGameName)
-                Button("OK") {
+            .alert("Đổi tên ứng dụng", isPresented: $showingRenameAlert) {
+                TextField("Tên mới của game", text: $newGameName)
+                Button("Đồng ý") {
                     if let target = gameToRename, !newGameName.isEmpty {
                         var updated = target
                         updated.title = newGameName
                         gameManager.updateGame(updated)
                     }
                 }
-                Button("Cancel", role: .cancel) {}
+                Button("Huỷ", role: .cancel) {}
             }
-            .alert("Clear Saved Data?", isPresented: $showingClearDataAlert) {
-                Button("Clear", role: .destructive) {
+            .alert("Xóa dữ liệu lưu (RMS)?", isPresented: $showingClearDataAlert) {
+                Button("Xóa dữ liệu", role: .destructive) {
                     if let target = gameToClearData {
                         let rmsDir = gameManager.documentsDirectory.appendingPathComponent("RMS")
                         let pattern = "\(target.title)_"
@@ -212,16 +220,16 @@ public struct LibraryView: View {
                         }
                     }
                 }
-                Button("Cancel", role: .cancel) {}
+                Button("Huỷ", role: .cancel) {}
             } message: {
-                Text("Delete RMS storage records for \(gameToClearData?.title ?? "")?")
+                Text("Toàn bộ dữ liệu điểm cao và màn chơi đã lưu của '\(gameToClearData?.title ?? "")' sẽ bị xóa vĩnh viễn.")
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
 }
 
-// MARK: - Original Android List Row (list_row_jar.xml)
+// MARK: - Hàng hiển thị game chuẩn (list_row_jar.xml)
 struct OriginalListRowJar: View {
     let game: GameItem
     let gameManager: GameManager
@@ -241,7 +249,6 @@ struct OriginalListRowJar: View {
     var body: some View {
         Button(action: onLaunch) {
             HStack(alignment: .center, spacing: 12) {
-                // 36dip x 36dip Icon (Original Android Layout size)
                 if let img = iconImage {
                     Image(uiImage: img)
                         .interpolation(.none)
@@ -260,7 +267,6 @@ struct OriginalListRowJar: View {
                     .cornerRadius(4)
                 }
                 
-                // Vertical metadata container
                 VStack(alignment: .leading, spacing: 3) {
                     Text(game.title)
                         .font(.system(size: 15, weight: .bold))
@@ -275,7 +281,7 @@ struct OriginalListRowJar: View {
                         
                         Spacer()
                         
-                        Text(game.version)
+                        Text("v\(game.version)")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
@@ -286,19 +292,19 @@ struct OriginalListRowJar: View {
         }
         .buttonStyle(PlainButtonStyle())
         .contextMenu {
-            Button(action: onLaunch) { Label("Start", systemImage: "play.fill") }
-            Button(action: onSettings) { Label("Settings", systemImage: "gearshape.fill") }
-            Button(action: onRename) { Label("Rename", systemImage: "pencil") }
-            Button(action: onClearData) { Label("Clear Data", systemImage: "trash.slash") }
+            Button(action: onLaunch) { Label("Bắt đầu chơi", systemImage: "play.fill") }
+            Button(action: onSettings) { Label("Cài đặt game", systemImage: "gearshape.fill") }
+            Button(action: onRename) { Label("Đổi tên", systemImage: "pencil") }
+            Button(action: onClearData) { Label("Xóa dữ liệu (RMS)", systemImage: "trash.slash") }
             Divider()
             Button(role: .destructive, action: { gameManager.deleteGame(game) }) {
-                Label("Delete", systemImage: "trash")
+                Label("Xóa khỏi thư viện", systemImage: "trash")
             }
         }
     }
 }
 
-// MARK: - About View (AboutDialogFragment.java)
+// MARK: - Thông tin ứng dụng (About Dialog)
 struct AboutView: View {
     @Environment(\.presentationMode) var presentationMode
     
@@ -311,10 +317,10 @@ struct AboutView: View {
                             .font(.system(size: 48))
                             .foregroundColor(J2MEColors.accent)
                         
-                        Text("J2ME-Loader")
-                            .font(.system(size: 20, weight: .bold))
+                        Text("J2HienLoader")
+                            .font(.system(size: 22, weight: .bold))
                         
-                        Text("Version 1.8.2")
+                        Text("Phiên bản 1.8.2 (Tiếng Việt)")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -322,25 +328,35 @@ struct AboutView: View {
                     .padding(.vertical, 8)
                 }
                 
-                Section(header: Text("Author")) {
+                Section(header: Text("Tác giả & Đóng góp")) {
                     HStack {
-                        Text("Nikita Shakarun")
+                        Text("Tác giả bản gốc Android")
                         Spacer()
-                        Text("PlaySoftware").foregroundColor(.secondary)
+                        Text("Nikita Shakarun (PlaySoftware)").foregroundColor(.secondary)
+                    }
+                    HStack {
+                        Text("Phát triển bản iOS")
+                        Spacer()
+                        Text("Phạm Trí Hiện").foregroundColor(.secondary).fontWeight(.semibold)
+                    }
+                    HStack {
+                        Text("Đồ họa & Âm thanh")
+                        Spacer()
+                        Text("Apple Metal & Sonivox EAS").foregroundColor(.secondary)
                     }
                 }
                 
-                Section(header: Text("License")) {
-                    Text("Licensed under the Apache License, Version 2.0")
+                Section(header: Text("Giấy phép")) {
+                    Text("Phát hành theo giấy phép mã nguồn mở Apache License 2.0")
                         .font(.footnote)
                         .foregroundColor(.secondary)
                 }
             }
-            .navigationTitle("About")
+            .navigationTitle("Thông tin ứng dụng")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("OK") { presentationMode.wrappedValue.dismiss() }
+                    Button("Đóng") { presentationMode.wrappedValue.dismiss() }
                         .foregroundColor(J2MEColors.accent)
                         .font(.headline)
                 }
@@ -349,28 +365,33 @@ struct AboutView: View {
     }
 }
 
-// MARK: - Help View (HelpDialogFragment.java)
+// MARK: - Hướng dẫn sử dụng (Help Dialog)
 struct HelpView: View {
     @Environment(\.presentationMode) var presentationMode
     
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Usage")) {
-                    Text("Tap '+' button to install .jar or .jad file.\nLong-press an app in the list to open the context menu.")
+                Section(header: Text("Cách cài đặt game Java (.jar / .jad)")) {
+                    Text("1. Nhấn vào nút '+' màu đỏ ở góc dưới bên phải màn hình.\n2. Chọn file .jar hoặc .jad từ ứng dụng Tệp (Files), iCloud Drive hoặc tải trực tiếp từ trình duyệt Safari.\n3. Trò chơi sẽ tự động xuất hiện trong thư viện với đầy đủ biểu tượng và thông tin.")
                         .font(.subheadline)
                 }
                 
-                Section(header: Text("Controls")) {
-                    Text("Virtual keypad can be configured in app settings. Touchscreen is supported for games that support pointer events.")
+                Section(header: Text("Cách điều khiển khi chơi")) {
+                    Text("• Bàn phím ảo: Dùng cụm phím số cổ điển (1-9, *, 0, #), phím điều hướng D-Pad và 2 phím mềm LSK/RSK.\n• Cảm ứng trực tiếp: Chạm hoặc vuốt trực tiếp trên màn hình game.\n• Tay cầm Bluetooth: Hỗ trợ tay cầm PS5, Xbox, MFi và có thể gán phím trong phần Cài đặt.")
+                        .font(.subheadline)
+                }
+                
+                Section(header: Text("Hiệu năng & Âm thanh")) {
+                    Text("• Tăng tốc phần cứng Metal GPU duy trì mượt mà 60 FPS.\n• Bộ tổng hợp Sonivox EAS tái tạo chân thực âm thanh nhạc chuông MIDI đa âm sắc cổ điển.")
                         .font(.subheadline)
                 }
             }
-            .navigationTitle("Help")
+            .navigationTitle("Hướng dẫn sử dụng")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("OK") { presentationMode.wrappedValue.dismiss() }
+                    Button("Đóng") { presentationMode.wrappedValue.dismiss() }
                         .foregroundColor(J2MEColors.accent)
                         .font(.headline)
                 }

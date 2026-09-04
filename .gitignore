@@ -1,4 +1,4 @@
-﻿# Binaries and Large dumps
+# Binaries and Large dumps
 *.xapk
 *.zip
 dump/
@@ -11,3 +11,6 @@ build/
 *.xcuserstate
 xcuserdata/
 DerivedData/
+desktop_runner/
+freej2me_system/
+J2MELoader_Desktop_App.py

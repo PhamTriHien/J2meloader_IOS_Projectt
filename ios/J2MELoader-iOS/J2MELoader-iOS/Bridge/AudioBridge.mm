@@ -64,13 +64,17 @@ static AudioBridge *s_sharedInstance = nil;
         AudioBufferList * _Nonnull outputData) {
         
         AudioBridge *strongSelf = weakSelf;
-        if (!strongSelf || !strongSelf->_isPlayingTone) {
-            *isSilence = YES;
-            return noErr;
-        }
-
         float *leftChannel = (float *)outputData->mBuffers[0].mData;
         float *rightChannel = (outputData->mNumberBuffers > 1) ? (float *)outputData->mBuffers[1].mData : leftChannel;
+
+        if (!strongSelf || !strongSelf->_isPlayingTone) {
+            memset(leftChannel, 0, frameCount * sizeof(float));
+            if (outputData->mNumberBuffers > 1) {
+                memset(rightChannel, 0, frameCount * sizeof(float));
+            }
+            *isSilence = NO;
+            return noErr;
+        }
 
         for (AVAudioFrameCount i = 0; i < frameCount; ++i) {
             float toneSample = (float)(sin(strongSelf->_tonePhase) * strongSelf->_volume * 0.4f);

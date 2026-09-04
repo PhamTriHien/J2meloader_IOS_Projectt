@@ -1,19 +1,19 @@
-﻿import SwiftUI
+import SwiftUI
 
 public struct KeyMapperView: View {
     @State private var keyMappings: [String: Int32] = [
-        "DPad Up": J2MEKey.up.rawValue,
-        "DPad Down": J2MEKey.down.rawValue,
-        "DPad Left": J2MEKey.left.rawValue,
-        "DPad Right": J2MEKey.right.rawValue,
-        "Action A / OK": J2MEKey.fire.rawValue,
-        "Action B / Clear": J2MEKey.clear.rawValue,
-        "Left Shoulder / LSK": J2MEKey.softLeft.rawValue,
-        "Right Shoulder / RSK": J2MEKey.softRight.rawValue,
-        "Start / Call": J2MEKey.call.rawValue,
-        "Select / End": J2MEKey.end.rawValue,
-        "Button X (Key 5)": J2MEKey.num5.rawValue,
-        "Button Y (Key 7)": J2MEKey.num7.rawValue
+        "Phím Lên (DPad Up)": J2MEKey.up.rawValue,
+        "Phím Xuống (DPad Down)": J2MEKey.down.rawValue,
+        "Phím Trái (DPad Left)": J2MEKey.left.rawValue,
+        "Phím Phải (DPad Right)": J2MEKey.right.rawValue,
+        "Nút A / Nút Chọn (OK)": J2MEKey.fire.rawValue,
+        "Nút B / Xóa (Clear)": J2MEKey.clear.rawValue,
+        "Nút L1 / Phím mềm trái (LSK)": J2MEKey.softLeft.rawValue,
+        "Nút R1 / Phím mềm phải (RSK)": J2MEKey.softRight.rawValue,
+        "Nút Start / Gọi (Call)": J2MEKey.call.rawValue,
+        "Nút Select / Kết thúc (End)": J2MEKey.end.rawValue,
+        "Nút X (Phím số 5)": J2MEKey.num5.rawValue,
+        "Nút Y (Phím số 7)": J2MEKey.num7.rawValue
     ]
     
     @Environment(\.presentationMode) var presentationMode
@@ -21,8 +21,8 @@ public struct KeyMapperView: View {
     public var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Physical Game Controller & Remapping")) {
-                    Text("Connect any Bluetooth MFi, Xbox, PlayStation DualSense, or Nintendo Switch controller to play with physical buttons.")
+                Section(header: Text("Gán nút tay cầm Bluetooth / MFi")) {
+                    Text("Kết nối tay cầm Bluetooth như Sony DualSense (PS5), Xbox Controller, Nintendo Switch hoặc tay cầm chuẩn MFi để chơi bằng phím cứng.")
                         .font(.footnote)
                         .foregroundColor(.secondary)
                     
@@ -44,19 +44,20 @@ public struct KeyMapperView: View {
                 }
                 
                 Section {
-                    Button("Reset to Defaults", role: .destructive) {
+                    Button("Khôi phục mặc định", role: .destructive) {
                         // Reset defaults
                     }
                 }
             }
-            .navigationTitle("Key Mapper")
+            .navigationTitle("Gán phím tay cầm")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
+                    Button("Xong") {
                         presentationMode.wrappedValue.dismiss()
                     }
                     .font(.headline)
+                    .foregroundColor(J2MEColors.accent)
                 }
             }
         }

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>J2ME-Loader (iOS / Android 100% UI Preview & Emulator)</title>
+<title>J2HienLoader (Giả lập Java ME Tiếng Việt)</title>
 <style>
   :root {
     --bg-dark: #121212;
@@ -134,7 +134,7 @@
     border-radius: 6px;
     color: #FFF;
     padding: 8px 12px;
-    font-size: 15px;
+    font-size: 14px;
     outline: none;
   }
 
@@ -423,10 +423,10 @@
   <div class="app-container" id="appContainer">
     <!-- Top Toolbar -->
     <div class="toolbar">
-      <div class="toolbar-title">J2ME-Loader</div>
+      <div class="toolbar-title">J2HienLoader</div>
       <div class="toolbar-actions">
-        <button class="btn-icon" id="btnSearch" title="Search">🔍</button>
-        <button class="btn-icon" id="btnSort" title="Sort">⇅</button>
+        <button class="btn-icon" id="btnSearch" title="Tìm kiếm">🔍</button>
+        <button class="btn-icon" id="btnSort" title="Sắp xếp">⇅</button>
         <button class="btn-icon" id="btnOverflow" title="Menu">⋮</button>
       </div>
     </div>
@@ -434,7 +434,7 @@
     <!-- Search Bar Overlay -->
     <div class="search-overlay" id="searchOverlay">
       <button class="btn-icon" id="btnSearchBack">←</button>
-      <input type="text" class="search-input" id="searchInput" placeholder="Search apps...">
+      <input type="text" class="search-input" id="searchInput" placeholder="Tìm kiếm game hoặc nhà phát triển...">
       <button class="btn-icon" id="btnSearchClear">✕</button>
     </div>
 
@@ -442,13 +442,13 @@
     <div class="game-list" id="gameList"></div>
 
     <!-- Floating Action Button '+' -->
-    <button class="fab" id="btnAddGame" title="Install .jar / .jad">+</button>
+    <button class="fab" id="btnAddGame" title="Cài đặt game .jar / .jad">+</button>
     <input type="file" id="fileInput" accept=".jar,.jad" style="display:none">
 
     <!-- Game Screen Viewport -->
     <div class="game-screen" id="gameScreen">
       <div class="game-top-bar">
-        <button class="btn-icon" id="btnGameBack" style="font-size:14px; font-weight:bold;">‹ Back</button>
+        <button class="btn-icon" id="btnGameBack" style="font-size:13px; font-weight:bold;">‹ Thư viện</button>
         <span id="gameTitleDisplay" style="font-size:14px; font-weight:600;">Bounce Tales</span>
         <div style="display:flex; gap:6px; align-items:center;">
           <button class="btn-icon" id="btnSpeed" style="font-size:11px; font-weight:bold; color:var(--fab-color); background:#2A2A2A; border-radius:4px; padding:3px 6px;">1x</button>
@@ -502,51 +502,51 @@
 
     <!-- Context Menu -->
     <div class="context-menu" id="contextMenu">
-      <div class="menu-item" id="ctxStart">▶ Start</div>
-      <div class="menu-item" id="ctxSettings">⚙ Settings</div>
-      <div class="menu-item" id="ctxRename">✏ Rename</div>
-      <div class="menu-item" id="ctxClear">🗑 Clear Saved Data</div>
+      <div class="menu-item" id="ctxStart">▶ Bắt đầu chơi</div>
+      <div class="menu-item" id="ctxSettings">⚙ Cài đặt game</div>
+      <div class="menu-item" id="ctxRename">✏ Đổi tên</div>
+      <div class="menu-item" id="ctxClear">🗑 Xóa dữ liệu (RMS)</div>
       <div class="menu-divider"></div>
-      <div class="menu-item" id="ctxDelete" style="color:#FF453A;">❌ Delete</div>
+      <div class="menu-item" id="ctxDelete" style="color:#FF453A;">❌ Xóa khỏi thư viện</div>
     </div>
 
     <!-- Settings Modal -->
     <div class="modal-overlay" id="settingsModal">
       <div class="modal-card">
-        <div class="modal-title" id="settingsTitle">Settings: Bounce Tales</div>
+        <div class="modal-title" id="settingsTitle">Cài đặt: Bounce Tales</div>
         <div class="form-group">
-          <label class="form-label">Device Profile Preset</label>
+          <label class="form-label">Hồ sơ thiết bị mẫu (Device Profile)</label>
           <select class="form-select" id="selPreset">
-            <option value="240x320">Nokia N73 (240x320)</option>
+            <option value="240x320">Nokia N73 (240x320 - Chuẩn QVGA)</option>
             <option value="176x220">Sony Ericsson K750i (176x220)</option>
             <option value="176x208">Nokia 6600 (176x208)</option>
             <option value="360x640">Nokia 5800 XpressMusic (360x640)</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Graphics Shader / Filter</label>
+          <label class="form-label">Bộ lọc Shader / Đồ họa</label>
           <select class="form-select" id="selShader">
-            <option value="nearest">Nearest (Pixel Sharp)</option>
-            <option value="crt">CRT Scanlines</option>
-            <option value="lcd">Nokia LCD Subpixel Grid</option>
+            <option value="nearest">Pixel sắc nét (Nearest Neighbor)</option>
+            <option value="crt">Quét sọc TV cổ điển (CRT Scanlines)</option>
+            <option value="lcd">Lưới điểm ảnh Nokia (LCD Subpixel Grid)</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">FPS Limit</label>
+          <label class="form-label">Giới hạn khung hình</label>
           <select class="form-select" id="selFps">
             <option value="60">60 FPS</option>
             <option value="30">30 FPS</option>
-            <option value="0">Unlimited</option>
+            <option value="0">Không giới hạn</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Virtual Keypad Layout</label>
+          <label class="form-label">Kiểu bàn phím ảo</label>
           <select class="form-select" id="selKeypad">
-            <option value="classic">Classic Phone (3x4 + D-Pad)</option>
-            <option value="hidden">Hidden (Touchscreen Direct)</option>
+            <option value="classic">Bàn phím điện thoại cổ điển (3x4 + D-Pad)</option>
+            <option value="hidden">Ẩn bàn phím (Chơi cảm ứng thuần)</option>
           </select>
         </div>
-        <button class="btn-primary" id="btnSaveSettings">Save & Apply</button>
+        <button class="btn-primary" id="btnSaveSettings">Lưu & Áp dụng</button>
       </div>
     </div>
 
@@ -574,7 +574,6 @@ function playTone(freq = 520, duration = 0.06, type = "square") {
   } catch(e) {}
 }
 
-// Initial Apps List
 let games = [
   { id: 1, title: "Bounce Tales", vendor: "Nokia", version: "2.0.26", color: "#FF3B30", shader: "nearest" },
   { id: 2, title: "Diamond Rush", vendor: "Gameloft", version: "1.1.8", color: "#007AFF", shader: "nearest" },
@@ -591,7 +590,6 @@ let currentGame = null;
 let selectedGameForContext = null;
 let searchQuery = "";
 
-// Elements
 const gameListEl = document.getElementById("gameList");
 const searchOverlay = document.getElementById("searchOverlay");
 const searchInput = document.getElementById("searchInput");
@@ -603,7 +601,6 @@ const settingsModal = document.getElementById("settingsModal");
 const shaderCrt = document.getElementById("shaderCrt");
 const shaderLcd = document.getElementById("shaderLcd");
 
-// Render Library
 function renderList() {
   gameListEl.innerHTML = "";
   const filtered = games.filter(g => 
@@ -636,7 +633,6 @@ function renderList() {
   });
 }
 
-// Search
 document.getElementById("btnSearch").onclick = () => {
   searchOverlay.style.display = "flex";
   searchInput.focus();
@@ -656,14 +652,12 @@ searchInput.oninput = (e) => {
   renderList();
 };
 
-// Sort
 document.getElementById("btnSort").onclick = () => {
   games.sort((a,b) => a.title.localeCompare(b.title));
   playTone(650, 0.05);
   renderList();
 };
 
-// FAB & File Upload
 document.getElementById("btnAddGame").onclick = () => {
   document.getElementById("fileInput").click();
 };
@@ -674,7 +668,7 @@ document.getElementById("fileInput").onchange = (e) => {
   const newGame = {
     id: Date.now(),
     title: name,
-    vendor: "Custom JAR",
+    vendor: "Game cài đặt",
     version: "1.0.0",
     color: "#34C759",
     shader: "nearest"
@@ -682,16 +676,15 @@ document.getElementById("fileInput").onchange = (e) => {
   games.unshift(newGame);
   renderList();
   playTone(880, 0.1);
-  alert(`Installed: ${name}`);
+  alert(`Đã cài đặt thành công: ${name}`);
 };
 
-// Context Menu Handlers
 document.addEventListener("click", () => contextMenu.style.display = "none");
 document.getElementById("ctxStart").onclick = () => { if (selectedGameForContext) launchGame(selectedGameForContext); };
 document.getElementById("ctxSettings").onclick = () => { if (selectedGameForContext) openSettings(selectedGameForContext); };
 document.getElementById("ctxRename").onclick = () => {
   if (selectedGameForContext) {
-    const newName = prompt("Enter new name:", selectedGameForContext.title);
+    const newName = prompt("Nhập tên mới:", selectedGameForContext.title);
     if (newName && newName.trim()) {
       selectedGameForContext.title = newName.trim();
       renderList();
@@ -699,23 +692,22 @@ document.getElementById("ctxRename").onclick = () => {
   }
 };
 document.getElementById("ctxClear").onclick = () => {
-  if (selectedGameForContext && confirm(`Clear RMS storage for ${selectedGameForContext.title}?`)) {
+  if (selectedGameForContext && confirm(`Xóa toàn bộ dữ liệu lưu trữ RMS cho ${selectedGameForContext.title}?`)) {
     playTone(400, 0.08);
-    alert("RMS storage cleared.");
+    alert("Đã xóa dữ liệu RMS thành công.");
   }
 };
 document.getElementById("ctxDelete").onclick = () => {
-  if (selectedGameForContext && confirm(`Delete ${selectedGameForContext.title}?`)) {
+  if (selectedGameForContext && confirm(`Bạn có chắc chắn muốn xóa game ${selectedGameForContext.title}?`)) {
     games = games.filter(g => g.id !== selectedGameForContext.id);
     renderList();
     playTone(350, 0.1);
   }
 };
 
-// Settings Modal
 function openSettings(game) {
   currentGame = game;
-  document.getElementById("settingsTitle").innerText = `Settings: ${game.title}`;
+  document.getElementById("settingsTitle").innerText = `Cài đặt: ${game.title}`;
   document.getElementById("selShader").value = game.shader || "nearest";
   settingsModal.style.display = "flex";
 }
@@ -734,9 +726,6 @@ function applyShader(shader) {
   shaderLcd.style.display = shader === "lcd" ? "block" : "none";
 }
 
-// ------------------------------------
-// Interactive 60 FPS Game Loop Engine
-// ------------------------------------
 let ball = { x: 120, y: 200, vx: 0, vy: 0, r: 14 };
 let rings = [{x: 50, y: 180}, {x: 120, y: 120}, {x: 190, y: 180}, {x: 80, y: 240}, {x: 160, y: 240}];
 let collected = new Set();
@@ -780,7 +769,6 @@ document.getElementById("btnRestart").onclick = () => {
 };
 document.getElementById("btnGameSettings").onclick = () => openSettings(currentGame);
 
-// Keypad Events
 function pressKey(k) {
   keysHeld.add(k);
   const tones = { "UP":587, "DOWN":493, "LEFT":523, "RIGHT":659, "FIRE":880, "LSK":440, "RSK":440, "1":697, "2":770, "3":852, "4":697, "5":770 };
@@ -807,7 +795,6 @@ document.querySelectorAll(".btn-num").forEach(btn => {
   btn.addEventListener("touchend", () => releaseKey(k));
 });
 
-// PC Keyboard Bindings
 window.addEventListener("keydown", (e) => {
   const map = { "ArrowUp":"UP", "ArrowDown":"DOWN", "ArrowLeft":"LEFT", "ArrowRight":"RIGHT", "Enter":"FIRE", " ":"FIRE", "F1":"LSK", "F2":"RSK", "z":"LSK", "x":"RSK" };
   const k = map[e.key] || e.key.toUpperCase();
@@ -819,7 +806,6 @@ window.addEventListener("keyup", (e) => {
   if (k) releaseKey(k);
 });
 
-// Touch/Mouse on Canvas
 gameCanvas.addEventListener("mousedown", (e) => {
   const rect = gameCanvas.getBoundingClientRect();
   ball.x = (e.clientX - rect.left) * (gameCanvas.width / rect.width);
@@ -828,7 +814,6 @@ gameCanvas.addEventListener("mousedown", (e) => {
   playTone(620, 0.03);
 });
 
-// 60 FPS Render Loop
 function animLoop() {
   const cw = gameCanvas.width;
   const ch = gameCanvas.height;
@@ -863,7 +848,6 @@ function animLoop() {
     });
   }
 
-  // FPS calculation
   frames++;
   const now = performance.now();
   if (now - lastFpsTime >= 1000) {
@@ -872,7 +856,6 @@ function animLoop() {
     lastFpsTime = now;
   }
 
-  // Draw Scene
   ctx.fillStyle = "#0F172A";
   ctx.fillRect(0, 0, cw, ch * 0.65);
   ctx.fillStyle = "#1E293B";
@@ -887,7 +870,6 @@ function animLoop() {
     ctx.beginPath(); ctx.moveTo(x, Math.floor(ch * 0.65)); ctx.lineTo(x, ch); ctx.stroke();
   }
 
-  // Golden Rings
   rings.forEach((r, idx) => {
     if (!collected.has(idx)) {
       const pulse = Math.sin(Date.now() / 150 + idx) * 2;
@@ -899,19 +881,16 @@ function animLoop() {
     }
   });
 
-  // Bounce Ball
   ctx.fillStyle = "#FF2E51";
   ctx.strokeStyle = "#990022";
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  // Highlight
   ctx.fillStyle = "#FFA0B0";
   ctx.beginPath(); ctx.arc(ball.x - ball.r*0.3, ball.y - ball.r*0.4, ball.r*0.35, 0, Math.PI * 2); ctx.fill();
 
-  // HUD
   ctx.fillStyle = "#FFFFFF";
   ctx.font = "bold 11px Segoe UI, sans-serif";
-  ctx.fillText(`SCORE: ${score}`, 10, 18);
+  ctx.fillText(`ĐIỂM: ${score}`, 10, 18);
   ctx.fillStyle = "#34C759";
   ctx.fillText(`${fps} FPS`, cw - 48, 18);
 
@@ -921,14 +900,13 @@ function animLoop() {
     ctx.fillStyle = "#FFFFFF";
     ctx.font = "bold 18px Segoe UI, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("PAUSED", cw/2, ch/2);
+    ctx.fillText("TẠM DỪNG", cw/2, ch/2);
     ctx.textAlign = "start";
   }
 
   animFrame = requestAnimationFrame(animLoop);
 }
 
-// Init
 renderList();
 </script>
 </body>

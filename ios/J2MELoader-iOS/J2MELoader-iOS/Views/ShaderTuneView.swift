@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 
 public struct ShaderTuneView: View {
     @State private var brightness: Double = 0.0
@@ -12,10 +12,10 @@ public struct ShaderTuneView: View {
     public var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Post-Processing Shader Tuning")) {
+                Section(header: Text("Tinh chỉnh hiệu ứng Shader Metal")) {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("Brightness")
+                            Text("Độ sáng màn hình (Brightness)")
                             Spacer()
                             Text(String(format: "%.2f", brightness))
                                 .foregroundColor(.secondary)
@@ -25,7 +25,7 @@ public struct ShaderTuneView: View {
                     
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("Contrast")
+                            Text("Độ tương phản (Contrast)")
                             Spacer()
                             Text(String(format: "%.2f", contrast))
                                 .foregroundColor(.secondary)
@@ -35,7 +35,7 @@ public struct ShaderTuneView: View {
                     
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("CRT Scanlines Intensity")
+                            Text("Độ đậm quét sọc TV CRT (Scanlines)")
                             Spacer()
                             Text("\(Int(scanlineIntensity * 100))%")
                                 .foregroundColor(.secondary)
@@ -45,7 +45,7 @@ public struct ShaderTuneView: View {
                     
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("LCD Subpixel Grid")
+                            Text("Lưới điểm ảnh Nokia LCD (Grid Strength)")
                             Spacer()
                             Text("\(Int(lcdGridStrength * 100))%")
                                 .foregroundColor(.secondary)
@@ -55,7 +55,7 @@ public struct ShaderTuneView: View {
                     
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("LCD Ghosting / Persistence")
+                            Text("Độ bóng mờ bóng ma LCD (Ghosting)")
                             Spacer()
                             Text("\(Int(ghostingPersistence * 100))%")
                                 .foregroundColor(.secondary)
@@ -65,7 +65,7 @@ public struct ShaderTuneView: View {
                 }
                 
                 Section {
-                    Button("Reset Shader Settings", role: .destructive) {
+                    Button("Khôi phục mặc định", role: .destructive) {
                         brightness = 0.0
                         contrast = 1.0
                         scanlineIntensity = 0.25
@@ -74,14 +74,15 @@ public struct ShaderTuneView: View {
                     }
                 }
             }
-            .navigationTitle("Shader Tune")
+            .navigationTitle("Hiệu ứng Shader")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
+                    Button("Xong") {
                         presentationMode.wrappedValue.dismiss()
                     }
                     .font(.headline)
+                    .foregroundColor(J2MEColors.accent)
                 }
             }
         }
