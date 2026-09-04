@@ -1520,13 +1520,6 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_DCMPL:
         case OP_DCMPG: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(a > b ? 1 : (a < b ? -1 : 0))); break; }
 
-        case OP_ARRAYLENGTH: {
-            uint32_t ref = frame.pop().asRef();
-            JavaArray* arr = getArray(ref);
-            frame.push(JavaValue(arr ? arr->length() : 0));
-            break;
-        }
-
         case OP_WIDE: {
             uint8_t wideOp = code[frame.pc++];
             uint16_t idx = (code[frame.pc] << 8) | code[frame.pc + 1];
