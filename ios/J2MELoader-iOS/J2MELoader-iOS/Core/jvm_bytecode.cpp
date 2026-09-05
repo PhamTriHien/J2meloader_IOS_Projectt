@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
+extern "C" bool native_text_measure(const char *utf8, int px, int *outW, int *outH) __attribute__((weak));
 
 // Big-Endian Stream Helper
 class ByteStream {
@@ -896,10 +897,26 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         if (methodName == "getBaselinePosition") { outResult = JavaValue(10); return true; }
         if (methodName == "stringWidth") {
             std::string s = getString(args[1].asRef());
+            // Unicode: ask CoreText for real width (Vietnamese combining marks)
+            if (native_text_measure) {
+                bool nonAscii = false;
+                for (unsigned char c : s) if (c < 32 || c > 126) { nonAscii = true; break; }
+                if (nonAscii) {
+                    int w = 0, h = 0;
+                    if (native_text_measure(s.c_str(), 12, &w, &h) && w > 0) {
+                        outResult = JavaValue((int32_t)w);
+                        return true;
+                    }
+                }
+            }
             outResult = JavaValue((int32_t)(s.length() * 7));
             return true;
         }
         if (methodName == "charWidth") { outResult = JavaValue(7); return true; }
+        if (methodName == "charsWidth" && args.size() >= 4) {
+            outResult = JavaValue((int32_t)(args[3].asInt() * 7));
+            return true;
+        }
     }
 
     if (className.find("Canvas") != std::string::npos || className.find("Displayable") != std::string::npos) {
@@ -1013,16 +1030,21 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                     if (empty) {
 #if !defined(_WIN32) && !defined(_WIN64)
                         int fd = sfi->second.asInt();
-                        fd_set rs; FD_ZERO(&rs); FD_SET(fd, &rs);
-                        struct timeval tv{1, 0};
-                        if (select(fd+1, &rs, nullptr, nullptr, &tv) > 0) {
-                            uint8_t tmp[4096]; ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
-                            if (n > 0) {
-                                uint32_t na = allocArray(8, (int)n);
-                                JavaArray* naa = getArray(na);
-                                if (naa) naa->byteData.assign(tmp, tmp + n);
-                                obj->fields["buf"] = JavaValue(na, true);
-                                obj->fields["pos"] = JavaValue(0);
+                        // MIDP blocking read: wait up to ~8s like real phones
+                        for (int w = 0; w < 40; ++w) {
+                            fd_set rs; FD_ZERO(&rs); FD_SET(fd, &rs);
+                            struct timeval tv{0, 200000};
+                            int r = select(fd+1, &rs, nullptr, nullptr, &tv);
+                            if (r > 0 && FD_ISSET(fd, &rs)) {
+                                uint8_t tmp[4096]; ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
+                                if (n > 0) {
+                                    uint32_t na = allocArray(8, (int)n);
+                                    JavaArray* naa = getArray(na);
+                                    if (naa) naa->byteData.assign(tmp, tmp + n);
+                                    obj->fields["buf"] = JavaValue(na, true);
+                                    obj->fields["pos"] = JavaValue(0);
+                                }
+                                break;
                             }
                         }
 #endif

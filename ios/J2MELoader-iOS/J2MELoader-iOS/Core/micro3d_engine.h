@@ -47,6 +47,7 @@ private:
     std::vector<uint32_t> m_texturePixels;
     int m_texW = 0;
     int m_texH = 0;
+    int m_frame = 0;
     void parseMbac(const uint8_t* data, size_t size);
 };
 

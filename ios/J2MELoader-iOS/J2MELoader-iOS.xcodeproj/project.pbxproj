@@ -22,6 +22,7 @@
 		AA00000D2C88000100000001 /* DocumentPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000D2C88000100000001 /* DocumentPickerView.swift */; };
 		AA00000E2C88000100000001 /* MetalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000E2C88000100000001 /* MetalView.swift */; };
 		AA00000F2C88000100000001 /* J2MEBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB00000F2C88000100000001 /* J2MEBridge.mm */; };
+		AA0000332C88000100000001 /* NativeFontBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0000332C88000100000001 /* NativeFontBridge.mm */; };
 		AA0000312C88000100000001 /* NativeExtBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0000312C88000100000001 /* NativeExtBridge.mm */; };
 		AA0000102C88000100000001 /* AudioBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0000102C88000100000001 /* AudioBridge.mm */; };
 		AA0000112C88000100000001 /* jar_loader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB0000112C88000100000001 /* jar_loader.cpp */; };
@@ -92,6 +93,8 @@
 		BB0000102C88000100000001 /* AudioBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AudioBridge.mm; sourceTree = "<group>"; };
 		BB0000202C88000100000001 /* J2MEBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = J2MEBridge.h; sourceTree = "<group>"; };
 		BB0000302C88000100000001 /* NativeExtBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NativeExtBridge.h; sourceTree = "<group>"; };
+		BB0000322C88000100000001 /* NativeFontBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NativeFontBridge.h; sourceTree = "<group>"; };
+		BB0000332C88000100000001 /* NativeFontBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = NativeFontBridge.mm; sourceTree = "<group>"; };
 		BB0000312C88000100000001 /* NativeExtBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = NativeExtBridge.mm; sourceTree = "<group>"; };
 		BB0000212C88000100000001 /* AudioBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AudioBridge.h; sourceTree = "<group>"; };
 		BB0000222C88000100000001 /* J2MELoader-iOS-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "J2MELoader-iOS-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -228,6 +231,8 @@
 				BB0000202C88000100000001 /* J2MEBridge.h */,
 				BB00000F2C88000100000001 /* J2MEBridge.mm */,
 				BB0000302C88000100000001 /* NativeExtBridge.h */,
+				BB0000322C88000100000001 /* NativeFontBridge.h */,
+				BB0000332C88000100000001 /* NativeFontBridge.mm */,
 				BB0000312C88000100000001 /* NativeExtBridge.mm */,
 				BB0000212C88000100000001 /* AudioBridge.h */,
 				BB0000102C88000100000001 /* AudioBridge.mm */,
@@ -362,6 +367,7 @@
 				AA00000D2C88000100000001 /* DocumentPickerView.swift in Sources */,
 				AA00000E2C88000100000001 /* MetalView.swift in Sources */,
 				AA00000F2C88000100000001 /* J2MEBridge.mm in Sources */,
+				AA0000332C88000100000001 /* NativeFontBridge.mm in Sources */,
 				AA0000312C88000100000001 /* NativeExtBridge.mm in Sources */,
 				AA0000102C88000100000001 /* AudioBridge.mm in Sources */,
 				AA0000112C88000100000001 /* jar_loader.cpp in Sources */,

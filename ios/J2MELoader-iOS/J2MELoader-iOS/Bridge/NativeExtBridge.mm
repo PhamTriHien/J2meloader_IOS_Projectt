@@ -18,6 +18,9 @@
 #if __has_include(<AVFoundation/AVFoundation.h>)
 #import <AVFoundation/AVFoundation.h>
 #endif
+#if __has_include(<AudioToolbox/AudioToolbox.h>)
+#import <AudioToolbox/AudioToolbox.h>
+#endif
 
 void native_free(void *p) { if (p) free(p); }
 
@@ -314,6 +317,25 @@ bool native_camera_snapshot(uint8_t **outPNG, int *outLen) {
     return true;
 #else
     return false;
+#endif
+}
+
+void native_vibrate(int ms) {
+#if __has_include(<AudioToolbox/AudioToolbox.h>)
+    if (ms <= 0) return;
+    // iOS has no timed vibrate API; play system vibrate, repeat for long durations
+    AudioServicesPlaySystemSound(kSystemSoundID_Vibrate);
+    if (ms > 600) {
+        int reps = (ms / 700);
+        if (reps > 4) reps = 4;
+        for (int i = 0; i < reps; i++) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((i + 1) * 750 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+                AudioServicesPlaySystemSound(kSystemSoundID_Vibrate);
+            });
+        }
+    }
+#else
+    (void)ms;
 #endif
 }
 

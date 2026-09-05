@@ -2,6 +2,18 @@
 #include <cmath>
 #include <algorithm>
 #include <cstring>
+#include <cstdint>
+#include <cstdlib>
+// Full-Unicode font via iOS CoreText (weak-linked; fallback 8x8 on other builds)
+extern "C" {
+bool native_text_measure(const char *utf8, int px, int *outW, int *outH) __attribute__((weak));
+bool native_text_render(const char *utf8, int px, uint8_t **outAlpha, int *outW, int *outH) __attribute__((weak));
+void native_free(void *p) __attribute__((weak));
+}
+static bool needsUnicode(const std::string& s) {
+    for (unsigned char c : s) if (c < 32 || c > 126) return true;
+    return false;
+}
 
 // Standard 8x8 font bitmap for ASCII characters 32-126
 static const uint8_t font8x8_basic[96][8] = {
@@ -245,6 +257,31 @@ void LcduiDisplay::fillArc(int x, int y, int w, int h, int startAngle, int arcAn
 
 void LcduiDisplay::drawString(const std::string& text, int x, int y, int anchor, uint32_t color) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    // Unicode path (Vietnamese/CJK): CoreText alpha bitmap blended with LCDUI color
+    if (!text.empty() && needsUnicode(text) && native_text_render && native_free) {
+        uint8_t *alpha = nullptr; int w = 0, h = 0;
+        if (native_text_render(text.c_str(), 12, &alpha, &w, &h) && alpha && w > 0 && h > 0) {
+            int drawX = x, drawY = y;
+            if (anchor & 1) drawX -= w / 2;
+            else if (anchor & 8) drawX -= w;
+            if (anchor & 2) drawY -= h / 2;
+            else if (anchor & (32 | 64)) drawY -= h;
+            uint32_t cr = (color >> 16) & 0xFF, cg = (color >> 8) & 0xFF, cb = color & 0xFF;
+            for (int r = 0; r < h; ++r) {
+                for (int c = 0; c < w; ++c) {
+                    uint8_t a = alpha[r * w + c];
+                    if (a < 8) continue;
+                    uint32_t blended = 0xFF000000 | (cr << 16) | (cg << 8) | cb;
+                    // simple coverage: skip faint, solid otherwise (keeps retro crisp)
+                    if (a > 128) setPixelUnsafe(drawX + c, drawY + r, blended);
+                    else setPixelUnsafe(drawX + c, drawY + r, (blended & 0x00FFFFFF) | ((uint32_t)a << 24));
+                }
+            }
+            native_free(alpha);
+            return;
+        }
+        if (alpha) native_free(alpha);
+    }
     int textW = (int)text.length() * 8;
     int textH = 8;
 
@@ -260,6 +297,14 @@ void LcduiDisplay::drawString(const std::string& text, int x, int y, int anchor,
     else if (anchor & (32 | 64)) drawY -= textH;
 
     for (size_t i = 0; i < text.length(); ++i) {
-        drawChar(text[i], drawX + (int)i * 8, drawY, color);
+        unsigned char ch = (unsigned char)text[i];
+        if (ch < 32 || ch > 126) continue; // non-ASCII without native bridge: skip (no tofu)
+        const uint8_t* glyph = font8x8_basic[ch - 32];
+        for (int r = 0; r < 8; ++r) {
+            uint8_t row = glyph[r];
+            for (int b = 0; b < 8; ++b) {
+                if (row & (1 << (7 - b))) setPixelUnsafe(drawX + (int)i * 8 + b, drawY + r, color);
+            }
+        }
     }
 }

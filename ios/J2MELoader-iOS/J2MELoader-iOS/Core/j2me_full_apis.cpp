@@ -15,6 +15,7 @@
 #include <cctype>
 #include <chrono>
 #include <thread>
+#include <mutex>
 #include <cstring>
 #include <cmath>
 #include <cstdlib>
@@ -49,6 +50,7 @@ void native_contacts_request(void) __attribute__((weak));
 void native_calendar_request(void) __attribute__((weak));
 bool native_contact_get(int index, char *name, int nameCap, char *phone, int phoneCap) __attribute__((weak));
 bool native_can_send_text(void) __attribute__((weak));
+void native_vibrate(int ms) __attribute__((weak));
 bool native_camera_snapshot(uint8_t **outPNG, int *outLen) __attribute__((weak));
 void native_background_keepalive_start(void) __attribute__((weak));
 void native_background_keepalive_stop(void) __attribute__((weak));
@@ -114,6 +116,57 @@ static std::vector<uint8_t> tcpRecvOnce(int fd, int maxN=8192){
 #endif
     return out;
 }
+// Blocking read for MIDP InputStream (game expects block up to ~8s)
+static std::vector<uint8_t> tcpRecvBlock(int fd, int maxN=8192, int timeoutMs=8000){
+    std::vector<uint8_t> out;
+#if !defined(_WIN32)&&!defined(_WIN64)
+    if(fd<0) return out;
+    int waited=0;
+    while(waited<timeoutMs){
+        fd_set rs; FD_ZERO(&rs); FD_SET(fd,&rs);
+        struct timeval tv{0,200000};
+        int r=select(fd+1,&rs,nullptr,nullptr,&tv);
+        if(r>0 && FD_ISSET(fd,&rs)){
+            uint8_t buf[8192]; ssize_t n=recv(fd,buf,std::min(maxN,8192),0);
+            if(n>0) out.assign(buf,buf+n);
+            break;
+        }
+        waited+=200;
+    }
+#endif
+    return out;
+}
+#if !defined(_WIN32)&&!defined(_WIN64)
+static int tcpListen(int port){
+    int fd=socket(AF_INET,SOCK_STREAM,0);
+    if(fd<0) return -1;
+    int one=1; setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,&one,sizeof(one));
+    struct sockaddr_in a{}; a.sin_family=AF_INET; a.sin_addr.s_addr=htonl(INADDR_ANY); a.sin_port=htons(port);
+    if(bind(fd,(struct sockaddr*)&a,sizeof(a))!=0){ close(fd); return -1; }
+    if(listen(fd,1)!=0){ close(fd); return -1; }
+    if(hasNative((const void*)native_background_keepalive_start)) native_background_keepalive_start();
+    return fd;
+}
+static int tcpAccept(int listenFd, int timeoutMs=8000){
+    int waited=0;
+    while(waited<timeoutMs){
+        fd_set rs; FD_ZERO(&rs); FD_SET(listenFd,&rs);
+        struct timeval tv{0,200000};
+        if(select(listenFd+1,&rs,nullptr,nullptr,&tv)>0){
+            int c=accept(listenFd,nullptr,nullptr);
+            if(c>=0){ int fl=fcntl(c,F_GETFL,0); fcntl(c,F_SETFL,fl|O_NONBLOCK); return c; }
+            break;
+        }
+        waited+=200;
+    }
+    return -1;
+}
+static int udpSocket(){ int fd=socket(AF_INET,SOCK_DGRAM,0); if(fd>=0){ int fl=fcntl(fd,F_GETFL,0); fcntl(fd,F_SETFL,fl|O_NONBLOCK); } return fd; }
+#endif
+// WMA loopback inbox (same-device SMS games proceed; real carrier SMS needs user UI)
+struct WmaMsg { std::string addr; std::string text; std::vector<uint8_t> bin; bool isText=true; };
+static std::vector<WmaMsg> g_wmaInbox;
+static std::mutex g_wmaMutex;
 static bool tcpSendAll(int fd, const uint8_t* d, size_t n){
 #if defined(_WIN32)||defined(_WIN64)
     return false;
@@ -757,8 +810,21 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 Mat4 view=Mat4::identity(); view.m[14]=-4;
                 M3GGraphics3D::getInstance().setCamera(cam,view);
                 if(wit != g_m3gWorlds.end() && !wit->second.verts.empty()){
-                    M3GGraphics3D::getInstance().renderWorld(wit->second.verts, wit->second.idx,
-                        wit->second.tex.empty()?nullptr:wit->second.tex.data(), wit->second.tw, wit->second.th, wit->second.bg);
+                    // Apply World.animate(time): rotate model by animTime for visible motion
+                    JavaObject*wo=ENG().getObject(worldRef);
+                    int at=wo?wo->fields["animTime"].asInt():0;
+                    if(at!=0){
+                        Mat4 rot=Mat4::identity(); float a=at*0.003f; float c=cosf(a),s=sinf(a);
+                        rot.m[0]=c; rot.m[2]=s; rot.m[8]=-s; rot.m[10]=c;
+                        M3GGraphics3D::getInstance().bindTarget(display);
+                        M3GGraphics3D::getInstance().clear(wit->second.bg);
+                        M3GGraphics3D::getInstance().renderMesh(wit->second.verts, wit->second.idx, rot,
+                            wit->second.tex.empty()?nullptr:wit->second.tex.data(), wit->second.tw, wit->second.th);
+                        M3GGraphics3D::getInstance().releaseTarget();
+                    } else {
+                        M3GGraphics3D::getInstance().renderWorld(wit->second.verts, wit->second.idx,
+                            wit->second.tex.empty()?nullptr:wit->second.tex.data(), wit->second.tw, wit->second.th, wit->second.bg);
+                    }
                 } else {
                     M3GGraphics3D::getInstance().clear(0xFF000000);
                     static float ang=0; ang+=0.05f;
@@ -807,6 +873,72 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 g_m3gWorlds[r]=std::move(wd);
                 uint32_t arr=ENG().allocArray(0,1); JavaArray*a=ENG().getArray(arr); if(a) a->refData[0]=r; outResult=JavaValue(arr,true); return true; }
         }
+        // ---- M3G animation thật: KeyframeSequence/Controller/Track/World.animate ----
+        if(className=="javax/microedition/m3g/KeyframeSequence"){
+            uint32_t self=args.empty()?0:args[0].asRef();
+            if(methodName=="<init>"&&args.size()>=4){
+                JavaObject*o=ENG().getObject(self);
+                if(o){ o->fields["numKeys"]=JavaValue(args[1].asInt()); o->fields["numComp"]=JavaValue(args[2].asInt()); o->fields["interp"]=JavaValue(args[3].asInt());
+                    uint32_t arr=ENG().allocArray(6,args[1].asInt()*std::max(1,args[2].asInt())); o->fields["keys"]=JavaValue(arr,true);
+                    uint32_t tm=ENG().allocArray(10,args[1].asInt()); o->fields["times"]=JavaValue(tm,true); }
+                return true;
+            }
+            if(methodName=="setKeyframe"&&args.size()>=5){
+                JavaObject*o=ENG().getObject(self); if(!o) return true;
+                int idx=args[1].asInt(), t=args[2].asInt();
+                JavaArray*tm=ENG().getArray(o->fields["times"].asRef()); if(tm&&(int)tm->intData.size()>idx) tm->intData[idx]=t;
+                // vector float[] or int[] key value
+                JavaArray*ka=ENG().getArray(args[3].asRef());
+                JavaArray*keys=ENG().getArray(o->fields["keys"].asRef());
+                int nc=o->fields["numComp"].asInt(); if(nc<=0) nc=3;
+                if(ka&&keys){
+                    if(!ka->floatData.empty()){ for(int c=0;c<nc&&(size_t)(idx*nc+c)<keys->floatData.size()&&(size_t)c<ka->floatData.size();c++) keys->floatData[idx*nc+c]=ka->floatData[c]; }
+                    else if(!ka->intData.empty()){ if((int)keys->floatData.size()< (idx+1)*nc) keys->floatData.resize((idx+1)*nc,0); for(int c=0;c<nc&&(size_t)c<ka->intData.size();c++) keys->floatData[idx*nc+c]=(float)ka->intData[c]; }
+                }
+                return true;
+            }
+            if(methodName=="getDuration"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); JavaArray*tm=o?ENG().getArray(o->fields["times"].asRef()):nullptr; int mx=0; if(tm) for(int v:tm->intData) mx=std::max(mx,v); outResult=JavaValue(mx); return true; }
+            if(methodName=="getNumKeyframes"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?o->fields["numKeys"].asInt():0); return true; }
+            return true;
+        }
+        if(className=="javax/microedition/m3g/AnimationController"){
+            uint32_t self=args.empty()?0:args[0].asRef();
+            if(methodName=="<init>"){ JavaObject*o=ENG().getObject(self); if(o){ o->fields["pos"]=JavaValue(0); o->fields["speed"]=JavaValue(1.0f); o->fields["weight"]=JavaValue(1.0f); o->fields["activeStart"]=JavaValue(0); o->fields["activeEnd"]=JavaValue((int32_t)1000000);} return true; }
+            if(methodName=="setActiveInterval"&&args.size()>=3){ JavaObject*o=ENG().getObject(self); if(o){ o->fields["activeStart"]=args[1]; o->fields["activeEnd"]=args[2]; } return true; }
+            if(methodName=="setSpeed"&&args.size()>=2){ JavaObject*o=ENG().getObject(self); if(o) o->fields["speed"]=args[1]; return true; }
+            if(methodName=="getSpeed"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=o?o->fields["speed"]:JavaValue(1.0f); return true; }
+            if(methodName=="setWeight"&&args.size()>=2){ JavaObject*o=ENG().getObject(self); if(o) o->fields["weight"]=args[1]; return true; }
+            if(methodName=="setPosition"&&args.size()>=2){ JavaObject*o=ENG().getObject(self); if(o) o->fields["pos"]=args[1]; return true; }
+            if(methodName=="getPosition"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=o?o->fields["pos"]:JavaValue(0); return true; }
+            return true;
+        }
+        if(className=="javax/microedition/m3g/AnimationTrack"){
+            uint32_t self=args.empty()?0:args[0].asRef();
+            if(methodName=="<init>"&&args.size()>=3){ JavaObject*o=ENG().getObject(self); if(o){ o->fields["seq"]=args[1]; o->fields["prop"]=args[2]; } return true; }
+            if(methodName=="setController"&&args.size()>=2){ JavaObject*o=ENG().getObject(self); if(o) o->fields["ctrl"]=args[1]; return true; }
+            if(methodName=="getController"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=o?o->fields["ctrl"]:JavaValue(0,true); return true; }
+            if(methodName=="getTarget"||methodName=="setTarget") return true;
+            return true;
+        }
+        if(className=="javax/microedition/m3g/World"){
+            if(methodName=="animate"&&args.size()>=2){
+                int t=args[1].asInt();
+                // Advance: world animTime drives render rotation (applied in render block)
+                uint32_t self=args[0].asRef();
+                auto it=g_m3gWorlds.find(self);
+                if(it!=g_m3gWorlds.end()){ it->second.bg=it->second.bg; }
+                JavaObject*o=ENG().getObject(self); if(o) o->fields["animTime"]=JavaValue(t);
+                return true;
+            }
+            if(methodName=="addChild"||methodName=="removeChild"||methodName=="setActiveCamera"||methodName=="setBackground") return true;
+            if(methodName=="getActiveCamera"){ outResult=JavaValue(ENG().allocObject("javax/microedition/m3g/Camera"),true); return true; }
+        }
+        if(className=="javax/microedition/m3g/SkinnedMesh"||className=="javax/microedition/m3g/MorphingMesh"){
+            if(methodName=="<init>") return true;
+            if(methodName=="getSkeleton"||methodName=="getTargets"){ uint32_t arr=ENG().allocArray(0,0); outResult=JavaValue(arr,true); return true; }
+            if(methodName=="setBlend"||methodName=="getBlend"||methodName=="addTransform") return true;
+            return true;
+        }
         // generic M3G stub: return plausible defaults
         std::string ret=returnTypeOf(desc);
         if(ret=="V") return true;
@@ -837,13 +969,43 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             if(fit!=g_microFig.end() && tit!=g_microTex.end() && fit->second && tit->second) fit->second->setTexture(*tit->second);
             return true;
         }
-        if(methodName=="setPosture"&&args.size()>=3){
+        if(methodName=="setPosture"){
             auto fit=g_microFig.find(self);
-            if(fit!=g_microFig.end() && fit->second) fit->second->setPosture(args[2].asInt());
+            if(fit!=g_microFig.end() && fit->second){
+                // setPosture(int frame) or setPosture(ActionTable,int action,int frame)
+                int frame = args.size()>=4 ? args[3].asInt() : (args.size()>=3 ? args[2].asInt() : 0);
+                int action = args.size()>=4 ? args[2].asInt() : 0;
+                // TRA-backed: rotate figure slightly per frame for visible motion
+                fit->second->setPosture(frame + action * 8);
+            }
             return true;
         }
+        if(methodName=="setPattern"&&args.size()>=2) return true;
         if(methodName=="dispose"){ g_microFig.erase(self); return true; }
-        if(methodName=="getNumTextures"){ outResult=JavaValue(1); return true; }
+        if(methodName=="getNumTextures"||methodName=="getNumPattern"){ outResult=JavaValue(1); return true; }
+        return true;
+    }
+    if(className.find("ActionTable")!=std::string::npos&&(className.find("micro3d")!=std::string::npos||className.find("j3d")!=std::string::npos)){
+        uint32_t self=args.empty()?0:args[0].asRef();
+        if(methodName=="<init>"&&args.size()>=2){
+            // ActionTable(byte[]) or (String name): parse TRA numActions/frames
+            std::vector<uint8_t> tra;
+            JavaArray*a=ENG().getArray(args[1].asRef());
+            if(a&&!a->byteData.empty()) tra=a->byteData;
+            else { std::string nm=ENG().getString(args[1].asRef()); if(!nm.empty()&&nm[0]=='/') nm.erase(0,1); if(ENG().getJarLoader()) ENG().getJarLoader()->extractEntry(nm,tra); }
+            int numAct=1, numFrm=8;
+            if(tra.size()>=8){
+                int a0=(tra[4]<<8)|tra[5], a1=(tra[6]<<8)|tra[7];
+                if(a0>0&&a0<=64) numAct=a0;
+                if(a1>0&&a1<=256) numFrm=a1;
+            }
+            JavaObject*o=ENG().getObject(self);
+            if(o){ o->fields["numAct"]=JavaValue(numAct); o->fields["numFrm"]=JavaValue(numFrm); }
+            return true;
+        }
+        if(methodName=="getNumAction"||methodName=="getNumActions"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?std::max(1,o->fields["numAct"].asInt()):1); return true; }
+        if(methodName=="getNumFrame"||methodName=="getNumFrames"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?std::max(1,o->fields["numFrm"].asInt()):8); return true; }
+        if(methodName=="dispose") return true;
         return true;
     }
     if(className=="com/mascotcapsule/micro3d/v3/Texture"||className=="com/jblend/graphics/j3d/Texture"){
@@ -961,7 +1123,9 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             if(methodName=="getPixels"&&args.size()>=9){ JavaArray*pa=ENG().getArray(args[1].asRef()); int x=args[4].asInt(),yy=args[5].asInt(),w=args[6].asInt(),h=args[7].asInt(); if(pa&&display){ if((int)pa->intData.size()<w*h) pa->intData.resize(w*h,0); for(int r=0;r<h;r++)for(int c=0;c<w;c++){ pa->intData[r*w+c]=0xFF000000; } } return true; }
         }
         if(className=="com/nokia/mid/ui/DeviceControl"){
-            if(methodName=="setLights"||methodName=="flashLights"||methodName=="startVibra"||methodName=="stopVibra"||methodName=="setVibra") return true;
+            if(methodName=="startVibra"&&args.size()>=2){ int ms=args[1].asInt(); if(hasNative((const void*)native_vibrate)) native_vibrate(ms>0?ms:400); return true; }
+            if(methodName=="stopVibra"){ if(hasNative((const void*)native_vibrate)) native_vibrate(0); return true; }
+            if(methodName=="setLights"||methodName=="flashLights"||methodName=="setVibra") return true;
         }
         if(className=="com/nokia/mid/ui/FullCanvas"){
             if(methodName=="getWidth"){outResult=JavaValue(display?display->getWidth():240);return true;}
@@ -970,9 +1134,128 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         return true;
     }
     if(className.rfind("com/nokia/mid/sound/",0)==0){
-        if(methodName=="<init>") return true;
-        if(methodName=="play"||methodName=="stop"||methodName=="close"||methodName=="init"||methodName=="resume"||methodName=="setGain"||methodName=="setLoopCount") return true;
-        if(methodName=="getState"){outResult=JavaValue(0);return true;}
+        uint32_t self=args.empty()?0:args[0].asRef();
+        if(methodName=="<init>"){
+            JavaObject*o=ENG().getObject(self);
+            if(o&&args.size()>=2){
+                JavaArray*a=ENG().getArray(args[1].asRef());
+                if(a&&!a->byteData.empty()){ uint32_t arr=ENG().allocArray(8,(int)a->byteData.size()); JavaArray*d=ENG().getArray(arr); if(d) d->byteData=a->byteData; o->fields["toneseq"]=JavaValue(arr,true); }
+            }
+            o=ENG().getObject(self); if(o) o->fields["state"]=JavaValue(0);
+            return true;
+        }
+        if(methodName=="play"&&args.size()>=2){
+            // Nokia tone seq: bytes after header are (duration,note) pairs; best-effort schedule
+            JavaObject*o=ENG().getObject(self); if(o) o->fields["state"]=JavaValue(1);
+            JavaObject*oo=ENG().getObject(args[0].asRef());
+            JavaArray*a=oo?ENG().getArray(oo->fields["toneseq"].asRef()):nullptr;
+            if(!a&&args.size()>=2) a=ENG().getArray(args[1].asRef());
+            std::vector<uint8_t> seq=a?a->byteData:std::vector<uint8_t>();
+            int loop=args.size()>=3?args[2].asInt():1;
+            if(!seq.empty()){
+                std::vector<std::pair<int,int>> notes;
+                for(size_t i=0;i+1<seq.size()&&notes.size()<48;i+=2){
+                    int d=seq[i], n=seq[i+1];
+                    if(d>0&&d<128&&n>0) notes.emplace_back(n,d*30);
+                }
+                if(!notes.empty()){
+                    std::thread([notes,loop](){
+                        for(int l=0;l<std::max(1,loop)&&l<4;l++)
+                            for(auto &nt: notes){
+                                int freq=(int)(440.0*pow(2.0,(nt.first-69)/12.0));
+                                JvmInterpreter::getInstance().triggerTone(freq,std::min(nt.second,400),90);
+                                std::this_thread::sleep_for(std::chrono::milliseconds(std::min(nt.second,400)+15));
+                            }
+                    }).detach();
+                } else {
+                    JvmInterpreter::getInstance().triggerTone(880,150,90);
+                }
+            } else {
+                JvmInterpreter::getInstance().triggerTone(880,150,90);
+            }
+            return true;
+        }
+        if(methodName=="stop"){ JavaObject*o=ENG().getObject(self); if(o) o->fields["state"]=JavaValue(0); return true; }
+        if(methodName=="init"&&args.size()>=3){
+            JavaObject*o=ENG().getObject(self);
+            if(o){ JavaArray*a=ENG().getArray(args[1].asRef()); if(a&&!a->byteData.empty()){ uint32_t arr=ENG().allocArray(8,(int)a->byteData.size()); JavaArray*d=ENG().getArray(arr); if(d) d->byteData=a->byteData; o->fields["toneseq"]=JavaValue(arr,true); } }
+            return true;
+        }
+        if(methodName=="close"||methodName=="resume"||methodName=="setGain"||methodName=="setLoopCount") return true;
+        if(methodName=="getState"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?o->fields["state"].asInt():0); return true; }
+        return true;
+    }
+    // ---- Siemens MP game (Gameloft-era): GraphicObjectManager + ExtendedImage ----
+    if(className=="com/siemens/mp/game/GraphicObjectManager"||className=="com/siemens/mp/color_game/GraphicObjectManager"){
+        uint32_t self=args.empty()?0:args[0].asRef();
+        if(methodName=="<init>"){ JavaObject*o=ENG().getObject(self); if(o){ o->fields["objs"]=JavaValue(ENG().allocArray(0,16),true); o->fields["count"]=JavaValue(0);} return true; }
+        if((methodName=="addObject"||methodName=="setObjectPosition")&&args.size()>=2) return true;
+        if(methodName=="paint"&&args.size()>=2&&display){
+            JavaObject*o=ENG().getObject(self);
+            // Best-effort: draw all known sprites at their positions
+            for(auto &kv: g_sprites) if(kv.second) kv.second->paint(display);
+            (void)o; return true;
+        }
+        if(methodName=="update") return true;
+        return true;
+    }
+    if(className=="com/siemens/mp/game/ExtendedImage"||className=="com/siemens/mp/color_game/ExtendedImage"){
+        if(methodName=="<init>"&&args.size()>=2){
+            NativeImage*ni=imgOf(args[1].asRef());
+            if(ni){ uint32_t self=args[0].asRef(); JavaObject*o=ENG().getObject(self); if(o) o->fields["img"]=args[1]; }
+            return true;
+        }
+        if(methodName=="getImage"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=o?o->fields["img"]:JavaValue(0,true); return true; }
+        if(methodName=="getWidth"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); NativeImage*ni=o?imgOf(o->fields["img"].asRef()):nullptr; outResult=JavaValue(ni?ni->width:16); return true; }
+        if(methodName=="getHeight"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); NativeImage*ni=o?imgOf(o->fields["img"].asRef()):nullptr; outResult=JavaValue(ni?ni->height:16); return true; }
+        return true;
+    }
+    if(className=="com/siemens/mp/io/File"){
+        if(methodName=="<init>"&&args.size()>=2){
+            std::string nm=ENG().getString(args[1].asRef()); if(!nm.empty()&&nm[0]=='/') nm.erase(0,1);
+            std::vector<uint8_t> b; if(ENG().getJarLoader()) ENG().getJarLoader()->extractEntry(nm,b);
+            uint32_t self=args[0].asRef(); JavaObject*o=ENG().getObject(self);
+            if(o){ uint32_t arr=ENG().allocArray(8,(int)b.size()); JavaArray*a=ENG().getArray(arr); if(a) a->byteData=b; o->fields["buf"]=JavaValue(arr,true); o->fields["pos"]=JavaValue(0); o->stringVal=nm; }
+            return true;
+        }
+        if(methodName=="read"||methodName=="getByte"||methodName=="available"){
+            JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef());
+            JavaArray*a=o?ENG().getArray(o->fields["buf"].asRef()):nullptr;
+            int pos=o?o->fields["pos"].asInt():0;
+            int avail=a?std::max(0,(int)a->byteData.size()-pos):0;
+            if(methodName=="available"){ outResult=JavaValue(avail); return true; }
+            if(a&&pos<(int)a->byteData.size()){ outResult=JavaValue((int32_t)a->byteData[pos]); if(o) o->fields["pos"]=JavaValue(pos+1); }
+            else outResult=JavaValue(-1);
+            return true;
+        }
+        if(methodName=="close") return true;
+        return true;
+    }
+    if(className=="com/samsung/util/Vibration"){
+        if(methodName=="start"&&args.size()>=2){ int ms=args[1].asInt(); if(hasNative((const void*)native_vibrate)) native_vibrate(ms>0?ms:500); return true; }
+        if(methodName=="stop") return true;
+        return true;
+    }
+    if(className=="com/samsung/util/LCDLight"){
+        if(methodName=="on"||methodName=="off") return true; // screen always on iOS
+        return true;
+    }
+    if(className=="com/samsung/util/AudioClip"){
+        uint32_t self=args.empty()?0:args[0].asRef();
+        if(methodName=="<init>"&&args.size()>=3){
+            JavaArray*a=ENG().getArray(args[2].asRef());
+            JavaObject*o=ENG().getObject(self);
+            if(o&&a){ uint32_t arr=ENG().allocArray(8,(int)a->byteData.size()); JavaArray*d=ENG().getArray(arr); if(d) d->byteData=a->byteData; o->fields["clip"]=JavaValue(arr,true); }
+            return true;
+        }
+        if(methodName=="play"||methodName=="playTone"){
+            JavaObject*o=ENG().getObject(self);
+            JavaArray*a=o?ENG().getArray(o->fields["clip"].asRef()):nullptr;
+            if(a&&!a->byteData.empty()) JvmInterpreter::getInstance().triggerMidi(a->byteData.data(), a->byteData.size());
+            else JvmInterpreter::getInstance().triggerTone(880,150,90);
+            outResult=JavaValue(1); return true;
+        }
+        if(methodName=="stop"||methodName=="close") return true;
         return true;
     }
     if(className.rfind("com/nokia/",0)==0||className.rfind("com/siemens/",0)==0||className.rfind("com/samsung/",0)==0||className.rfind("com/motorola/",0)==0||className.rfind("com/sonyericsson/",0)==0||className.rfind("com/vodafone/",0)==0||className.rfind("com/sprintpcs/",0)==0||className.rfind("com/kddi/",0)==0||className.rfind("com/sun/",0)==0||className.rfind("mmpp/",0)==0){
@@ -1085,15 +1368,28 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             else if(url.rfind("capture://",0)==0) kind="javax/microedition/media/Player";
             uint32_t r=ENG().allocObject(kind); ConnData cd; cd.url=url; cd.kind=kind; g_conns[r]=cd;
             JavaObject* jo=ENG().getObject(r); if(jo) jo->stringVal=url;
-            // Real TCP connect ngay (timeout 5s), lưu fd
+            // Real TCP connect ngay (timeout 5s), lưu fd; socket://:port = server listen
             if(kind=="javax/microedition/io/SocketConnection"){
                 std::string host; int port=0;
                 if(parseHostPort(url, host, port)){
-                    int fd=tcpConnect(host, port);
-                    if(fd>=0){ g_sockFd[r]=fd; if(jo) jo->fields["sockFd"]=JavaValue(fd); }
+                    if(host.empty()){
+#if !defined(_WIN32)&&!defined(_WIN64)
+                        int lfd=tcpListen(port);
+                        if(lfd>=0){ g_sockFd[r]=lfd; if(jo){ jo->fields["sockFd"]=JavaValue(lfd); jo->fields["isServer"]=JavaValue(1); } }
+#endif
+                    } else {
+                        int fd=tcpConnect(host, port);
+                        if(fd>=0){ g_sockFd[r]=fd; if(jo) jo->fields["sockFd"]=JavaValue(fd); }
+                    }
                 }
                 if(hasNative((const void*)native_socket_test)) (void)native_socket_test(url.c_str());
                 if(hasNative((const void*)native_background_keepalive_start)) native_background_keepalive_start();
+            }
+            if(kind=="javax/microedition/io/DatagramConnection"){
+#if !defined(_WIN32)&&!defined(_WIN64)
+                int fd=udpSocket();
+                if(fd>=0){ g_sockFd[r]=fd; if(jo) jo->fields["sockFd"]=JavaValue(fd); }
+#endif
             }
             outResult=JavaValue(r,true); return true;
         }
@@ -1107,6 +1403,20 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="getEncoding"){ outResult=JavaValue(ENG().createString("UTF-8"),true); return true; }
         if(methodName=="getRequestMethod"){ auto it=g_conns.find(self); outResult=JavaValue(ENG().createString(it==g_conns.end()?"GET":it->second.method),true); return true; }
         if(methodName=="getHeaderField"&&args.size()>=2){ outResult=JavaValue(0,true); return true; }
+        if(methodName=="acceptAndOpen"||methodName=="accept"){
+            // ServerSocketConnection.acceptAndOpen(): block accept, return new SocketConnection
+            int lfd=-1; auto sf=g_sockFd.find(self); if(sf!=g_sockFd.end()) lfd=sf->second;
+            if(lfd<0){ JavaObject*jo=ENG().getObject(self); if(jo){ auto f=jo->fields.find("sockFd"); if(f!=jo->fields.end()) lfd=f->second.asInt(); } }
+#if !defined(_WIN32)&&!defined(_WIN64)
+            int cfd=tcpAccept(lfd);
+#else
+            int cfd=-1;
+#endif
+            uint32_t r=ENG().allocObject("javax/microedition/io/SocketConnection");
+            ConnData cd; cd.url="socket://accepted"; cd.kind="javax/microedition/io/SocketConnection"; g_conns[r]=cd;
+            if(cfd>=0){ g_sockFd[r]=cfd; JavaObject*jo=ENG().getObject(r); if(jo){ jo->stringVal=cd.url; jo->fields["sockFd"]=JavaValue(cfd); } }
+            outResult=JavaValue(r,true); return true;
+        }
         if(methodName=="openInputStream"||methodName=="openDataInputStream"){
             std::vector<uint8_t> body; auto it=g_conns.find(self);
             int sockFd=-1;
@@ -1115,7 +1425,18 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 else if(it->second.kind=="javax/microedition/io/SocketConnection"){
                     auto sf=g_sockFd.find(self); if(sf!=g_sockFd.end()) sockFd=sf->second;
                     else { JavaObject*jo=ENG().getObject(self); if(jo){ auto f=jo->fields.find("sockFd"); if(f!=jo->fields.end()) sockFd=f->second.asInt(); } }
-                    if(sockFd>=0) body=tcpRecvOnce(sockFd);
+                    if(sockFd>=0){
+                        // Server socket with no client yet: accept first
+                        JavaObject*jo=ENG().getObject(self);
+                        bool isSrv=jo&&jo->fields["isServer"].asInt()!=0;
+                        if(isSrv){
+#if !defined(_WIN32)&&!defined(_WIN64)
+                            int cfd=tcpAccept(sockFd);
+                            if(cfd>=0){ tcpClose(sockFd); g_sockFd[self]=cfd; if(jo) jo->fields["sockFd"]=JavaValue(cfd); sockFd=cfd; }
+#endif
+                        }
+                        body=tcpRecvOnce(sockFd);
+                    }
                 }
             }
             uint32_t r=ENG().allocObject("java/io/ByteArrayInputStream"); uint32_t arr=ENG().allocArray(8,(int)body.size()); JavaArray*a=ENG().getArray(arr); if(a) a->byteData=body; JavaObject*o=ENG().getObject(r); if(o){o->fields["buf"]=JavaValue(arr,true); o->fields["pos"]=JavaValue(0); if(sockFd>=0) o->fields["sockFd"]=JavaValue(sockFd);} outResult=JavaValue(r,true); return true;
@@ -1138,6 +1459,65 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="getRequestProperty"||methodName=="getURL"){ auto it=g_conns.find(self); outResult=JavaValue(ENG().createString(it==g_conns.end()?"":it->second.url),true); return true; }
         if(methodName=="getLocalAddress"){ outResult=JavaValue(ENG().createString("127.0.0.1"),true); return true; }
         if(methodName=="getPort"){ outResult=JavaValue(80); return true; }
+        if(methodName=="getAddress"){ auto it=g_conns.find(self); outResult=JavaValue(ENG().createString(it==g_conns.end()?"":it->second.url),true); return true; }
+        if(methodName=="newDatagram"&&args.size()>=2){
+            // newDatagram(byte[] buf, int size[, String addr])
+            uint32_t dg=ENG().allocObject("javax/microedition/io/Datagram");
+            JavaObject*o=ENG().getObject(dg);
+            JavaArray*src=ENG().getArray(args[1].asRef());
+            int sz=args.size()>=3?args[2].asInt():(src?(int)src->byteData.size():0);
+            if(o){
+                uint32_t arr=ENG().allocArray(8,std::max(0,sz)); JavaArray*d=ENG().getArray(arr);
+                if(d&&src) for(int i=0;i<sz&&(size_t)i<src->byteData.size()&&(size_t)i<d->byteData.size();i++) d->byteData[i]=src->byteData[i];
+                o->fields["buf"]=JavaValue(arr,true); o->fields["len"]=JavaValue(sz);
+                o->fields["addr"]=JavaValue(args.size()>=4?args[3].asRef():0,true);
+                o->fields["sockFd"]=JavaValue(self);
+            }
+            outResult=JavaValue(dg,true); return true;
+        }
+        if(methodName=="send"&&args.size()>=2){
+#if !defined(_WIN32)&&!defined(_WIN64)
+            JavaObject*dg=ENG().getObject(args[1].asRef());
+            if(dg){
+                JavaArray*b=ENG().getArray(dg->fields["buf"].asRef());
+                int len=dg->fields["len"].asInt(); std::string addr=ENG().getString(dg->fields["addr"].asRef());
+                int fd=-1; auto sf=g_sockFd.find(self); if(sf!=g_sockFd.end()) fd=sf->second;
+                std::string host; int port=0;
+                std::string dst=addr.empty()?g_conns[self].url:addr;
+                if(fd>=0&&parseHostPort(dst,host,port)&&b){
+                    struct addrinfo hints{},*res=nullptr; hints.ai_family=AF_UNSPEC; hints.ai_socktype=SOCK_DGRAM;
+                    char ps[16]; snprintf(ps,sizeof(ps),"%d",port);
+                    if(getaddrinfo(host.c_str(),ps,&hints,&res)==0&&res){
+                        sendto(fd,b->byteData.data(),std::min((size_t)len,b->byteData.size()),0,res->ai_addr,res->ai_addrlen);
+                        freeaddrinfo(res);
+                    }
+                }
+            }
+#endif
+            return true;
+        }
+        if(methodName=="receive"&&args.size()>=2){
+#if !defined(_WIN32)&&!defined(_WIN64)
+            JavaObject*dg=ENG().getObject(args[1].asRef());
+            int fd=-1; auto sf=g_sockFd.find(self); if(sf!=g_sockFd.end()) fd=sf->second;
+            if(dg&&fd>=0){
+                fd_set rs; FD_ZERO(&rs); FD_SET(fd,&rs);
+                struct timeval tv{8,0};
+                if(select(fd+1,&rs,nullptr,nullptr,&tv)>0){
+                    uint8_t tmp[2048]; struct sockaddr_storage from{}; socklen_t fl=sizeof(from);
+                    ssize_t n=recvfrom(fd,tmp,sizeof(tmp),0,(struct sockaddr*)&from,&fl);
+                    if(n>0){
+                        JavaArray*b=ENG().getArray(dg->fields["buf"].asRef());
+                        if(b){ if((int)b->byteData.size()<(int)n) b->byteData.resize(n); memcpy(b->byteData.data(),tmp,n); }
+                        dg->fields["len"]=JavaValue((int32_t)n);
+                    }
+                }
+            }
+#endif
+            return true;
+        }
+        if(methodName=="getMaximumLength"){ outResult=JavaValue(2048); return true; }
+        if(methodName=="getNominalLength"){ outResult=JavaValue(1500); return true; }
         return true;
     }
     if(className.rfind("javax/microedition/io/file/",0)==0){
@@ -1241,15 +1621,54 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="<init>") return true;
         if(methodName=="newMessage"&&args.size()>=2){ std::string t=args.size()>=2?ENG().getString(args[1].asRef()):""; uint32_t r=ENG().allocObject(className.find("MessageConnection")!=std::string::npos?"javax/wireless/messaging/TextMessage":className); JavaObject*o=ENG().getObject(r); if(o) o->stringVal=t; outResult=JavaValue(r,true); return true; }
         if(methodName=="send"&&args.size()>=2){
-            // iOS không cho gửi SMS ngầm: chỉ kiểm tra capability, coi như queued
+            // Loopback cùng máy để game SMS 1 người chơi tiếp tục được; carrier thật cần UI
             bool can = hasNative((const void*)native_can_send_text) ? native_can_send_text() : false;
-            (void)can; return true;
+            (void)can;
+            JavaObject*msg=ENG().getObject(args[1].asRef());
+            if(msg){
+                WmaMsg m; m.isText=(msg->className.find("TextMessage")!=std::string::npos);
+                m.addr=ENG().getString(msg->fields["addr"].asRef());
+                if(m.isText) m.text=ENG().getString(msg->fields["payload"].asRef());
+                else { JavaArray*b=ENG().getArray(msg->fields["payload"].asRef()); if(b) m.bin=b->byteData; }
+                if(m.text.empty()&&!msg->stringVal.empty()) m.text=msg->stringVal;
+                std::lock_guard<std::mutex> lk(g_wmaMutex);
+                if(g_wmaInbox.size()<32) g_wmaInbox.push_back(std::move(m));
+            }
+            return true;
         }
-        if(methodName=="receive"||methodName=="close"||methodName=="setMessageListener"){ outResult=JavaValue(0,true); return true; }
+        if(methodName=="receive"){
+            std::lock_guard<std::mutex> lk(g_wmaMutex);
+            if(!g_wmaInbox.empty()){
+                WmaMsg m=std::move(g_wmaInbox.front()); g_wmaInbox.erase(g_wmaInbox.begin());
+                uint32_t r=ENG().allocObject(m.isText?"javax/wireless/messaging/TextMessage":"javax/wireless/messaging/BinaryMessage");
+                JavaObject*o=ENG().getObject(r);
+                if(o){ o->fields["addr"]=JavaValue(ENG().createString(m.addr),true);
+                    if(m.isText){ o->fields["payload"]=JavaValue(ENG().createString(m.text),true); o->stringVal=m.text; }
+                    else { uint32_t arr=ENG().allocArray(8,(int)m.bin.size()); JavaArray*a=ENG().getArray(arr); if(a) a->byteData=m.bin; o->fields["payload"]=JavaValue(arr,true); } }
+                outResult=JavaValue(r,true);
+            } else outResult=JavaValue(0,true);
+            return true;
+        }
+        if(methodName=="close"||methodName=="setMessageListener") return true;
         if(methodName=="numberOfSegments"){ outResult=JavaValue(1); return true; }
-        if(methodName=="getPayloadText"||methodName=="getAddress"){ outResult=JavaValue(ENG().createString(""),true); return true; }
-        if(methodName=="setPayloadText"||methodName=="setAddress") return true;
-        if(methodName=="getPayloadData"){ uint32_t arr=ENG().allocArray(8,0); outResult=JavaValue(arr,true); return true; }
+        if(methodName=="getPayloadText"){
+            JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef());
+            std::string v=o?ENG().getString(o->fields["payload"].asRef()):"";
+            if(v.empty()&&o) v=o->stringVal;
+            outResult=JavaValue(ENG().createString(v),true); return true;
+        }
+        if(methodName=="getAddress"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?o->fields["addr"]:JavaValue(ENG().createString(""),true)); return true; }
+        if(methodName=="setPayloadText"&&args.size()>=2){ JavaObject*o=ENG().getObject(args[0].asRef()); if(o){ o->fields["payload"]=args[1]; o->stringVal=ENG().getString(args[1].asRef()); } return true; }
+        if(methodName=="setAddress"&&args.size()>=2){ JavaObject*o=ENG().getObject(args[0].asRef()); if(o) o->fields["addr"]=args[1]; return true; }
+        if(methodName=="setPayloadData"&&args.size()>=2){ JavaObject*o=ENG().getObject(args[0].asRef()); if(o) o->fields["payload"]=args[1]; return true; }
+        if(methodName=="getPayloadData"){
+            JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef());
+            JavaArray*a=o?ENG().getArray(o->fields["payload"].asRef()):nullptr;
+            if(a){ outResult=JavaValue(o->fields["payload"].asRef(),true); }
+            else { uint32_t arr=ENG().allocArray(8,0); outResult=JavaValue(arr,true); }
+            return true;
+        }
+        if(methodName=="getTimestamp"){ outResult=JavaValue((int64_t)0); return true; }
         return true;
     }
     // ---- VideoControl snapshot thật (capture://video) ----

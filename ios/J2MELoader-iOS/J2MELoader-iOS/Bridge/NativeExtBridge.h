@@ -48,6 +48,8 @@ bool native_camera_snapshot(uint8_t **outPNG, int *outLen);
 // Background keep-alive for socket/game (24/7 treo game)
 void native_background_keepalive_start(void);
 void native_background_keepalive_stop(void);
+// Vibration (Nokia/Samsung/Siemens): ms<=0 stops
+void native_vibrate(int ms);
 
 #ifdef __cplusplus
 }

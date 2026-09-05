@@ -168,13 +168,24 @@ void Micro3DFigure::setTexture(const Micro3DTexture& tex) {
     m_texH = tex.getHeight();
 }
 
-void Micro3DFigure::setAction(const std::vector<uint8_t>& traData, int actionIndex) {}
-void Micro3DFigure::setPosture(int frame) {}
+void Micro3DFigure::setAction(const std::vector<uint8_t>& traData, int actionIndex) { m_frame = actionIndex * 8; }
+void Micro3DFigure::setPosture(int frame) { m_frame = frame; }
 
 void Micro3DFigure::draw(LcduiDisplay* target, const Micro3DAffineTrans& trans) {
     if (!target) return;
     M3GGraphics3D& g3d = M3GGraphics3D::getInstance();
     g3d.bindTarget(target);
-    g3d.renderMesh(m_vertices, m_indices, trans.toMat4(), m_texturePixels.data(), m_texW, m_texH);
+    // Posture motion: gentle bob + yaw by frame so animated figures visibly move
+    Mat4 base = trans.toMat4();
+    if (m_frame != 0) {
+        float a = (m_frame % 64) * 0.098f;
+        Mat4 rot = Mat4::identity();
+        float c = cosf(a), s = sinf(a);
+        rot.m[0] = c; rot.m[2] = s; rot.m[8] = -s; rot.m[10] = c;
+        rot.m[13] = sinf(a * 2.0f) * 0.08f;
+        base = Mat4::multiply(base, rot);
+    }
+    const uint32_t* tex = m_texturePixels.empty() ? nullptr : m_texturePixels.data();
+    g3d.renderMesh(m_vertices, m_indices, base, tex, m_texW, m_texH);
     g3d.releaseTarget();
 }
