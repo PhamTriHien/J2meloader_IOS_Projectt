@@ -1,5 +1,6 @@
 #import "J2MEBridge.h"
 #import "AudioBridge.h"
+#import "NativeExtBridge.h"
 #include "../Core/jar_loader.h"
 #include "../Core/jvm_interpreter.h"
 #include "../Core/rms_storage.h"
@@ -63,6 +64,7 @@
          soundEnabled:(BOOL)soundEnabled {
     
     [AudioBridge initializeAudio];
+    [NativeExtBridge keepAliveStart];
     JvmInterpreter::getInstance().init(
         jarPath.UTF8String,
         mainClass.UTF8String,
@@ -75,6 +77,7 @@
 + (void)stopEmulator {
     JvmInterpreter::getInstance().shutdown();
     [AudioBridge stopAudio];
+    [NativeExtBridge keepAliveStop];
 }
 
 + (void)setPaused:(BOOL)paused {

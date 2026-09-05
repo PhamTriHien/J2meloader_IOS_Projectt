@@ -51,14 +51,60 @@ public class GameManager: ObservableObject {
         }
     }
     
+    public func parseJad(at url: URL) -> [String: String] {
+        var dict: [String: String] = [:]
+        if let text = try? String(contentsOf: url, encoding: .utf8) {
+            for rawLine in text.components(separatedBy: .newlines) {
+                let line = rawLine.trimmingCharacters(in: .whitespaces)
+                if line.isEmpty || line.hasPrefix("#") { continue }
+                if let colon = line.firstIndex(of: ":") {
+                    let k = String(line[..<colon]).trimmingCharacters(in: .whitespaces)
+                    let v = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+                    if !k.isEmpty { dict[k] = v }
+                }
+            }
+        }
+        return dict
+    }
+
     public func importJar(from sourceURL: URL) {
         let isSecured = sourceURL.startAccessingSecurityScopedResource()
         defer {
             if isSecured { sourceURL.stopAccessingSecurityScopedResource() }
         }
+
+        // JAD descriptor: merge metadata, require sibling JAR with same basename
+        if sourceURL.pathExtension.lowercased() == "jad" {
+            let jad = parseJad(at: sourceURL)
+            let base = sourceURL.deletingPathExtension().lastPathComponent
+            let siblingJar = sourceURL.deletingLastPathComponent().appendingPathComponent(base + ".jar")
+            if FileManager.default.fileExists(atPath: siblingJar.path) {
+                importJar(from: siblingJar)
+                return
+            }
+            // Fallback: JAR already imported? attach JAD title if matches
+            if let jarURL = jad["MIDlet-Jar-URL"] {
+                let jarName = URL(fileURLWithPath: jarURL).lastPathComponent
+                if !jarName.isEmpty {
+                    let existing = gamesDirectory.appendingPathComponent(jarName)
+                    if FileManager.default.fileExists(atPath: existing.path) { return }
+                }
+            }
+            DispatchQueue.main.async {
+                self.errorMessage = "File .jad cần file .jar cùng tên (\(base).jar). Vui lòng chọn file .jar để cài."
+                self.showErrorAlert = true
+            }
+            return
+        }
         
         let fileName = sourceURL.lastPathComponent
         let targetURL = gamesDirectory.appendingPathComponent(fileName)
+        // Sibling JAD next to picked JAR (Files/iCloud): merge properties
+        var jadProps: [String: String] = [:]
+        let siblingJad = sourceURL.deletingLastPathComponent().appendingPathComponent(sourceURL.deletingPathExtension().lastPathComponent + ".jad")
+        if FileManager.default.fileExists(atPath: siblingJad.path) {
+            jadProps = parseJad(at: siblingJad)
+        }
         
         do {
             if FileManager.default.fileExists(atPath: targetURL.path) {
@@ -66,8 +112,16 @@ public class GameManager: ObservableObject {
             }
             try FileManager.default.copyItem(at: sourceURL, to: targetURL)
             
-            // Extract manifest metadata via J2MEBridge
-            let meta = J2MEBridge.parseJarManifest(targetURL.path)
+            // Extract manifest metadata via J2MEBridge, JAD overrides MANIFEST
+            var meta = J2MEBridge.parseJarManifest(targetURL.path)
+            for (k, v) in jadProps { meta[k] = v }
+            // Persist merged JAD alongside JAR for MIDlet.getAppProperty at runtime
+            if !jadProps.isEmpty {
+                let targetJad = gamesDirectory.appendingPathComponent(targetURL.deletingPathExtension().lastPathComponent + ".jad")
+                var lines: [String] = []
+                for (k, v) in jadProps { lines.append("\(k): \(v)") }
+                try? lines.joined(separator: "\n").write(to: targetJad, atomically: true, encoding: .utf8)
+            }
             let title = meta["MIDlet-Name"] ?? sourceURL.deletingPathExtension().lastPathComponent
             let vendor = meta["MIDlet-Vendor"] ?? "Unknown Vendor"
             let version = meta["MIDlet-Version"] ?? "1.0.0"

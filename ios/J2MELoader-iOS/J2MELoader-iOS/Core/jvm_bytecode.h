@@ -247,6 +247,9 @@ struct CpEntry {
     uint16_t stringIndex = 0;
 };
 
+struct ExceptionEntry {
+    uint16_t startPc = 0, endPc = 0, handlerPc = 0, catchType = 0;
+};
 struct MethodInfo {
     uint16_t accessFlags = 0;
     std::string name;
@@ -254,6 +257,7 @@ struct MethodInfo {
     uint16_t maxStack = 0;
     uint16_t maxLocals = 0;
     std::vector<uint8_t> code;
+    std::vector<ExceptionEntry> exTable;
     bool isNative = false;
 };
 

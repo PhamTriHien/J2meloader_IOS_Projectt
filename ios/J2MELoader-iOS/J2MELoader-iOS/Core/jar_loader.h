@@ -27,6 +27,7 @@ public:
     bool extractEntryToFile(const std::string& entryName, const std::string& outputPath);
     std::vector<std::string> listEntries() const;
     bool hasEntry(const std::string& entryName) const;
+    const std::string& getFilePath() const { return m_filePath; }
 
 private:
     std::string m_filePath;

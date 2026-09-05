@@ -1,4 +1,5 @@
 #include "jvm_interpreter.h"
+#include "j2me_full_apis.h"
 #include <chrono>
 #include <iostream>
 #include <cmath>
@@ -36,6 +37,7 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
     // Reset JVM bytecode engine and bind active jar
     auto& jvm = JvmBytecodeEngine::getInstance();
     jvm.reset();
+    FullApis::reset();
     jvm.setJarLoader(m_jarLoader.get());
 
     // Parse Manifest to extract real MIDlet class name
@@ -154,6 +156,8 @@ void JvmInterpreter::processEvents() {
                 m_playToneCallback(520, 30);
             }
 
+            // High-level Form/List softkey -> CommandListener
+            FullApis::onKey(ev.codeOrX, ev.isDownOrAction, m_display.get());
             // Dispatch directly to active MIDP Canvas bytecode
             if (m_canvasClass && m_canvasRef != 0) {
                 std::string method = ev.isDownOrAction ? "keyPressed" : "keyReleased";

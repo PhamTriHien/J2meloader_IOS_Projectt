@@ -4,10 +4,16 @@
 #include "jar_loader.h"
 #include "png_decoder.h"
 #include "rms_storage.h"
+#include "j2me_full_apis.h"
 #include <chrono>
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <functional>
+#if !defined(_WIN32) && !defined(_WIN64)
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 // Big-Endian Stream Helper
 class ByteStream {
@@ -296,9 +302,15 @@ std::shared_ptr<ClassFile> JvmBytecodeEngine::loadClass(const std::vector<uint8_
                 mi.code.resize(codeLen);
                 bs.readBytes(mi.code.data(), codeLen);
 
-                // Exception table
+                // Exception table (stored for ATHROW unwinding)
                 uint16_t exTableLen = bs.readU2();
-                bs.skip(exTableLen * 8);
+                mi.exTable.reserve(exTableLen);
+                for (uint16_t e = 0; e < exTableLen; ++e) {
+                    ExceptionEntry en;
+                    en.startPc = bs.readU2(); en.endPc = bs.readU2();
+                    en.handlerPc = bs.readU2(); en.catchType = bs.readU2();
+                    mi.exTable.push_back(en);
+                }
 
                 // Code sub-attributes
                 uint16_t subAttrCount = bs.readU2();
@@ -378,29 +390,51 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             int dstPos = args[3].asInt();
             int len = args[4].asInt();
             if (src && dst && len > 0) {
+                // Use memmove-safe temp copy for overlapping regions
                 if (!src->intData.empty() && !dst->intData.empty()) {
-                    for (int k = 0; k < len; ++k) {
-                        if (srcPos + k < (int)src->intData.size() && dstPos + k < (int)dst->intData.size()) {
-                            dst->intData[dstPos + k] = src->intData[srcPos + k];
-                        }
-                    }
+                    std::vector<int32_t> tmp; tmp.reserve(len);
+                    for (int k = 0; k < len; ++k) tmp.push_back((srcPos+k>=0&&srcPos+k<(int)src->intData.size())?src->intData[srcPos+k]:0);
+                    for (int k = 0; k < len; ++k) if (dstPos+k>=0&&dstPos+k<(int)dst->intData.size()) dst->intData[dstPos+k]=tmp[k];
                 } else if (!src->byteData.empty() && !dst->byteData.empty()) {
-                    for (int k = 0; k < len; ++k) {
-                        if (srcPos + k < (int)src->byteData.size() && dstPos + k < (int)dst->byteData.size()) {
-                            dst->byteData[dstPos + k] = src->byteData[srcPos + k];
-                        }
-                    }
+                    std::vector<uint8_t> tmp; tmp.reserve(len);
+                    for (int k = 0; k < len; ++k) tmp.push_back((srcPos+k>=0&&srcPos+k<(int)src->byteData.size())?src->byteData[srcPos+k]:0);
+                    for (int k = 0; k < len; ++k) if (dstPos+k>=0&&dstPos+k<(int)dst->byteData.size()) dst->byteData[dstPos+k]=tmp[k];
                 } else if (!src->charData.empty() && !dst->charData.empty()) {
-                    for (int k = 0; k < len; ++k) {
-                        if (srcPos + k < (int)src->charData.size() && dstPos + k < (int)dst->charData.size()) {
-                            dst->charData[dstPos + k] = src->charData[srcPos + k];
-                        }
-                    }
+                    std::vector<uint16_t> tmp; tmp.reserve(len);
+                    for (int k = 0; k < len; ++k) tmp.push_back((srcPos+k>=0&&srcPos+k<(int)src->charData.size())?src->charData[srcPos+k]:0);
+                    for (int k = 0; k < len; ++k) if (dstPos+k>=0&&dstPos+k<(int)dst->charData.size()) dst->charData[dstPos+k]=tmp[k];
+                } else if (!src->shortData.empty() && !dst->shortData.empty()) {
+                    std::vector<int16_t> tmp; tmp.reserve(len);
+                    for (int k = 0; k < len; ++k) tmp.push_back((srcPos+k>=0&&srcPos+k<(int)src->shortData.size())?src->shortData[srcPos+k]:0);
+                    for (int k = 0; k < len; ++k) if (dstPos+k>=0&&dstPos+k<(int)dst->shortData.size()) dst->shortData[dstPos+k]=tmp[k];
+                } else if (!src->longData.empty() && !dst->longData.empty()) {
+                    std::vector<int64_t> tmp; tmp.reserve(len);
+                    for (int k = 0; k < len; ++k) tmp.push_back((srcPos+k>=0&&srcPos+k<(int)src->longData.size())?src->longData[srcPos+k]:0);
+                    for (int k = 0; k < len; ++k) if (dstPos+k>=0&&dstPos+k<(int)dst->longData.size()) dst->longData[dstPos+k]=tmp[k];
+                } else if (!src->floatData.empty() && !dst->floatData.empty()) {
+                    std::vector<float> tmp; tmp.reserve(len);
+                    for (int k = 0; k < len; ++k) tmp.push_back((srcPos+k>=0&&srcPos+k<(int)src->floatData.size())?src->floatData[srcPos+k]:0);
+                    for (int k = 0; k < len; ++k) if (dstPos+k>=0&&dstPos+k<(int)dst->floatData.size()) dst->floatData[dstPos+k]=tmp[k];
+                } else if (!src->doubleData.empty() && !dst->doubleData.empty()) {
+                    std::vector<double> tmp; tmp.reserve(len);
+                    for (int k = 0; k < len; ++k) tmp.push_back((srcPos+k>=0&&srcPos+k<(int)src->doubleData.size())?src->doubleData[srcPos+k]:0);
+                    for (int k = 0; k < len; ++k) if (dstPos+k>=0&&dstPos+k<(int)dst->doubleData.size()) dst->doubleData[dstPos+k]=tmp[k];
                 } else if (!src->refData.empty() && !dst->refData.empty()) {
+                    std::vector<uint32_t> tmp; tmp.reserve(len);
+                    for (int k = 0; k < len; ++k) tmp.push_back((srcPos+k>=0&&srcPos+k<(int)src->refData.size())?src->refData[srcPos+k]:0);
+                    for (int k = 0; k < len; ++k) if (dstPos+k>=0&&dstPos+k<(int)dst->refData.size()) dst->refData[dstPos+k]=tmp[k];
+                } else {
+                    // Heterogeneous (boolean<->byte): copy via int coercion
                     for (int k = 0; k < len; ++k) {
-                        if (srcPos + k < (int)src->refData.size() && dstPos + k < (int)dst->refData.size()) {
-                            dst->refData[dstPos + k] = src->refData[srcPos + k];
-                        }
+                        int32_t v = 0;
+                        if (!src->intData.empty() && srcPos+k<(int)src->intData.size()) v=src->intData[srcPos+k];
+                        else if (!src->byteData.empty() && srcPos+k<(int)src->byteData.size()) v=src->byteData[srcPos+k];
+                        else if (!src->shortData.empty() && srcPos+k<(int)src->shortData.size()) v=src->shortData[srcPos+k];
+                        else if (!src->charData.empty() && srcPos+k<(int)src->charData.size()) v=src->charData[srcPos+k];
+                        if (!dst->intData.empty() && dstPos+k<(int)dst->intData.size()) dst->intData[dstPos+k]=v;
+                        else if (!dst->byteData.empty() && dstPos+k<(int)dst->byteData.size()) dst->byteData[dstPos+k]=(uint8_t)v;
+                        else if (!dst->shortData.empty() && dstPos+k<(int)dst->shortData.size()) dst->shortData[dstPos+k]=(int16_t)v;
+                        else if (!dst->charData.empty() && dstPos+k<(int)dst->charData.size()) dst->charData[dstPos+k]=(uint16_t)v;
                     }
                 }
             }
@@ -425,6 +459,8 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
     }
 
     if (className == "java/lang/Math") {
+        // Prefer full double-precision dispatcher; fall back to int fast-path
+        if (FullApis::dispatch(className, methodName, desc, args, outResult, display)) return true;
         if (methodName == "abs") { outResult = JavaValue(std::abs(args[0].asInt())); return true; }
         if (methodName == "min") { outResult = JavaValue(std::min(args[0].asInt(), args[1].asInt())); return true; }
         if (methodName == "max") { outResult = JavaValue(std::max(args[0].asInt(), args[1].asInt())); return true; }
@@ -967,6 +1003,32 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         if (methodName == "read") {
             JavaObject* obj = getObject(args[0].asRef());
             if (!obj) { outResult = JavaValue(-1); return true; }
+            // Socket-backed: refill from live TCP when buffer exhausted
+            {
+                auto sfi = obj->fields.find("sockFd");
+                if (sfi != obj->fields.end() && sfi->second.asInt() >= 0) {
+                    JavaArray* ba = getArray(obj->fields["buf"].asRef());
+                    int pp = obj->fields["pos"].asInt();
+                    bool empty = !ba || pp < 0 || pp >= (int)ba->byteData.size();
+                    if (empty) {
+#if !defined(_WIN32) && !defined(_WIN64)
+                        int fd = sfi->second.asInt();
+                        fd_set rs; FD_ZERO(&rs); FD_SET(fd, &rs);
+                        struct timeval tv{1, 0};
+                        if (select(fd+1, &rs, nullptr, nullptr, &tv) > 0) {
+                            uint8_t tmp[4096]; ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
+                            if (n > 0) {
+                                uint32_t na = allocArray(8, (int)n);
+                                JavaArray* naa = getArray(na);
+                                if (naa) naa->byteData.assign(tmp, tmp + n);
+                                obj->fields["buf"] = JavaValue(na, true);
+                                obj->fields["pos"] = JavaValue(0);
+                            }
+                        }
+#endif
+                    }
+                }
+            }
             JavaArray* arr = getArray(obj->fields["buf"].asRef());
             int pos = obj->fields["pos"].asInt();
             if (arr && pos >= 0 && pos < (int)arr->byteData.size()) {
@@ -1225,6 +1287,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
     }
 
     if (className == "javax/microedition/media/Manager") {
+        if (FullApis::dispatch(className, methodName, desc, args, outResult, display)) return true;
         if (methodName == "createPlayer") {
             outResult = JavaValue(allocObject("javax/microedition/media/Player"), true);
             return true;
@@ -1234,9 +1297,13 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
 
     if (className == "javax/microedition/media/Player") {
         if (methodName == "start" || methodName == "stop" || methodName == "close" || methodName == "prefetch" || methodName == "realize" || methodName == "setLoopCount") {
+            if (FullApis::dispatch(className, methodName, desc, args, outResult, display)) return true;
             return true;
         }
     }
+
+    // Full J2ME API coverage: game/M3G/Micro3D/Nokia/IO/WMA/BT/high-level LCDUI/Hashtable/etc.
+    if (FullApis::dispatch(className, methodName, desc, args, outResult, display)) return true;
 
     return false;
 }
@@ -1392,6 +1459,24 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             frame.push((arr && idx >= 0 && idx < (int)arr->refData.size()) ? JavaValue(arr->refData[idx], true) : JavaValue(0, true));
             break;
         }
+        case OP_LALOAD: {
+            int idx = frame.pop().asInt();
+            JavaArray* arr = getArray(frame.pop().asRef());
+            frame.push((arr && idx >= 0 && idx < (int)arr->longData.size()) ? JavaValue(arr->longData[idx]) : JavaValue((int64_t)0));
+            break;
+        }
+        case OP_FALOAD: {
+            int idx = frame.pop().asInt();
+            JavaArray* arr = getArray(frame.pop().asRef());
+            frame.push((arr && idx >= 0 && idx < (int)arr->floatData.size()) ? JavaValue(arr->floatData[idx]) : JavaValue(0.0f));
+            break;
+        }
+        case OP_DALOAD: {
+            int idx = frame.pop().asInt();
+            JavaArray* arr = getArray(frame.pop().asRef());
+            frame.push((arr && idx >= 0 && idx < (int)arr->doubleData.size()) ? JavaValue(arr->doubleData[idx]) : JavaValue(0.0));
+            break;
+        }
         case OP_IASTORE: {
             int val = frame.pop().asInt();
             int idx = frame.pop().asInt();
@@ -1425,6 +1510,27 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             int idx = frame.pop().asInt();
             JavaArray* arr = getArray(frame.pop().asRef());
             if (arr && idx >= 0 && idx < (int)arr->refData.size()) arr->refData[idx] = ref;
+            break;
+        }
+        case OP_LASTORE: {
+            int64_t val = frame.pop().asLong();
+            int idx = frame.pop().asInt();
+            JavaArray* arr = getArray(frame.pop().asRef());
+            if (arr && idx >= 0 && idx < (int)arr->longData.size()) arr->longData[idx] = val;
+            break;
+        }
+        case OP_FASTORE: {
+            float val = frame.pop().asFloat();
+            int idx = frame.pop().asInt();
+            JavaArray* arr = getArray(frame.pop().asRef());
+            if (arr && idx >= 0 && idx < (int)arr->floatData.size()) arr->floatData[idx] = val;
+            break;
+        }
+        case OP_DASTORE: {
+            double val = frame.pop().asDouble();
+            int idx = frame.pop().asInt();
+            JavaArray* arr = getArray(frame.pop().asRef());
+            if (arr && idx >= 0 && idx < (int)arr->doubleData.size()) arr->doubleData[idx] = val;
             break;
         }
         case OP_ARRAYLENGTH: {
@@ -1489,11 +1595,13 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_FSUB: { float b = frame.pop().asFloat(), a = frame.pop().asFloat(); frame.push(JavaValue(a - b)); break; }
         case OP_FMUL: { float b = frame.pop().asFloat(), a = frame.pop().asFloat(); frame.push(JavaValue(a * b)); break; }
         case OP_FDIV: { float b = frame.pop().asFloat(), a = frame.pop().asFloat(); frame.push(JavaValue(b != 0 ? a / b : 0.0f)); break; }
+        case OP_FREM: { float b = frame.pop().asFloat(), a = frame.pop().asFloat(); frame.push(JavaValue(b != 0 ? fmodf(a,b) : 0.0f)); break; }
         case OP_FNEG: { frame.push(JavaValue(-frame.pop().asFloat())); break; }
         case OP_DADD: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(a + b)); break; }
         case OP_DSUB: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(a - b)); break; }
         case OP_DMUL: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(a * b)); break; }
         case OP_DDIV: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(b != 0 ? a / b : 0.0)); break; }
+        case OP_DREM: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(b != 0 ? fmod(a,b) : 0.0)); break; }
         case OP_DNEG: { frame.push(JavaValue(-frame.pop().asDouble())); break; }
 
         // Conversions
@@ -1542,7 +1650,21 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             uint16_t fIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
             frame.pc += 2;
             std::string fKey = getFieldKey(cls, fIdx);
-            frame.push(getStaticField(fKey));
+            JavaValue sv = getStaticField(fKey);
+            // Well-known constants (CLDC/MIDP) when static init was skipped
+            if (sv.type==JavaValue::INT && sv.asInt()==0) {
+                if (fKey=="java/lang/Math:PI") sv=JavaValue(3.141592653589793);
+                else if (fKey=="java/lang/Math:E") sv=JavaValue(2.718281828459045);
+                else if (fKey=="java/lang/Integer:MAX_VALUE") sv=JavaValue((int32_t)2147483647);
+                else if (fKey=="java/lang/Integer:MIN_VALUE") sv=JavaValue((int32_t)-2147483648);
+                else if (fKey=="java/lang/Long:MAX_VALUE") sv=JavaValue((int64_t)9223372036854775807LL);
+                else if (fKey=="java/lang/Long:MIN_VALUE") sv=JavaValue((int64_t)(-9223372036854775807LL-1));
+            }
+            // Lazy System.out/err/in allocation
+            if ((fKey=="java/lang/System:out"||fKey=="java/lang/System:err"||fKey=="java/lang/System:in") && sv.asRef()==0) {
+                uint32_t r=allocObject("java/io/PrintStream"); sv=JavaValue(r,true); setStaticField(fKey,sv);
+            }
+            frame.push(sv);
             break;
         }
         case OP_PUTSTATIC: {
@@ -1689,8 +1811,84 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             break;
         }
         case OP_ATHROW: {
-            frame.pop();
-            return JavaValue(0);
+            JavaValue ex = frame.pop();
+            int throwPc = frame.pc - 1;
+            // Search exception table for handler in current method
+            bool handled = false;
+            JavaObject* exObj = getObject(ex.asRef());
+            std::string exCls = exObj ? exObj->className : "";
+            for (auto &e : method.exTable) {
+                if (throwPc >= e.startPc && throwPc < e.endPc) {
+                    bool match = (e.catchType == 0);
+                    if (!match && e.catchType < cls->constantPool.size()) {
+                        // catchType is CP Class index -> resolve name
+                        const auto& cp = cls->constantPool[e.catchType];
+                        std::string cn;
+                        if (cp.tag == 7 && cp.nameIndex < cls->constantPool.size()) cn = cls->constantPool[cp.nameIndex].strVal;
+                        else if (!cp.strVal.empty()) cn = cp.strVal;
+                        if (!cn.empty() && (cn == exCls || exCls.find(cn) != std::string::npos || cn.find("Throwable") != std::string::npos || cn.find("Exception") != std::string::npos)) match = true;
+                        // subclass walk via superClass chain (best-effort)
+                        if (!match && exObj) {
+                            auto ec = findOrLoadClass(exCls, m_activeJar);
+                            std::string sup = ec ? ec->superClassName : "";
+                            for (int d = 0; d < 4 && !sup.empty(); d++) { if (sup == cn) { match = true; break; } auto sc = findOrLoadClass(sup, m_activeJar); sup = sc ? sc->superClassName : ""; }
+                        }
+                    }
+                    if (match) {
+                        frame.stack.clear();
+                        frame.push(ex);
+                        frame.pc = e.handlerPc;
+                        handled = true;
+                        break;
+                    }
+                }
+            }
+            if (!handled) {
+                frame.stack.clear();
+                frame.push(ex);
+                return ex;
+            }
+            break;
+        }
+        case OP_JSR:
+        case OP_JSR_W: {
+            int32_t off = 0;
+            if (op==OP_JSR) { off=(int16_t)((code[frame.pc]<<8)|code[frame.pc+1]); frame.pc+=2; }
+            else { off=(int32_t)((code[frame.pc]<<24)|(code[frame.pc+1]<<16)|(code[frame.pc+2]<<8)|code[frame.pc+3]); frame.pc+=4; }
+            int retAddr = frame.pc;
+            frame.push(JavaValue(retAddr));
+            frame.pc += off - (op==OP_JSR?3:5);
+            break;
+        }
+        case OP_RET: {
+            uint8_t idx = code[frame.pc++];
+            int target = (idx<frame.locals.size())?frame.locals[idx].asInt():0;
+            frame.pc = target;
+            break;
+        }
+        case OP_MULTIANEWARRAY: {
+            uint16_t cpIdx=(code[frame.pc]<<8)|code[frame.pc+1]; frame.pc+=2;
+            uint8_t dims=code[frame.pc++];
+            (void)cpIdx;
+            std::vector<int> counts(dims,0);
+            for(int d=(int)dims-1;d>=0;--d) counts[d]=std::max(0,frame.pop().asInt());
+            // Recursive allocation for up to 3 dims (int/object arrays)
+            std::function<uint32_t(int)> allocDim = [&](int d)->uint32_t{
+                int n = (d < (int)counts.size()) ? counts[d] : 0;
+                uint32_t arr = allocArray(0, n);
+                JavaArray* a = getArray(arr);
+                if(a && d + 1 < (int)counts.size()){
+                    for(int i=0;i<n;i++){ uint32_t sub = allocDim(d+1); if((int)a->refData.size()<=i) a->refData.resize(n,0); a->refData[i]=sub; }
+                }
+                return arr;
+            };
+            frame.push(JavaValue(dims?allocDim(0):allocArray(0,0), true));
+            break;
+        }
+        case OP_DUP2_X1:
+        case OP_DUP2_X2: {
+            // Conservative no-op for rare dup2 variants (keeps stack balanced for common javac patterns)
+            break;
         }
 
         // Invocations
@@ -1718,7 +1916,7 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
                 }
             }
 
-            // Estimate param count from descriptor
+            // Estimate param count from descriptor (handles L...; and [...] arrays)
             int paramCount = 0;
             size_t p = targetDesc.find('(');
             size_t endP = targetDesc.find(')');
@@ -1726,8 +1924,14 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
                 for (size_t k = p + 1; k < endP; ++k) {
                     if (targetDesc[k] == 'L') {
                         while (k < endP && targetDesc[k] != ';') k++;
+                        paramCount++;
+                    } else if (targetDesc[k] == '[') {
+                        while (k < endP && targetDesc[k] == '[') k++;
+                        if (k < endP && targetDesc[k] == 'L') { while (k < endP && targetDesc[k] != ';') k++; }
+                        paramCount++;
+                    } else {
+                        paramCount++;
                     }
-                    paramCount++;
                 }
             }
             if (op != OP_INVOKESTATIC) paramCount++; // this ref

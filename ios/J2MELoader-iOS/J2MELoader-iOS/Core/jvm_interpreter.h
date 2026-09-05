@@ -56,6 +56,17 @@ public:
     void registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> cls);
     void startRunnableThread();
 
+    void triggerTone(int freq, int durationMs, int volume) {
+        if (m_soundEnabled && m_playToneCallback && freq > 0 && durationMs > 0) {
+            m_playToneCallback(freq, durationMs);
+        }
+    }
+    void triggerMidi(const uint8_t* data, size_t size) {
+        if (m_soundEnabled && m_playMidiCallback && data && size > 0) {
+            m_playMidiCallback(data, size);
+        }
+    }
+
 private:
     JvmInterpreter();
     ~JvmInterpreter();
