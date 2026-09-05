@@ -58,7 +58,6 @@ public struct SettingsView: View {
                         if let startAction = onStart {
                             Button(action: {
                                 onSave(game)
-                                presentationMode.wrappedValue.dismiss()
                                 startAction(game)
                             }) {
                                 HStack(spacing: 6) {

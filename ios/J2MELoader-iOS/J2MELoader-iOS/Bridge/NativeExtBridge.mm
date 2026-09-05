@@ -385,31 +385,18 @@ void native_vibrate(int ms) {
 }
 
 static UIBackgroundTaskIdentifier g_keepAliveTask = UIBackgroundTaskInvalid;
-static AVAudioEngine *g_keepAliveEngine = nil;
 
 void native_background_keepalive_start(void) {
     if (g_keepAliveTask != UIBackgroundTaskInvalid) return;
     g_keepAliveTask = [[UIApplication sharedApplication] beginBackgroundTaskWithName:@"j2me-keepalive" expirationHandler:^{
-        [[UIApplication sharedApplication] endBackgroundTask:g_keepAliveTask];
-        g_keepAliveTask = UIBackgroundTaskInvalid;
-    }];
-    @try {
-        if (!g_keepAliveEngine) {
-            g_keepAliveEngine = [[AVAudioEngine alloc] init];
-            AVAudioFormat *fmt = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:8000 channels:1];
-            AVAudioSourceNode *node = [[AVAudioSourceNode alloc] initWithRenderBlock:^OSStatus(BOOL *s, const AudioTimeStamp *t, AVAudioFrameCount n, AudioBufferList *o) {
-                memset(o->mBuffers[0].mData, 0, n * sizeof(float));
-                *s = NO; return noErr;
-            }];
-            [g_keepAliveEngine attachNode:node];
-            [g_keepAliveEngine connect:node to:g_keepAliveEngine.mainMixerNode format:fmt];
+        if (g_keepAliveTask != UIBackgroundTaskInvalid) {
+            [[UIApplication sharedApplication] endBackgroundTask:g_keepAliveTask];
+            g_keepAliveTask = UIBackgroundTaskInvalid;
         }
-        if (!g_keepAliveEngine.isRunning) [g_keepAliveEngine startAndReturnError:nil];
-    } @catch (NSException *e) {}
+    }];
 }
 
 void native_background_keepalive_stop(void) {
-    @try { [g_keepAliveEngine stop]; } @catch (NSException *e) {}
     if (g_keepAliveTask != UIBackgroundTaskInvalid) {
         [[UIApplication sharedApplication] endBackgroundTask:g_keepAliveTask];
         g_keepAliveTask = UIBackgroundTaskInvalid;

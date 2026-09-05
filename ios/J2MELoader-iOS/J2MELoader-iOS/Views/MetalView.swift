@@ -110,23 +110,23 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
         }
         
         // Fetch current RGB buffer from J2ME Core
-        let width = config.effectiveWidth
-        let height = config.effectiveHeight
+        let coreW = Int(J2MEBridge.getFrameBufferWidth())
+        let coreH = Int(J2MEBridge.getFrameBufferHeight())
         
-        if let frameBytes = J2MEBridge.getFrameBufferBytes() {
-            if texture == nil || texture?.width != width || texture?.height != height {
+        if let frameBytes = J2MEBridge.getFrameBufferBytes(), coreW > 0, coreH > 0 {
+            if texture == nil || texture?.width != coreW || texture?.height != coreH {
                 let texDesc = MTLTextureDescriptor.texture2DDescriptor(
                     pixelFormat: .rgba8Unorm,
-                    width: width,
-                    height: height,
+                    width: coreW,
+                    height: coreH,
                     mipmapped: false
                 )
                 texDesc.usage = [.shaderRead]
                 texture = device?.makeTexture(descriptor: texDesc)
             }
             
-            let region = MTLRegionMake2D(0, 0, width, height)
-            texture?.replace(region: region, mipmapLevel: 0, withBytes: frameBytes, bytesPerRow: width * 4)
+            let region = MTLRegionMake2D(0, 0, coreW, coreH)
+            texture?.replace(region: region, mipmapLevel: 0, withBytes: frameBytes, bytesPerRow: coreW * 4)
         }
         
         if let pipeline = pipelineState, let tex = texture {

@@ -73,6 +73,7 @@ private:
 
     std::string m_jarPath;
     std::string m_mainClass;
+    std::string m_targetClass;
     bool m_soundEnabled;
     std::atomic<bool> m_running;
     std::atomic<bool> m_paused;

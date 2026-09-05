@@ -68,15 +68,8 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
 
     if (!targetClass.empty()) {
         std::replace(targetClass.begin(), targetClass.end(), '.', '/');
-        m_midletClass = jvm.findOrLoadClass(targetClass, m_jarLoader.get());
-        if (m_midletClass) {
-            m_midletRef = jvm.allocObject(targetClass);
-            // Call <init>()
-            jvm.executeMethod(m_midletClass, "<init>", "()V", { JavaValue(m_midletRef, true) }, m_display.get());
-            // Call startApp()
-            jvm.executeMethod(m_midletClass, "startApp", "()V", { JavaValue(m_midletRef, true) }, m_display.get());
-        }
     }
+    m_targetClass = targetClass;
 
     // Start background emulation thread
     m_workerThread = std::thread(&JvmInterpreter::executionLoop, this);
@@ -107,7 +100,9 @@ void JvmInterpreter::shutdown() {
     m_runnableClass = nullptr;
     m_midletRef = 0;
     m_canvasRef = 0;
+    m_graphicsRef = 0;
     m_runnableRef = 0;
+    m_targetClass.clear();
 }
 
 void JvmInterpreter::pause() {
@@ -243,6 +238,17 @@ void JvmInterpreter::findAndBindCanvas() {
 void JvmInterpreter::executionLoop() {
     auto& jvm = JvmBytecodeEngine::getInstance();
     jvm.setJarLoader(m_jarLoader.get());
+
+    if (!m_targetClass.empty()) {
+        m_midletClass = jvm.findOrLoadClass(m_targetClass, m_jarLoader.get());
+        if (m_midletClass) {
+            m_midletRef = jvm.allocObject(m_targetClass);
+            // Call <init>()
+            jvm.executeMethod(m_midletClass, "<init>", "()V", { JavaValue(m_midletRef, true) }, m_display.get());
+            // Call startApp()
+            jvm.executeMethod(m_midletClass, "startApp", "()V", { JavaValue(m_midletRef, true) }, m_display.get());
+        }
+    }
 
     findAndBindCanvas();
     startRunnableThread();

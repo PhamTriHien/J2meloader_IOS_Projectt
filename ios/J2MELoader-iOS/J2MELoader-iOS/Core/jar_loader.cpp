@@ -1,4 +1,4 @@
-﻿#include "jar_loader.h"
+#include "jar_loader.h"
 #include <fstream>
 #include <sstream>
 #include <cstring>
@@ -82,7 +82,8 @@ bool JarLoader::readCentralDirectory() {
     size_t eocdOffset = 0;
     bool found = false;
     for (int i = (int)searchSize - (int)sizeof(ZipEndOfCentralDirectory); i >= 0; --i) {
-        uint32_t sig = *reinterpret_cast<uint32_t*>(&buffer[i]);
+        uint32_t sig = 0;
+        std::memcpy(&sig, &buffer[i], sizeof(sig));
         if (sig == 0x06054b50) {
             eocdOffset = fileSize - searchSize + i;
             found = true;

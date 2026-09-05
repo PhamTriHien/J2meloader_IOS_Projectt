@@ -59,8 +59,9 @@ public struct LibraryView: View {
     }
     
     public var body: some View {
-        NavigationView {
-            ZStack {
+        ZStack {
+            NavigationView {
+                ZStack {
                 (colorScheme == .dark ? J2MEColors.bgDark : J2MEColors.bgLight)
                     .ignoresSafeArea()
                 
@@ -222,6 +223,7 @@ public struct LibraryView: View {
                             gameManager.updateGame(updated)
                         },
                         onStart: { updated in
+                            activeSheet = nil
                             gameManager.updateGame(updated)
                             gameManager.launchGame(updated)
                         }
@@ -232,11 +234,6 @@ public struct LibraryView: View {
                     HelpView()
                 case .about:
                     AboutView()
-                }
-            }
-            .fullScreenCover(isPresented: $gameManager.isEmulating) {
-                if let current = gameManager.currentGame {
-                    GameScreenView(game: current, gameManager: gameManager)
                 }
             }
             .alert("Đổi tên ứng dụng", isPresented: $showingRenameAlert) {
@@ -271,6 +268,12 @@ public struct LibraryView: View {
             )
         }
         .navigationViewStyle(StackNavigationViewStyle())
+        
+        if gameManager.isEmulating, let current = gameManager.currentGame {
+            GameScreenView(game: current, gameManager: gameManager)
+                .transition(.opacity)
+                .zIndex(100)
+        }
     }
 }
 
