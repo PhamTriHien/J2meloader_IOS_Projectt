@@ -1,4 +1,4 @@
-﻿#ifndef PNG_DECODER_H
+#ifndef PNG_DECODER_H
 #define PNG_DECODER_H
 
 #include <vector>
@@ -123,25 +123,35 @@ public:
                 uint32_t argb = 0;
                 if (colorType == 6) {
                     size_t idx = x * 4;
-                    uint8_t r = currScanline[idx], g = currScanline[idx + 1], b = currScanline[idx + 2], a = currScanline[idx + 3];
-                    argb = (a << 24) | (r << 16) | (g << 8) | b;
+                    if (idx + 3 < currScanline.size()) {
+                        uint8_t r = currScanline[idx], g = currScanline[idx + 1], b = currScanline[idx + 2], a = currScanline[idx + 3];
+                        argb = (a << 24) | (r << 16) | (g << 8) | b;
+                    }
                 } else if (colorType == 2) {
                     size_t idx = x * 3;
-                    uint8_t r = currScanline[idx], g = currScanline[idx + 1], b = currScanline[idx + 2];
-                    argb = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    if (idx + 2 < currScanline.size()) {
+                        uint8_t r = currScanline[idx], g = currScanline[idx + 1], b = currScanline[idx + 2];
+                        argb = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    }
                 } else if (colorType == 3) {
-                    uint8_t colorIdx = currScanline[x];
-                    if (colorIdx < palette.size()) {
-                        argb = palette[colorIdx];
-                        if (colorIdx < transPalette.size()) {
-                            argb = (transPalette[colorIdx] << 24) | (argb & 0x00FFFFFF);
+                    if ((size_t)x < currScanline.size()) {
+                        uint8_t colorIdx = currScanline[x];
+                        if (colorIdx < palette.size()) {
+                            argb = palette[colorIdx];
+                            if (colorIdx < transPalette.size()) {
+                                argb = (transPalette[colorIdx] << 24) | (argb & 0x00FFFFFF);
+                            }
                         }
                     }
                 } else {
-                    uint8_t gray = currScanline[x];
-                    argb = 0xFF000000 | (gray << 16) | (gray << 8) | gray;
+                    if ((size_t)x < currScanline.size()) {
+                        uint8_t gray = currScanline[x];
+                        argb = 0xFF000000 | (gray << 16) | (gray << 8) | gray;
+                    }
                 }
-                outPixels[y * width + x] = argb;
+                if ((size_t)(y * width + x) < outPixels.size()) {
+                    outPixels[y * width + x] = argb;
+                }
             }
 
             prevScanline = currScanline;

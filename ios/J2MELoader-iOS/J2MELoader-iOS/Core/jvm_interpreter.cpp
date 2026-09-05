@@ -88,10 +88,18 @@ void JvmInterpreter::shutdown() {
         // so the game thread can be joined (no detach onto a reset heap).
         JvmBytecodeEngine::getInstance().requestCancel();
         if (m_gameThread.joinable()) {
-            m_gameThread.join();
+            if (std::this_thread::get_id() != m_gameThread.get_id()) {
+                m_gameThread.join();
+            } else {
+                m_gameThread.detach();
+            }
         }
         if (m_workerThread.joinable()) {
-            m_workerThread.join();
+            if (std::this_thread::get_id() != m_workerThread.get_id()) {
+                m_workerThread.join();
+            } else {
+                m_workerThread.detach();
+            }
         }
     }
     m_jarLoader->close();
@@ -183,7 +191,11 @@ void JvmInterpreter::startRunnableThread() {
     if (m_runnableClass && m_runnableRef != 0) {
         m_runnableRunning = true;
         if (m_gameThread.joinable()) {
-            m_gameThread.join();
+            if (std::this_thread::get_id() != m_gameThread.get_id()) {
+                m_gameThread.join();
+            } else {
+                m_gameThread.detach();
+            }
         }
         m_gameThread = std::thread([this]() {
             auto& jvm = JvmBytecodeEngine::getInstance();

@@ -6,6 +6,7 @@
 #include <map>
 #include <memory>
 #include <atomic>
+#include <mutex>
 #include <cstdint>
 #include <iostream>
 #include <functional>
@@ -389,12 +390,13 @@ public:
     uint32_t loadNativeImageFromBytes(const uint8_t* data, size_t size);
 
     // Active JAR reference
-    void setJarLoader(JarLoader* jar) { m_activeJar = jar; }
-    JarLoader* getJarLoader() const { return m_activeJar; }
+    void setJarLoader(JarLoader* jar) { std::lock_guard<std::recursive_mutex> lock(m_mutex); m_activeJar = jar; }
+    JarLoader* getJarLoader() const { std::lock_guard<std::recursive_mutex> lock(m_mutex); return m_activeJar; }
 
     // Static fields storage
-    void setStaticField(const std::string& key, const JavaValue& val) { m_staticFields[key] = val; }
+    void setStaticField(const std::string& key, const JavaValue& val) { std::lock_guard<std::recursive_mutex> lock(m_mutex); m_staticFields[key] = val; }
     JavaValue getStaticField(const std::string& key) const {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         auto it = m_staticFields.find(key);
         return (it != m_staticFields.end()) ? it->second : JavaValue(0);
     }
@@ -410,6 +412,7 @@ public:
 
 private:
     JvmBytecodeEngine();
+    mutable std::recursive_mutex m_mutex;
     std::map<std::string, std::shared_ptr<ClassFile>> m_loadedClasses;
     std::map<uint32_t, JavaObject> m_heapObjects;
     std::map<uint32_t, JavaArray> m_heapArrays;

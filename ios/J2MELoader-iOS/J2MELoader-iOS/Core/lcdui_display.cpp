@@ -183,6 +183,7 @@ void LcduiDisplay::drawRGB(const int32_t* rgbData, int offset, int scanlength, i
 }
 
 void LcduiDisplay::drawChar(char c, int x, int y, uint32_t color) {
+    std::lock_guard<std::mutex> lock(m_mutex);
     if (c < 32 || c > 126) return;
     const uint8_t* glyph = font8x8_basic[c - 32];
     for (int r = 0; r < 8; ++r) {

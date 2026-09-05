@@ -70,35 +70,35 @@ static AudioBridge *s_sharedInstance = nil;
         float *leftChannel = (float *)outputData->mBuffers[0].mData;
         float *rightChannel = (outputData->mNumberBuffers > 1) ? (float *)outputData->mBuffers[1].mData : leftChannel;
 
-        // 1) Real Sonivox EAS render (MIDI/SMF/iMelody/OTT). Always pulled so game music plays.
-        static __thread int16_t *easBuf = NULL;
-        static __thread uint32_t easCap = 0;
-        if (easCap < frameCount) {
-            free(easBuf); easBuf = (int16_t *)malloc(frameCount * 2 * sizeof(int16_t)); easCap = frameCount;
-        }
+        // 1) Real Sonivox EAS render (MIDI/SMF/iMelody/OTT). Fixed buffer to avoid heap malloc in real-time audio thread.
+        int16_t easBuf[4096 * 2];
+        AVAudioFrameCount framesToRender = (frameCount <= 4096) ? frameCount : 4096;
+        eas_engine_render_pcm(easBuf, framesToRender);
         int hasEAS = 0;
-        if (easBuf) {
-            eas_engine_render_pcm(easBuf, frameCount);
-            // Detect non-silence to avoid overwriting tone with zeros
-            for (AVAudioFrameCount i = 0; i < frameCount * 2; i++) { if (easBuf[i] != 0) { hasEAS = 1; break; } }
-            if (hasEAS) {
-                for (AVAudioFrameCount i = 0; i < frameCount; ++i) {
-                    leftChannel[i] = easBuf[i * 2] / 32768.0f;
-                    if (outputData->mNumberBuffers > 1) rightChannel[i] = easBuf[i * 2 + 1] / 32768.0f;
-                }
-                // Mix legacy sine tone on top if active
-                if (strongSelf && strongSelf->_isPlayingTone) {
-                    for (AVAudioFrameCount i = 0; i < frameCount; ++i) {
-                        float toneSample = (float)(sin(strongSelf->_tonePhase) * strongSelf->_volume * 0.3f);
-                        strongSelf->_tonePhase += strongSelf->_tonePhaseInc;
-                        if (strongSelf->_tonePhase >= M_PI * 2.0) strongSelf->_tonePhase -= M_PI * 2.0;
-                        leftChannel[i] += toneSample;
-                        if (outputData->mNumberBuffers > 1) rightChannel[i] += toneSample;
-                    }
-                }
-                *isSilence = NO;
-                return noErr;
+        for (AVAudioFrameCount i = 0; i < framesToRender * 2; i++) { if (easBuf[i] != 0) { hasEAS = 1; break; } }
+        if (hasEAS) {
+            for (AVAudioFrameCount i = 0; i < framesToRender; ++i) {
+                leftChannel[i] = easBuf[i * 2] / 32768.0f;
+                if (outputData->mNumberBuffers > 1) rightChannel[i] = easBuf[i * 2 + 1] / 32768.0f;
             }
+            if (framesToRender < frameCount) {
+                memset(leftChannel + framesToRender, 0, (frameCount - framesToRender) * sizeof(float));
+                if (outputData->mNumberBuffers > 1) {
+                    memset(rightChannel + framesToRender, 0, (frameCount - framesToRender) * sizeof(float));
+                }
+            }
+            // Mix legacy sine tone on top if active
+            if (strongSelf && strongSelf->_isPlayingTone) {
+                for (AVAudioFrameCount i = 0; i < frameCount; ++i) {
+                    float toneSample = (float)(sin(strongSelf->_tonePhase) * strongSelf->_volume * 0.3f);
+                    strongSelf->_tonePhase += strongSelf->_tonePhaseInc;
+                    if (strongSelf->_tonePhase >= M_PI * 2.0) strongSelf->_tonePhase -= M_PI * 2.0;
+                    leftChannel[i] += toneSample;
+                    if (outputData->mNumberBuffers > 1) rightChannel[i] += toneSample;
+                }
+            }
+            *isSilence = NO;
+            return noErr;
         }
 
         if (!strongSelf || !strongSelf->_isPlayingTone) {
@@ -167,13 +167,14 @@ static AudioBridge *s_sharedInstance = nil;
         }
         return;
     }
+    // Stop any existing MIDI/audio before starting a new track
+    [instance stopCurrentMidi];
+
     // Primary: real Sonivox EAS (SMF/MIDI/iMelody). Fallback: AVMIDIPlayer.
     bool easOK = eas_engine_play_midi_data((const uint8_t *)data.bytes, data.length);
     if (easOK) {
-        [instance stopCurrentMidi];
         return;
     }
-    [instance stopCurrentMidi];
 
     NSError *error = nil;
     instance.midiPlayer = [[AVMIDIPlayer alloc] initWithData:data soundBankURL:nil error:&error];

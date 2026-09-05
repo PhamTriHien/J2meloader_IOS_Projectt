@@ -740,9 +740,9 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         uint32_t self=args.empty()?0:args[0].asRef();
         if(methodName=="<init>") return true;
         if(methodName=="getGraphics"){ outResult=JavaValue(ENG().allocObject("javax/microedition/lcdui/Graphics"),true); return true; }
-        if(methodName=="flushGraphics"||methodName=="flushGraphics"||methodName=="repaint"||methodName=="serviceRepaints"){
-            // trigger paint like Canvas
-            JavaObject*o=ENG().getObject(self); if(o&&display){ auto cls=ENG().findOrLoadClass(o->className, ENG().getJarLoader()); if(cls){ uint32_t g=ENG().allocObject("javax/microedition/lcdui/Graphics"); ENG().executeMethod(cls,"paint","(Ljavax/microedition/lcdui/Graphics;)V",{JavaValue(self,true),JavaValue(g,true)},display);} } return true;
+        if(methodName=="flushGraphics"||methodName=="repaint"||methodName=="serviceRepaints"){
+            // Continuous 60 FPS refresh loop handles frame presentation without recursive stack exhaustion
+            return true;
         }
         if(methodName=="getKeyStates"){ outResult=JavaValue(0); return true; }
         if(methodName=="getWidth"){ outResult=JavaValue(display?display->getWidth():240); return true; }

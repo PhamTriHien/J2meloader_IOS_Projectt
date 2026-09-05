@@ -71,6 +71,7 @@ JvmBytecodeEngine& JvmBytecodeEngine::getInstance() {
 }
 
 void JvmBytecodeEngine::reset() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_loadedClasses.clear();
     m_heapObjects.clear();
     m_heapArrays.clear();
@@ -82,6 +83,7 @@ void JvmBytecodeEngine::reset() {
 }
 
 uint32_t JvmBytecodeEngine::allocObject(const std::string& className) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     uint32_t ref = m_nextRef++;
     JavaObject obj;
     obj.id = ref;
@@ -91,6 +93,7 @@ uint32_t JvmBytecodeEngine::allocObject(const std::string& className) {
 }
 
 uint32_t JvmBytecodeEngine::createString(const std::string& str) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     uint32_t ref = allocObject("java/lang/String");
     JavaObject* obj = getObject(ref);
     if (obj) obj->stringVal = str;
@@ -98,11 +101,13 @@ uint32_t JvmBytecodeEngine::createString(const std::string& str) {
 }
 
 std::string JvmBytecodeEngine::getString(uint32_t ref) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     JavaObject* obj = getObject(ref);
     return obj ? obj->stringVal : "";
 }
 
 uint32_t JvmBytecodeEngine::allocArray(uint8_t type, int length) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     uint32_t ref = m_nextRef++;
     JavaArray arr;
     arr.id = ref;
@@ -121,16 +126,19 @@ uint32_t JvmBytecodeEngine::allocArray(uint8_t type, int length) {
 }
 
 JavaObject* JvmBytecodeEngine::getObject(uint32_t ref) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     auto it = m_heapObjects.find(ref);
     return (it != m_heapObjects.end()) ? &it->second : nullptr;
 }
 
 JavaArray* JvmBytecodeEngine::getArray(uint32_t ref) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     auto it = m_heapArrays.find(ref);
     return (it != m_heapArrays.end()) ? &it->second : nullptr;
 }
 
 uint32_t JvmBytecodeEngine::allocateNativeImage(int w, int h, bool isMutable) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     uint32_t ref = allocObject("javax/microedition/lcdui/Image");
     NativeImage img;
     img.width = w > 0 ? w : 16;
@@ -142,11 +150,13 @@ uint32_t JvmBytecodeEngine::allocateNativeImage(int w, int h, bool isMutable) {
 }
 
 NativeImage* JvmBytecodeEngine::getNativeImage(uint32_t ref) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     auto it = m_nativeImages.find(ref);
     return (it != m_nativeImages.end()) ? &it->second : nullptr;
 }
 
 uint32_t JvmBytecodeEngine::loadNativeImageFromBytes(const uint8_t* data, size_t size) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     int w = 0, h = 0;
     std::vector<uint32_t> pixels;
     if (!PngDecoder::decode(data, size, w, h, pixels)) {
@@ -163,6 +173,7 @@ uint32_t JvmBytecodeEngine::loadNativeImageFromBytes(const uint8_t* data, size_t
 }
 
 uint32_t JvmBytecodeEngine::loadNativeImageFromJar(const std::string& path) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (!m_activeJar) return allocateNativeImage(16, 16, false);
 
     std::string entryName = path;
@@ -179,6 +190,7 @@ uint32_t JvmBytecodeEngine::loadNativeImageFromJar(const std::string& path) {
 // Complete Java Classfile Parser (0xCAFEBABE)
 // ----------------------------------------------------
 std::shared_ptr<ClassFile> JvmBytecodeEngine::loadClass(const std::vector<uint8_t>& classBytes) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (classBytes.size() < 10) return nullptr;
 
     ByteStream bs(classBytes.data(), classBytes.size());
@@ -334,6 +346,7 @@ std::shared_ptr<ClassFile> JvmBytecodeEngine::loadClass(const std::vector<uint8_
 }
 
 std::shared_ptr<ClassFile> JvmBytecodeEngine::findOrLoadClass(const std::string& className, JarLoader* jar) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::string normName = className;
     std::replace(normName.begin(), normName.end(), '.', '/');
 
@@ -922,18 +935,8 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
 
     if (className.find("Canvas") != std::string::npos || className.find("Displayable") != std::string::npos) {
         if (methodName == "repaint" || methodName == "flushGraphics" || methodName == "serviceRepaints") {
-            if (display) {
-                uint32_t cRef = args.size() >= 1 ? args[0].asRef() : 0;
-                JavaObject* cObj = getObject(cRef);
-                std::shared_ptr<ClassFile> cCls = nullptr;
-                if (cObj && !cObj->className.empty()) {
-                    cCls = findOrLoadClass(cObj->className, m_activeJar);
-                }
-                if (cCls && cRef != 0) {
-                    uint32_t gRef = allocObject("javax/microedition/lcdui/Graphics");
-                    executeMethod(cCls, "paint", "(Ljavax/microedition/lcdui/Graphics;)V", { JavaValue(cRef, true), JavaValue(gRef, true) }, display);
-                }
-            }
+            // Display is continuously refreshed at 60 FPS by the execution loop.
+            // Do not synchronously invoke paint() here to prevent infinite recursion / stack overflow.
             return true;
         }
         if (methodName == "getWidth") { outResult = JavaValue(display ? display->getWidth() : 240); return true; }
@@ -1356,7 +1359,17 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
 // Complete JVM Opcode Execution Loop
 // ----------------------------------------------------
 JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const std::string& methodName, const std::string& desc, const std::vector<JavaValue>& args, LcduiDisplay* display) {
-    if (!cls) return JavaValue(0);
+    if (!cls || m_cancel.load()) return JavaValue(0);
+
+    thread_local int t_callDepth = 0;
+    if (t_callDepth > 512) {
+        return JavaValue(0);
+    }
+    struct DepthGuard {
+        int& d;
+        DepthGuard(int& depth) : d(depth) { ++d; }
+        ~DepthGuard() { --d; }
+    } depthGuard(t_callDepth);
 
     std::string key = methodName + ":" + desc;
     auto it = cls->methods.find(key);

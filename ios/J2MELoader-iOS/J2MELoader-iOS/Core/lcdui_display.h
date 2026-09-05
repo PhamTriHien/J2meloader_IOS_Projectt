@@ -57,22 +57,26 @@ private:
     std::mutex m_mutex;
 
     inline void setPixelUnsafe(int x, int y, uint32_t color) {
-        if (x >= m_clip.x && x < m_clip.x + m_clip.width &&
+        if (x >= 0 && x < m_width && y >= 0 && y < m_height &&
+            x >= m_clip.x && x < m_clip.x + m_clip.width &&
             y >= m_clip.y && y < m_clip.y + m_clip.height) {
             
+            size_t idx = (size_t)y * m_width + x;
+            if (idx >= m_buffer.size()) return;
+
             // Alpha blending (RGBA)
             uint32_t alpha = (color >> 24) & 0xFF;
             if (alpha == 255) {
-                m_buffer[y * m_width + x] = color;
+                m_buffer[idx] = color;
             } else if (alpha > 0) {
-                uint32_t dst = m_buffer[y * m_width + x];
+                uint32_t dst = m_buffer[idx];
                 uint32_t invAlpha = 255 - alpha;
                 
                 uint32_t r = (((color >> 16) & 0xFF) * alpha + ((dst >> 16) & 0xFF) * invAlpha) >> 8;
                 uint32_t g = (((color >> 8) & 0xFF) * alpha + ((dst >> 8) & 0xFF) * invAlpha) >> 8;
                 uint32_t b = ((color & 0xFF) * alpha + (dst & 0xFF) * invAlpha) >> 8;
                 
-                m_buffer[y * m_width + x] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                m_buffer[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
             }
         }
     }
