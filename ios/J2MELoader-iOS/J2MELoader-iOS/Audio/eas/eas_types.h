@@ -35,6 +35,10 @@
 #ifndef _EAS_TYPES_H
 #define _EAS_TYPES_H
 
+#ifndef android_errorWriteLog
+#define android_errorWriteLog(tag, subTag) ((void)0)
+#endif
+
 /* EAS_RESULT return codes */
 typedef long EAS_RESULT;
 #define EAS_SUCCESS                         0
