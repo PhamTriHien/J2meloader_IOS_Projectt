@@ -35,6 +35,8 @@
 #ifndef _EAS_TYPES_H
 #define _EAS_TYPES_H
 
+#include <stdbool.h>
+
 #ifndef android_errorWriteLog
 #define android_errorWriteLog(tag, subTag) ((void)0)
 #endif
