@@ -21,21 +21,24 @@ public struct KeyMapperView: View {
     public var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Gán nút tay cầm Bluetooth / MFi")) {
+                Section(header: Text("GÁN NÚT TAY CẦM BLUETOOTH / MFI").font(.system(size: 11.5, weight: .semibold))) {
                     Text("Kết nối tay cầm Bluetooth như Sony DualSense (PS5), Xbox Controller, Nintendo Switch hoặc tay cầm chuẩn MFi để chơi bằng phím cứng.")
-                        .font(.footnote)
+                        .font(.system(size: 11.5, weight: .regular))
                         .foregroundColor(.secondary)
                     
                     ForEach(Array(keyMappings.keys.sorted()), id: \.self) { label in
                         HStack {
                             Text(label)
+                                .font(.system(size: 13, weight: .regular))
                             Spacer()
                             Picker("", selection: Binding(
                                 get: { keyMappings[label] ?? 0 },
                                 set: { keyMappings[label] = $0 }
                             )) {
                                 ForEach(J2MEKey.allCases) { key in
-                                    Text(key.displayName).tag(key.rawValue)
+                                    Text(key.displayName)
+                                        .font(.system(size: 12.5, weight: .regular))
+                                        .tag(key.rawValue)
                                 }
                             }
                             .labelsHidden()
@@ -47,6 +50,7 @@ public struct KeyMapperView: View {
                     Button("Khôi phục mặc định", role: .destructive) {
                         // Reset defaults
                     }
+                    .font(.system(size: 13.5, weight: .regular))
                 }
             }
             .navigationTitle("Gán phím tay cầm")
@@ -56,10 +60,13 @@ public struct KeyMapperView: View {
                     Button("Xong") {
                         presentationMode.wrappedValue.dismiss()
                     }
-                    .font(.headline)
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundColor(J2MEColors.accent)
                 }
             }
+            .dynamicTypeSize(.medium)
+            .environment(\.sizeCategory, .medium)
         }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 }

@@ -25,20 +25,20 @@ public struct SettingsView: View {
                             ZStack {
                                 Color(red: 0x52/255.0, green: 0x5a/255.0, blue: 0xa0/255.0)
                                 Image(systemName: "gamecontroller.fill")
-                                    .font(.system(size: 24))
+                                    .font(.system(size: 22))
                                     .foregroundColor(.white)
                             }
-                            .frame(width: 48, height: 48)
+                            .frame(width: 44, height: 44)
                             .cornerRadius(8)
                             
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(game.title)
-                                    .font(.system(size: 17, weight: .bold))
+                                    .font(.system(size: 15, weight: .bold))
                                     .foregroundColor(.primary)
                                     .lineLimit(1)
                                 
                                 Text("\(game.vendor) • v\(game.version)")
-                                    .font(.system(size: 13))
+                                    .font(.system(size: 12, weight: .regular))
                                     .foregroundColor(.secondary)
                             }
                             Spacer()
@@ -50,166 +50,263 @@ public struct SettingsView: View {
                                 presentationMode.wrappedValue.dismiss()
                                 startAction(game)
                             }) {
-                                HStack {
+                                HStack(spacing: 6) {
                                     Image(systemName: "play.fill")
-                                        .font(.system(size: 16, weight: .bold))
+                                        .font(.system(size: 14, weight: .bold))
                                     Text("BẮT ĐẦU CHƠI")
-                                        .font(.system(size: 16, weight: .bold))
+                                        .font(.system(size: 14.5, weight: .bold))
                                 }
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, 11)
                                 .background(J2MEColors.accent)
                                 .cornerRadius(8)
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 3)
                 }
                 
-                Section(header: Text("Thiết bị mẫu (Device Profile)")) {
-                    Picker("Hồ sơ thiết bị", selection: Binding(
+                Section(header: Text("THIẾT BỊ MẪU (DEVICE PROFILE)").font(.system(size: 11.5, weight: .semibold))) {
+                    Picker(selection: Binding(
                         get: { game.config.preset },
                         set: { newPreset in
                             game.config.preset = newPreset
                         }
                     )) {
                         ForEach(ResolutionPreset.allCases, id: \.self) { preset in
-                            Text(preset.displayName).tag(preset)
+                            Text(preset.displayName)
+                                .font(.system(size: 13, weight: .regular))
+                                .tag(preset)
                         }
+                    } label: {
+                        Text("Hồ sơ thiết bị")
+                            .font(.system(size: 13.5, weight: .regular))
                     }
                 }
                 
-                Section(header: Text("Độ phân giải & Bộ lọc đồ họa")) {
+                Section(header: Text("ĐỘ PHÂN GIẢI & BỘ LỌC ĐỒ HỌA").font(.system(size: 11.5, weight: .semibold))) {
                     if game.config.preset == .custom {
                         HStack {
                             Text("Chiều rộng (Width)")
+                                .font(.system(size: 13.5, weight: .regular))
                             Spacer()
                             TextField("Rộng", value: $game.config.customWidth, formatter: NumberFormatter())
+                                .font(.system(size: 13, weight: .regular))
                                 .keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing)
                         }
                         HStack {
                             Text("Chiều cao (Height)")
+                                .font(.system(size: 13.5, weight: .regular))
                             Spacer()
                             TextField("Cao", value: $game.config.customHeight, formatter: NumberFormatter())
+                                .font(.system(size: 13, weight: .regular))
                                 .keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing)
                         }
                     }
                     
-                    Picker("Hướng xoay màn hình", selection: $game.config.screenOrientation) {
+                    Picker(selection: $game.config.screenOrientation) {
                         ForEach(ScreenOrientation.allCases, id: \.self) { orientation in
-                            Text(orientation.displayName).tag(orientation)
+                            Text(orientation.displayName)
+                                .font(.system(size: 13, weight: .regular))
+                                .tag(orientation)
                         }
+                    } label: {
+                        Text("Hướng xoay màn hình")
+                            .font(.system(size: 13.5, weight: .regular))
                     }
                     
-                    Picker("Màu nền màn hình LCD", selection: $game.config.screenBgColor) {
+                    Picker(selection: $game.config.screenBgColor) {
                         ForEach(ScreenBgColor.allCases, id: \.self) { bg in
-                            Text(bg.displayName).tag(bg)
+                            Text(bg.displayName)
+                                .font(.system(size: 13, weight: .regular))
+                                .tag(bg)
                         }
+                    } label: {
+                        Text("Màu nền màn hình LCD")
+                            .font(.system(size: 13.5, weight: .regular))
                     }
                     
-                    Picker("Chế độ co giãn", selection: $game.config.scalingMode) {
+                    Picker(selection: $game.config.scalingMode) {
                         ForEach(ScalingMode.allCases, id: \.self) { mode in
-                            Text(mode.displayName).tag(mode)
+                            Text(mode.displayName)
+                                .font(.system(size: 13, weight: .regular))
+                                .tag(mode)
                         }
+                    } label: {
+                        Text("Chế độ co giãn")
+                            .font(.system(size: 13.5, weight: .regular))
                     }
                     
-                    Picker("Bộ lọc Shader", selection: $game.config.filterMode) {
+                    Picker(selection: $game.config.filterMode) {
                         ForEach(FilterMode.allCases, id: \.self) { filter in
-                            Text(filter.displayName).tag(filter)
+                            Text(filter.displayName)
+                                .font(.system(size: 13, weight: .regular))
+                                .tag(filter)
                         }
+                    } label: {
+                        Text("Bộ lọc Shader Metal")
+                            .font(.system(size: 13.5, weight: .regular))
                     }
                     
                     Button(action: { showingShaderTune = true }) {
-                        Label("Tinh chỉnh thông số Shader...", systemImage: "slider.horizontal.3")
+                        HStack {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.system(size: 13.5))
+                            Text("Tinh chỉnh thông số Shader...")
+                                .font(.system(size: 13.5, weight: .medium))
+                        }
+                        .foregroundColor(J2MEColors.accent)
                     }
                     
-                    Toggle("Hiển thị chỉ số đo FPS thời gian thực", isOn: $game.config.showFps)
-                    Stepper("Giới hạn khung hình: \(game.config.targetFps) FPS", value: $game.config.targetFps, in: 15...120, step: 5)
+                    Toggle(isOn: $game.config.showFps) {
+                        Text("Hiển thị chỉ số đo FPS thời gian thực")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
+                    
+                    Stepper(value: $game.config.targetFps, in: 15...120, step: 5) {
+                        Text("Giới hạn khung hình: \(game.config.targetFps) FPS")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
                 }
                 
-                Section(header: Text("Điều khiển & Bàn phím ảo")) {
-                    Picker("Kiểu bàn phím", selection: $game.config.keypadLayout) {
+                Section(header: Text("ĐIỀU KHIỂN & BÀN PHÍM ẢO").font(.system(size: 11.5, weight: .semibold))) {
+                    Picker(selection: $game.config.keypadLayout) {
                         ForEach(KeypadLayout.allCases, id: \.self) { layout in
-                            Text(layout.displayName).tag(layout)
+                            Text(layout.displayName)
+                                .font(.system(size: 13, weight: .regular))
+                                .tag(layout)
                         }
+                    } label: {
+                        Text("Kiểu bàn phím")
+                            .font(.system(size: 13.5, weight: .regular))
                     }
                     
                     Button(action: { showingKeyMapper = true }) {
-                        Label("Cài đặt gán phím tay cầm (Bluetooth / MFi)", systemImage: "gamecontroller")
+                        HStack {
+                            Image(systemName: "gamecontroller")
+                                .font(.system(size: 13.5))
+                            Text("Cài đặt gán phím tay cầm (Bluetooth / MFi)")
+                                .font(.system(size: 13.5, weight: .medium))
+                        }
+                        .foregroundColor(J2MEColors.accent)
                     }
                     
-                    Toggle("Rung phản hồi khi bấm phím (Haptic)", isOn: $game.config.hapticFeedback)
-                    Toggle("Cho phép chạm cảm ứng trên màn hình", isOn: $game.config.touchScreenEnabled)
+                    Toggle(isOn: $game.config.hapticFeedback) {
+                        Text("Rung phản hồi khi bấm phím (Haptic)")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
                     
-                    VStack(alignment: .leading) {
+                    Toggle(isOn: $game.config.touchScreenEnabled) {
+                        Text("Cho phép chạm cảm ứng trên màn hình")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("Độ trong suốt bàn phím: \(Int(game.config.keypadOpacity * 100))%")
+                            .font(.system(size: 12.5, weight: .regular))
+                            .foregroundColor(.secondary)
                         Slider(value: $game.config.keypadOpacity, in: 0.2...1.0, step: 0.05)
                     }
                 }
                 
-                Section(header: Text("Âm thanh & Bộ tổng hợp Sonivox EAS")) {
-                    Toggle("Bật âm thanh & Nhạc chuông MIDI", isOn: $game.config.soundEnabled)
+                Section(header: Text("ÂM THANH & BỘ TỔNG HỢP SONIVOX EAS").font(.system(size: 11.5, weight: .semibold))) {
+                    Toggle(isOn: $game.config.soundEnabled) {
+                        Text("Bật âm thanh & Nhạc chuông MIDI")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
                     
                     if game.config.soundEnabled {
-                        VStack(alignment: .leading) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text("Âm lượng: \(Int(game.config.soundVolume * 100))%")
+                                .font(.system(size: 12.5, weight: .regular))
+                                .foregroundColor(.secondary)
                             Slider(value: $game.config.soundVolume, in: 0.0...1.0, step: 0.05)
                         }
                     }
                 }
                 
-                Section(header: Text("Tương thích hệ thống & Chữ (Fonts)")) {
-                    Picker("Kích cỡ chữ MIDP (Font Scale)", selection: $game.config.fontSizeScale) {
+                Section(header: Text("TƯƠNG THÍCH HỆ THỐNG & FONT CHỮ").font(.system(size: 11.5, weight: .semibold))) {
+                    Picker(selection: $game.config.fontSizeScale) {
                         ForEach(FontSizeScale.allCases, id: \.self) { scale in
-                            Text(scale.displayName).tag(scale)
+                            Text(scale.displayName)
+                                .font(.system(size: 13, weight: .regular))
+                                .tag(scale)
                         }
+                    } label: {
+                        Text("Kích cỡ chữ MIDP (Font Scale)")
+                            .font(.system(size: 13.5, weight: .regular))
                     }
                     
                     HStack {
                         Text("Mã thiết bị giả lập (Platform)")
+                            .font(.system(size: 13.5, weight: .regular))
                         Spacer()
                         TextField("NokiaN73", text: $game.config.systemPlatform)
+                            .font(.system(size: 13, weight: .regular))
                             .multilineTextAlignment(.trailing)
                     }
                     
                     HStack {
                         Text("Ngôn ngữ (Locale)")
+                            .font(.system(size: 13.5, weight: .regular))
                         Spacer()
                         TextField("vi-VN", text: $game.config.systemLocale)
+                            .font(.system(size: 13, weight: .regular))
                             .multilineTextAlignment(.trailing)
                     }
                 }
                 
-                Section(header: Text("Tối ưu hiệu năng & Chạy ngầm (Anti-Crash)")) {
-                    Toggle("Treo ngầm 24/7 (Không ngắt kết nối / Không bị văng)", isOn: $game.config.backgroundKeepAlive)
-                    Toggle("Giữ kết nối mạng Socket liên tục (Anti-Disconnect)", isOn: $game.config.networkKeepAlive)
-                    Toggle("Đồng bộ khung hình VSync Metal 60 FPS", isOn: $game.config.vsyncMetal)
+                Section(header: Text("TỐI ƯU HIỆU NĂNG & TREO NGẦM (ANTI-CRASH)").font(.system(size: 11.5, weight: .semibold))) {
+                    Toggle(isOn: $game.config.backgroundKeepAlive) {
+                        Text("Treo ngầm 24/7 (Không ngắt kết nối / Không bị văng)")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
+                    Toggle(isOn: $game.config.networkKeepAlive) {
+                        Text("Giữ kết nối mạng Socket liên tục (Anti-Disconnect)")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
+                    Toggle(isOn: $game.config.vsyncMetal) {
+                        Text("Đồng bộ khung hình VSync Metal 60 FPS")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
                 }
                 
-                Section(header: Text("Thông tin game MIDlet")) {
+                Section(header: Text("THÔNG TIN GAME MIDLET").font(.system(size: 11.5, weight: .semibold))) {
                     HStack {
                         Text("Tên game")
+                            .font(.system(size: 13, weight: .regular))
                         Spacer()
-                        Text(game.title).foregroundColor(.secondary)
+                        Text(game.title)
+                            .font(.system(size: 12.5, weight: .regular))
+                            .foregroundColor(.secondary)
                     }
                     HStack {
                         Text("Nhà sản xuất")
+                            .font(.system(size: 13, weight: .regular))
                         Spacer()
-                        Text(game.vendor).foregroundColor(.secondary)
+                        Text(game.vendor)
+                            .font(.system(size: 12.5, weight: .regular))
+                            .foregroundColor(.secondary)
                     }
                     HStack {
                         Text("Phiên bản")
+                            .font(.system(size: 13, weight: .regular))
                         Spacer()
-                        Text(game.version).foregroundColor(.secondary)
+                        Text(game.version)
+                            .font(.system(size: 12.5, weight: .regular))
+                            .foregroundColor(.secondary)
                     }
                     HStack {
                         Text("Lớp khởi chạy (Main Class)")
+                            .font(.system(size: 13, weight: .regular))
                         Spacer()
-                        Text(game.mainClass).foregroundColor(.secondary).font(.footnote)
+                        Text(game.mainClass)
+                            .font(.system(size: 11.5, weight: .regular, design: .monospaced))
+                            .foregroundColor(.secondary)
                     }
                 }
             }
@@ -220,16 +317,19 @@ public struct SettingsView: View {
                     Button("Hủy") {
                         presentationMode.wrappedValue.dismiss()
                     }
+                    .font(.system(size: 14, weight: .regular))
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Lưu") {
                         onSave(game)
                         presentationMode.wrappedValue.dismiss()
                     }
-                    .font(.headline)
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundColor(J2MEColors.accent)
                 }
             }
+            .dynamicTypeSize(.medium)
+            .environment(\.sizeCategory, .medium)
             .sheet(isPresented: $showingKeyMapper) {
                 KeyMapperView()
             }

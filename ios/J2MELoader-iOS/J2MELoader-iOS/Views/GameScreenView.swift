@@ -23,28 +23,28 @@ public struct GameScreenView: View {
             
             VStack(spacing: 0) {
                 // Thanh điều khiển trên cùng (Retro Action Bar)
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Button(action: {
                         gameManager.stopEmulation()
                         presentationMode.wrappedValue.dismiss()
                     }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 3) {
                             Image(systemName: "chevron.backward")
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 11, weight: .bold))
                             Text("Thư viện")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
                         }
                         .foregroundColor(.white.opacity(0.9))
                     }
                     
                     VStack(alignment: .leading, spacing: 1) {
                         Text(game.title)
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.system(size: 12.5, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(1)
                         
                         Text("\(currentConfig.effectiveWidth)x\(currentConfig.effectiveHeight) • \(currentConfig.targetFps * speedMultiplier) FPS")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
                             .foregroundColor(.white.opacity(0.6))
                     }
                     
@@ -57,12 +57,12 @@ public struct GameScreenView: View {
                         else { speedMultiplier = 1 }
                     }) {
                         Text("\(speedMultiplier)x")
-                            .font(.system(size: 11, weight: .bold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
+                            .font(.system(size: 10, weight: .bold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2.5)
                             .background(speedMultiplier > 1 ? J2MEColors.accent : Color.white.opacity(0.2))
                             .foregroundColor(.white)
-                            .cornerRadius(5)
+                            .cornerRadius(4)
                     }
                     
                     // Menu chọn nhanh kiểu bàn phím ảo
@@ -84,7 +84,7 @@ public struct GameScreenView: View {
                         }
                     } label: {
                         Image(systemName: "keyboard.fill")
-                            .font(.system(size: 18))
+                            .font(.system(size: 15))
                             .foregroundColor(.white.opacity(0.85))
                     }
                     
@@ -107,7 +107,7 @@ public struct GameScreenView: View {
                         }
                     } label: {
                         Image(systemName: "aspectratio.fill")
-                            .font(.system(size: 18))
+                            .font(.system(size: 15))
                             .foregroundColor(.white.opacity(0.85))
                     }
                     
@@ -130,28 +130,28 @@ public struct GameScreenView: View {
                         }
                     } label: {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 18))
+                            .font(.system(size: 15))
                             .foregroundColor(.white.opacity(0.85))
                     }
                     
                     // Nút Ánh xạ phím tay cầm
                     Button(action: { showingKeyMapper = true }) {
                         Image(systemName: "gamecontroller.fill")
-                            .font(.system(size: 18))
+                            .font(.system(size: 15))
                             .foregroundColor(.white.opacity(0.85))
                     }
                     
                     // Nút Chụp ảnh màn hình
                     Button(action: { takeScreenshot() }) {
                         Image(systemName: "camera.fill")
-                            .font(.system(size: 17))
+                            .font(.system(size: 15))
                             .foregroundColor(.white.opacity(0.85))
                     }
                     
                     // Nút Khởi động lại game
                     Button(action: { restartEmulation() }) {
                         Image(systemName: "arrow.counterclockwise.circle.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: 16))
                             .foregroundColor(.white.opacity(0.85))
                     }
                     
@@ -161,19 +161,19 @@ public struct GameScreenView: View {
                         J2MEBridge.setPaused(isPaused)
                     }) {
                         Image(systemName: isPaused ? "play.circle.fill" : "pause.circle.fill")
-                            .font(.system(size: 22))
+                            .font(.system(size: 17))
                             .foregroundColor(isPaused ? .yellow : .white.opacity(0.85))
                     }
                     
                     // Nút Cài đặt toàn diện
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
-                            .font(.system(size: 18))
+                            .font(.system(size: 15))
                             .foregroundColor(.white.opacity(0.85))
                     }
                 }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.vertical, 7)
                 .background(Color(red: 0x21/255.0, green: 0x21/255.0, blue: 0x21/255.0))
                 
                 // Màn hình LCD Canvas hiển thị đồ họa 60 FPS
@@ -196,8 +196,8 @@ public struct GameScreenView: View {
                             HStack {
                                 Spacer()
                                 Text("\(currentConfig.targetFps * speedMultiplier) FPS")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .padding(.horizontal, 6)
+                                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 5)
                                     .padding(.vertical, 2)
                                     .background(Color.black.opacity(0.65))
                                     .foregroundColor(.green)
@@ -215,10 +215,12 @@ public struct GameScreenView: View {
                     VirtualKeypadView(config: currentConfig) { keyCode, isDown in
                         J2MEBridge.sendKeyEvent(keyCode, isDown: isDown)
                     }
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 6)
                 }
             }
         }
+        .dynamicTypeSize(.medium)
+        .environment(\.sizeCategory, .medium)
         .onAppear {
             startEmulation()
         }

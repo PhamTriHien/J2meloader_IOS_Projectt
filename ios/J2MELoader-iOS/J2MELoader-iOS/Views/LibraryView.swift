@@ -53,14 +53,17 @@ public struct LibraryView: View {
                 VStack(spacing: 0) {
                     // Thanh tìm kiếm
                     if isSearching {
-                        HStack {
+                        HStack(spacing: 8) {
                             Image(systemName: "magnifyingglass")
+                                .font(.system(size: 13.5, weight: .semibold))
                                 .foregroundColor(.secondary)
                             TextField("Tìm kiếm game hoặc nhà phát triển...", text: $searchText)
+                                .font(.system(size: 13, weight: .regular))
                                 .textFieldStyle(PlainTextFieldStyle())
                             if !searchText.isEmpty {
                                 Button(action: { searchText = "" }) {
                                     Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 13.5))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -68,9 +71,11 @@ public struct LibraryView: View {
                                 searchText = ""
                                 isSearching = false
                             }
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(J2MEColors.accent)
                         }
-                        .padding(10)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
                         .background(Color(.secondarySystemBackground))
                         .cornerRadius(8)
                         .padding(.horizontal, 12)
@@ -79,19 +84,19 @@ public struct LibraryView: View {
                     
                     if gameManager.games.isEmpty {
                         // Trạng thái thư viện trống
-                        VStack(spacing: 16) {
+                        VStack(spacing: 14) {
                             Spacer()
                             Image(systemName: "square.grid.2x2")
-                                .font(.system(size: 48))
+                                .font(.system(size: 42))
                                 .foregroundColor(.secondary.opacity(0.6))
                             Text("Chưa có ứng dụng nào trong thư viện")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 15.5, weight: .semibold))
                                 .foregroundColor(.primary)
                             Text("Nhấn vào nút '+' màu đỏ ở góc dưới để cài đặt\nfile game Java (.jar hoặc .jad) từ máy của bạn.")
-                                .font(.system(size: 14))
+                                .font(.system(size: 12.5, weight: .regular))
                                 .multilineTextAlignment(.center)
                                 .foregroundColor(.secondary)
-                                .padding(.horizontal, 32)
+                                .padding(.horizontal, 28)
                             Spacer()
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -139,15 +144,15 @@ public struct LibraryView: View {
                         Spacer()
                         Button(action: { showingImporter = true }) {
                             Image(systemName: "plus")
-                                .font(.system(size: 24, weight: .bold))
+                                .font(.system(size: 22, weight: .bold))
                                 .foregroundColor(.white)
-                                .frame(width: 58, height: 58)
+                                .frame(width: 54, height: 54)
                                 .background(J2MEColors.accent)
                                 .clipShape(Circle())
-                                .shadow(color: Color.black.opacity(0.3), radius: 6, x: 0, y: 3)
+                                .shadow(color: Color.black.opacity(0.28), radius: 5, x: 0, y: 3)
                         }
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 24)
+                        .padding(.trailing, 18)
+                        .padding(.bottom, 20)
                     }
                 }
             }
@@ -157,7 +162,7 @@ public struct LibraryView: View {
                 ToolbarItem(placement: .principal) {
                     HStack {
                         Text("J2HienLoader")
-                            .font(.system(size: 19, weight: .bold))
+                            .font(.system(size: 17, weight: .bold))
                             .foregroundColor(.white)
                         Spacer()
                     }
@@ -167,7 +172,7 @@ public struct LibraryView: View {
                     HStack(spacing: 16) {
                         Button(action: { isSearching.toggle() }) {
                             Image(systemName: "magnifyingglass")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundColor(.white)
                         }
                         
@@ -184,12 +189,14 @@ public struct LibraryView: View {
                         } label: {
                             Image(systemName: "ellipsis")
                                 .rotationEffect(.degrees(90))
-                                .font(.system(size: 17, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(.white)
                         }
                     }
                 }
             }
+            .dynamicTypeSize(.medium)
+            .environment(\.sizeCategory, .medium)
             .sheet(isPresented: $showingImporter) {
                 DocumentPickerView { url in
                     gameManager.importJar(from: url)
@@ -274,40 +281,40 @@ struct OriginalListRowJar: View {
                         .resizable()
                         .scaledToFill()
                         .frame(width: 38, height: 38)
-                        .cornerRadius(4)
+                        .cornerRadius(6)
                 } else {
                     ZStack {
                         Color(red: 0x52/255.0, green: 0x5a/255.0, blue: 0xa0/255.0)
                         Image(systemName: "app.fill")
-                            .font(.system(size: 22))
+                            .font(.system(size: 20))
                             .foregroundColor(.white)
                     }
                     .frame(width: 38, height: 38)
-                    .cornerRadius(4)
+                    .cornerRadius(6)
                 }
                 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(game.title)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 14.5, weight: .bold))
                         .foregroundColor(.primary)
                         .lineLimit(1)
                     
                     HStack {
                         Text(game.vendor)
-                            .font(.system(size: 12))
+                            .font(.system(size: 11.5, weight: .regular))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                         
                         Spacer()
                         
                         Text("v\(game.version)")
-                            .font(.system(size: 12))
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.secondary)
                     }
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.vertical, 9)
         }
         .buttonStyle(PlainButtonStyle())
         .contextMenu {
@@ -333,23 +340,35 @@ struct GeneralSettingsView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Tùy chọn khởi chạy")) {
-                    Toggle("Khởi chạy nhanh khi bấm vào game", isOn: $quickLaunch)
+                Section(header: Text("TÙY CHỌN KHỞI CHẠY").font(.system(size: 11.5, weight: .semibold))) {
+                    Toggle(isOn: $quickLaunch) {
+                        Text("Khởi chạy nhanh khi bấm vào game")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
                     Text("Khi bật, chạm vào game trong thư viện sẽ vào chơi ngay lập tức mà không hiện hộp thoại cài đặt.")
-                        .font(.footnote)
+                        .font(.system(size: 11.5, weight: .regular))
                         .foregroundColor(.secondary)
                 }
                 
-                Section(header: Text("Tối ưu hệ thống & Chạy ngầm 24/7 (Anti-Crash)")) {
-                    Toggle("Treo game ngầm 24/7 không bị tắt", isOn: $bgKeepAlive)
-                    Toggle("Giữ kết nối mạng Socket liên tục", isOn: $networkKeepAlive)
+                Section(header: Text("TỐI ƯU HỆ THỐNG & CHẠY NGẦM 24/7").font(.system(size: 11.5, weight: .semibold))) {
+                    Toggle(isOn: $bgKeepAlive) {
+                        Text("Treo game ngầm 24/7 không bị tắt")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
+                    Toggle(isOn: $networkKeepAlive) {
+                        Text("Giữ kết nối mạng Socket liên tục")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
                 }
                 
-                Section(header: Text("Bộ nhớ & Dữ liệu")) {
+                Section(header: Text("BỘ NHỚ & DỮ LIỆU").font(.system(size: 11.5, weight: .semibold))) {
                     HStack {
                         Text("Thư mục dữ liệu RMS")
+                            .font(.system(size: 13.5, weight: .regular))
                         Spacer()
-                        Text("Documents/RMS").foregroundColor(.secondary)
+                        Text("Documents/RMS")
+                            .font(.system(size: 12.5, weight: .regular))
+                            .foregroundColor(.secondary)
                     }
                 }
             }
@@ -359,10 +378,13 @@ struct GeneralSettingsView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Đóng") { presentationMode.wrappedValue.dismiss() }
                         .foregroundColor(J2MEColors.accent)
-                        .font(.headline)
+                        .font(.system(size: 14, weight: .bold))
                 }
             }
+            .dynamicTypeSize(.medium)
+            .environment(\.sizeCategory, .medium)
         }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 }
 
@@ -374,43 +396,52 @@ struct AboutView: View {
         NavigationView {
             Form {
                 Section {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 6) {
                         Image(systemName: "gamecontroller.fill")
-                            .font(.system(size: 48))
+                            .font(.system(size: 42))
                             .foregroundColor(J2MEColors.accent)
                         
                         Text("J2HienLoader")
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 20, weight: .bold))
                         
                         Text("Phiên bản 1.8.2 (Tiếng Việt)")
-                            .font(.subheadline)
+                            .font(.system(size: 12.5, weight: .medium))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 6)
                 }
                 
-                Section(header: Text("Tác giả & Đóng góp")) {
+                Section(header: Text("TÁC GIẢ & ĐÓNG GÓP").font(.system(size: 11.5, weight: .semibold))) {
                     HStack {
                         Text("Tác giả bản gốc Android")
+                            .font(.system(size: 13, weight: .regular))
                         Spacer()
-                        Text("Nikita Shakarun (PlaySoftware)").foregroundColor(.secondary)
+                        Text("Nikita Shakarun")
+                            .font(.system(size: 12.5, weight: .regular))
+                            .foregroundColor(.secondary)
                     }
                     HStack {
                         Text("Phát triển bản iOS")
+                            .font(.system(size: 13, weight: .regular))
                         Spacer()
-                        Text("Phạm Trí Hiện").foregroundColor(.secondary).fontWeight(.semibold)
+                        Text("Phạm Trí Hiện")
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundColor(.secondary)
                     }
                     HStack {
                         Text("Đồ họa & Âm thanh")
+                            .font(.system(size: 13, weight: .regular))
                         Spacer()
-                        Text("Apple Metal & Sonivox EAS").foregroundColor(.secondary)
+                        Text("Apple Metal & Sonivox EAS")
+                            .font(.system(size: 12.5, weight: .regular))
+                            .foregroundColor(.secondary)
                     }
                 }
                 
-                Section(header: Text("Giấy phép")) {
+                Section(header: Text("GIẤY PHÉP").font(.system(size: 11.5, weight: .semibold))) {
                     Text("Phát hành theo giấy phép mã nguồn mở Apache License 2.0")
-                        .font(.footnote)
+                        .font(.system(size: 11.5, weight: .regular))
                         .foregroundColor(.secondary)
                 }
             }
@@ -420,10 +451,13 @@ struct AboutView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Đóng") { presentationMode.wrappedValue.dismiss() }
                         .foregroundColor(J2MEColors.accent)
-                        .font(.headline)
+                        .font(.system(size: 14, weight: .bold))
                 }
             }
+            .dynamicTypeSize(.medium)
+            .environment(\.sizeCategory, .medium)
         }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 }
 
@@ -434,19 +468,19 @@ struct HelpView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Cách cài đặt game Java (.jar / .jad)")) {
-                    Text("1. Nhấn vào nút '+' màu đỏ ở góc dưới bên phải màn hình.\n2. Chọn file .jar hoặc .jad từ ứng dụng Tệp (Files), iCloud Drive hoặc tải trực tiếp từ trình duyệt Safari.\n3. Trò chơi sẽ tự động xuất hiện trong thư viện với đầy đủ biểu tượng và thông tin.")
-                        .font(.subheadline)
+                Section(header: Text("CÁCH CÀI ĐẶT GAME JAVA (.JAR / .JAD)").font(.system(size: 11.5, weight: .semibold))) {
+                    Text("1. Nhấn vào nút '+' màu đỏ ở góc dưới bên phải màn hình.\n2. Chọn file .jar hoặc .jad từ ứng dụng Tệp (Files), iCloud Drive hoặc tải trực tiếp từ Safari.\n3. Trò chơi sẽ tự động xuất hiện trong thư viện với đầy đủ biểu tượng và thông tin.")
+                        .font(.system(size: 12.5, weight: .regular))
                 }
                 
-                Section(header: Text("Cách điều khiển khi chơi")) {
+                Section(header: Text("CÁCH ĐIỀU KHIỂN KHI CHƠI").font(.system(size: 11.5, weight: .semibold))) {
                     Text("• Bàn phím ảo: Dùng cụm phím số cổ điển (1-9, *, 0, #), phím điều hướng D-Pad và 2 phím mềm LSK/RSK.\n• Cảm ứng trực tiếp: Chạm hoặc vuốt trực tiếp trên màn hình game.\n• Tay cầm Bluetooth: Hỗ trợ tay cầm PS5, Xbox, MFi và có thể gán phím trong phần Cài đặt.")
-                        .font(.subheadline)
+                        .font(.system(size: 12.5, weight: .regular))
                 }
                 
-                Section(header: Text("Hiệu năng & Âm thanh")) {
+                Section(header: Text("HIỆU NĂNG & ÂM THANH").font(.system(size: 11.5, weight: .semibold))) {
                     Text("• Tăng tốc phần cứng Metal GPU duy trì mượt mà 60 FPS.\n• Bộ tổng hợp Sonivox EAS tái tạo chân thực âm thanh nhạc chuông MIDI đa âm sắc cổ điển.")
-                        .font(.subheadline)
+                        .font(.system(size: 12.5, weight: .regular))
                 }
             }
             .navigationTitle("Hướng dẫn sử dụng")
@@ -455,9 +489,12 @@ struct HelpView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Đóng") { presentationMode.wrappedValue.dismiss() }
                         .foregroundColor(J2MEColors.accent)
-                        .font(.headline)
+                        .font(.system(size: 14, weight: .bold))
                 }
             }
+            .dynamicTypeSize(.medium)
+            .environment(\.sizeCategory, .medium)
         }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 }
