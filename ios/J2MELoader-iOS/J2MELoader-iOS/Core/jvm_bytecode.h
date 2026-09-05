@@ -5,6 +5,7 @@
 #include <string>
 #include <map>
 #include <memory>
+#include <atomic>
 #include <cstdint>
 #include <iostream>
 #include <functional>
@@ -401,6 +402,12 @@ public:
     // Reset Engine State
     void reset();
 
+    // Cooperative cancel for game thread shutdown (checked each opcode).
+    // Lets a blocking run() return promptly so shutdown can join, not detach.
+    void requestCancel() { m_cancel.store(true); }
+    void clearCancel() { m_cancel.store(false); }
+    bool isCancelled() const { return m_cancel.load(); }
+
 private:
     JvmBytecodeEngine();
     std::map<std::string, std::shared_ptr<ClassFile>> m_loadedClasses;
@@ -410,6 +417,7 @@ private:
     std::map<std::string, JavaValue> m_staticFields;
     JarLoader* m_activeJar = nullptr;
     uint32_t m_nextRef = 1;
+    std::atomic<bool> m_cancel{false};
 
     // Native Dispatcher (MIDP 2.0 / CLDC 1.1)
     bool dispatchNativeMethod(const std::string& className, const std::string& methodName, const std::string& desc, const std::vector<JavaValue>& args, JavaValue& outResult, LcduiDisplay* display);

@@ -91,8 +91,11 @@ void JvmInterpreter::shutdown() {
         }
         m_running = false;
         m_runnableRunning = false;
+        // Cooperative stop: running bytecode sees cancel and returns promptly,
+        // so the game thread can be joined (no detach onto a reset heap).
+        JvmBytecodeEngine::getInstance().requestCancel();
         if (m_gameThread.joinable()) {
-            m_gameThread.detach();
+            m_gameThread.join();
         }
         if (m_workerThread.joinable()) {
             m_workerThread.join();
@@ -185,7 +188,7 @@ void JvmInterpreter::startRunnableThread() {
     if (m_runnableClass && m_runnableRef != 0) {
         m_runnableRunning = true;
         if (m_gameThread.joinable()) {
-            m_gameThread.detach();
+            m_gameThread.join();
         }
         m_gameThread = std::thread([this]() {
             auto& jvm = JvmBytecodeEngine::getInstance();

@@ -78,6 +78,7 @@ void JvmBytecodeEngine::reset() {
     m_staticFields.clear();
     m_activeJar = nullptr;
     m_nextRef = 1;
+    m_cancel.store(false);
 }
 
 uint32_t JvmBytecodeEngine::allocObject(const std::string& className) {
@@ -1359,7 +1360,7 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
     const uint8_t* code = method.code.data();
     size_t codeLen = method.code.size();
 
-    while (frame.pc >= 0 && (size_t)frame.pc < codeLen) {
+    while (!m_cancel.load() && frame.pc >= 0 && (size_t)frame.pc < codeLen) {
         uint8_t op = code[frame.pc++];
 
         switch (op) {
