@@ -23,6 +23,8 @@ public:
     // Called from JvmInterpreter key path for high-level screens (Form/List softkeys)
     static void onKey(int keyCode, bool isDown, LcduiDisplay* display);
     static uint32_t currentScreen();
+    // Online games: reconnect a closed socket stream once, returns new fd or -1
+    static int reconnectSocket(uint32_t streamRef);
 };
 
 #endif

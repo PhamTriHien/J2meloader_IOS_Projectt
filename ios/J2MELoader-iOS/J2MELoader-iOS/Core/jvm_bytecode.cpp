@@ -1031,22 +1031,32 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                     if (empty) {
 #if !defined(_WIN32) && !defined(_WIN64)
                         int fd = sfi->second.asInt();
-                        // MIDP blocking read: wait up to ~8s like real phones
-                        for (int w = 0; w < 40; ++w) {
-                            fd_set rs; FD_ZERO(&rs); FD_SET(fd, &rs);
-                            struct timeval tv{0, 200000};
-                            int r = select(fd+1, &rs, nullptr, nullptr, &tv);
-                            if (r > 0 && FD_ISSET(fd, &rs)) {
-                                uint8_t tmp[4096]; ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
-                                if (n > 0) {
-                                    uint32_t na = allocArray(8, (int)n);
-                                    JavaArray* naa = getArray(na);
-                                    if (naa) naa->byteData.assign(tmp, tmp + n);
-                                    obj->fields["buf"] = JavaValue(na, true);
-                                    obj->fields["pos"] = JavaValue(0);
+                        // MIDP blocking read: wait up to ~8s like real phones,
+                        // reconnect once on orderly close (online games drop idle sockets)
+                        for (int attempt = 0; attempt < 2; ++attempt) {
+                            bool gotClose = false;
+                            for (int w = 0; w < 40; ++w) {
+                                fd_set rs; FD_ZERO(&rs); FD_SET(fd, &rs);
+                                struct timeval tv{0, 200000};
+                                int r = select(fd+1, &rs, nullptr, nullptr, &tv);
+                                if (r > 0 && FD_ISSET(fd, &rs)) {
+                                    uint8_t tmp[4096]; ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
+                                    if (n > 0) {
+                                        uint32_t na = allocArray(8, (int)n);
+                                        JavaArray* naa = getArray(na);
+                                        if (naa) naa->byteData.assign(tmp, tmp + n);
+                                        obj->fields["buf"] = JavaValue(na, true);
+                                        obj->fields["pos"] = JavaValue(0);
+                                    } else if (n == 0) {
+                                        gotClose = true;
+                                    }
+                                    break;
                                 }
-                                break;
                             }
+                            if (!gotClose) break;
+                            int nfd = FullApis::reconnectSocket(args[0].asRef());
+                            if (nfd < 0) break;
+                            fd = nfd;
                         }
 #endif
                     }
@@ -1207,6 +1217,17 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
             int avail = arr ? std::max(0, (int)arr->byteData.size() - pos) : 0;
+#if !defined(_WIN32) && !defined(_WIN64)
+            // Socket streams: peek kernel buffer so game loops see live data
+            if (avail == 0 && obj) {
+                auto sfi = obj->fields.find("sockFd");
+                if (sfi != obj->fields.end() && sfi->second.asInt() >= 0) {
+                    uint8_t tmp[2048];
+                    ssize_t n = recv(sfi->second.asInt(), tmp, sizeof(tmp), MSG_PEEK | MSG_DONTWAIT);
+                    if (n > 0) avail = (int)n;
+                }
+            }
+#endif
             outResult = JavaValue(avail);
             return true;
         }

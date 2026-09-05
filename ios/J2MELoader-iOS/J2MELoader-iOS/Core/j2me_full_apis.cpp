@@ -28,6 +28,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -49,6 +51,7 @@ int native_calendar_count(void) __attribute__((weak));
 void native_contacts_request(void) __attribute__((weak));
 void native_calendar_request(void) __attribute__((weak));
 bool native_contact_get(int index, char *name, int nameCap, char *phone, int phoneCap) __attribute__((weak));
+bool native_http_send(const char *url, const char *method, const uint8_t *body, int bodyLen, uint8_t **outData, int *outLen, int *outCode, char *outType, int typeCap) __attribute__((weak));
 bool native_can_send_text(void) __attribute__((weak));
 void native_vibrate(int ms) __attribute__((weak));
 bool native_camera_snapshot(uint8_t **outPNG, int *outLen) __attribute__((weak));
@@ -91,6 +94,16 @@ static int tcpConnect(const std::string& host, int port){
     }
     freeaddrinfo(res);
     if(fd>=0){
+        // Online games: low latency + survive NAT timeout during play
+        int one=1;
+        setsockopt(fd,IPPROTO_TCP,TCP_NODELAY,&one,sizeof(one));
+        setsockopt(fd,SOL_SOCKET,SO_KEEPALIVE,&one,sizeof(one));
+#if defined(TCP_KEEPIDLE) && defined(TCP_KEEPINTVL) && defined(TCP_KEEPCNT)
+        int idle=30, intvl=15, cnt=4;
+        setsockopt(fd,IPPROTO_TCP,TCP_KEEPIDLE,&idle,sizeof(idle));
+        setsockopt(fd,IPPROTO_TCP,TCP_KEEPINTVL,&intvl,sizeof(intvl));
+        setsockopt(fd,IPPROTO_TCP,TCP_KEEPCNT,&cnt,sizeof(cnt));
+#endif
         int fl=fcntl(fd,F_GETFL,0); fcntl(fd,F_SETFL,fl|O_NONBLOCK);
         if(hasNative((const void*)native_background_keepalive_start)) native_background_keepalive_start();
     }
@@ -224,15 +237,39 @@ struct EnumData { std::vector<uint32_t> items; size_t idx=0; };
 static std::map<uint32_t, EnumData> g_enums;
 struct PlayerData { std::vector<uint8_t> data; std::string ctype; std::string locator; int loop=1; bool playing=false; };
 static std::map<uint32_t, PlayerData> g_players;
-struct ConnData { std::string url; std::string kind; std::string method="GET"; std::vector<uint8_t> body; int code=0; std::string mime; bool fetched=false; };
+struct ConnData { std::string url; std::string kind; std::string method="GET"; std::vector<uint8_t> body; std::vector<uint8_t> postBody; int code=0; std::string mime; bool fetched=false; };
 static std::map<uint32_t, ConnData> g_conns;
 
-// Fetch HTTP once per connection via real iOS NSURLSession (background-capable)
+// Fetch HTTP once per connection via real iOS NSURLSession (background-capable).
+// POSTs pending request body (score submit/login) collected from openOutputStream.
 static ConnData& httpEnsure(uint32_t ref){
     ConnData &c = g_conns[ref];
-    if(!c.fetched && hasNative((const void*)native_http_fetch) && (c.kind=="javax/microedition/io/HttpConnection"||c.kind=="javax/microedition/io/HttpsConnection")){
+    if(!c.fetched && (c.kind=="javax/microedition/io/HttpConnection"||c.kind=="javax/microedition/io/HttpsConnection")){
+        // Collect any pending POST body written via openOutputStream before openInputStream
+        if(c.postBody.empty()){
+            for(auto &kv : g_baos){
+                JavaObject*so=ENG().getObject(kv.first);
+                if(so && so->fields["connRef"].asInt()==(int32_t)ref && !kv.second.empty()){
+                    c.postBody=kv.second; kv.second.clear(); break;
+                }
+            }
+        }
+        if(c.method!="GET"&&c.method!="HEAD"&&c.postBody.empty()){
+            for(auto &kv : g_baos){
+                JavaObject*so=ENG().getObject(kv.first);
+                if(so && so->fields["connRef"].asInt()==(int32_t)ref && !kv.second.empty()){
+                    c.postBody=kv.second; kv.second.clear(); break;
+                }
+            }
+        }
         uint8_t *d=nullptr; int n=0, code=0; char mt[128]={0};
-        bool ok = native_http_fetch(c.url.c_str(), c.method.c_str(), &d, &n, &code, mt, sizeof(mt));
+        bool ok=false;
+        if(!c.postBody.empty() && hasNative((const void*)native_http_send)){
+            std::string m = (c.method=="GET"||c.method=="HEAD") ? "POST" : c.method;
+            ok = native_http_send(c.url.c_str(), m.c_str(), c.postBody.data(), (int)c.postBody.size(), &d, &n, &code, mt, sizeof(mt));
+        } else if(hasNative((const void*)native_http_fetch)){
+            ok = native_http_fetch(c.url.c_str(), c.method.c_str(), &d, &n, &code, mt, sizeof(mt));
+        }
         c.code = ok ? (code?code:200) : 404;
         c.mime = mt[0]?mt:"application/octet-stream";
         if(ok && d && n>0) c.body.assign(d, d+n);
@@ -256,6 +293,23 @@ void FullApis::reset(){
     ENG().setStaticField("javax/microedition/m3g/Graphics3D:VERSION", JavaValue(1));
 }
 uint32_t FullApis::currentScreen(){ return g_currentScreen; }
+int FullApis::reconnectSocket(uint32_t streamRef){
+    JavaObject*so=ENG().getObject(streamRef);
+    if(!so) return -1;
+    auto cf=so->fields.find("connRef"); if(cf==so->fields.end()) return -1;
+    uint32_t conn=(uint32_t)cf->second.asInt();
+    auto it=g_conns.find(conn); if(it==g_conns.end()) return -1;
+    std::string host; int port=0;
+    if(!parseHostPort(it->second.url, host, port)) return -1;
+    int fd=tcpConnect(host, port);
+    if(fd>=0){
+        auto sf=g_sockFd.find(conn);
+        if(sf!=g_sockFd.end()) tcpClose(sf->second);
+        g_sockFd[conn]=fd;
+        so->fields["sockFd"]=JavaValue(fd);
+    }
+    return fd;
+}
 void FullApis::onKey(int keyCode, bool isDown, LcduiDisplay* display){
     if(!isDown) return;
     if(g_currentScreen==0) return;
@@ -1440,7 +1494,8 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 auto sf=g_sockFd.find(self); if(sf!=g_sockFd.end()) sockFd=sf->second;
             }
             uint32_t r=ENG().allocObject("java/io/ByteArrayOutputStream"); g_baos[r]={};
-            JavaObject*o=ENG().getObject(r); if(o && sockFd>=0){ o->fields["sockFd"]=JavaValue(sockFd); o->fields["connRef"]=JavaValue((int32_t)self); }
+            // Always link stream->connection so HTTP POST bodies are collected on openInputStream
+            JavaObject*o=ENG().getObject(r); if(o){ o->fields["connRef"]=JavaValue((int32_t)self); if(sockFd>=0) o->fields["sockFd"]=JavaValue(sockFd); }
             outResult=JavaValue(r,true); return true;
         }
         if(methodName=="close"){

@@ -18,6 +18,11 @@ void native_free(void *p);
 bool native_http_fetch(const char *url, const char *method,
                        uint8_t **outData, int *outLen,
                        int *outCode, char *outType, int typeCap);
+// POST/PUT with body (score submit, login). NULL body = GET-style.
+bool native_http_send(const char *url, const char *method,
+                      const uint8_t *body, int bodyLen,
+                      uint8_t **outData, int *outLen,
+                      int *outCode, char *outType, int typeCap);
 
 // Socket/Datagram reachability check (socket://, datagram://)
 bool native_socket_test(const char *url);

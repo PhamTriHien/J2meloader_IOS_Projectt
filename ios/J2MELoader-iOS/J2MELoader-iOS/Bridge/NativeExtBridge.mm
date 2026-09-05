@@ -117,6 +117,51 @@ bool native_http_fetch(const char *url, const char *method,
     return true;
 }
 
+bool native_http_send(const char *url, const char *method,
+                      const uint8_t *body, int bodyLen,
+                      uint8_t **outData, int *outLen,
+                      int *outCode, char *outType, int typeCap) {
+    if (!url || !outData || !outLen) return false;
+    *outData = NULL; *outLen = 0;
+    if (outCode) *outCode = 0;
+    if (outType && typeCap > 0) outType[0] = 0;
+    NSString *nsURL = [NSString stringWithUTF8String:url];
+    NSURL *u = nsURL ? [NSURL URLWithString:nsURL] : nil;
+    if (!u) return false;
+    NSString *m = method ? [NSString stringWithUTF8String:method] : @"GET";
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:u];
+    req.HTTPMethod = m.length ? m : @"GET";
+    req.timeoutInterval = 25.0;
+    [req setValue:@"J2MELoader-iOS/1.8.2 (MIDP-2.0; CLDC-1.1)" forHTTPHeaderField:@"User-Agent"];
+    if (body && bodyLen > 0) {
+        req.HTTPBody = [NSData dataWithBytes:body length:bodyLen];
+        [req setValue:@"application/octet-stream" forHTTPHeaderField:@"Content-Type"];
+    }
+    UIBackgroundTaskIdentifier bg = [[UIApplication sharedApplication] beginBackgroundTaskWithName:@"j2me-http" expirationHandler:^{}];
+    __block NSData *respData = nil;
+    __block NSHTTPURLResponse *httpResp = nil;
+    __block NSError *respErr = nil;
+    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+    [[NSURLSession.sharedSession dataTaskWithRequest:req completionHandler:^(NSData *d, NSURLResponse *r, NSError *e) {
+        respData = d; httpResp = (NSHTTPURLResponse *)r; respErr = e;
+        dispatch_semaphore_signal(sem);
+    }] resume];
+    dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(30 * NSEC_PER_SEC)));
+    [[UIApplication sharedApplication] endBackgroundTask:bg];
+    if (respErr || !respData) return false;
+    if (httpResp && [httpResp isKindOfClass:[NSHTTPURLResponse class]]) {
+        if (outCode) *outCode = (int)httpResp.statusCode;
+        NSString *mime = httpResp.MIMEType ?: @"";
+        if (outType && typeCap > 0) { strncpy(outType, mime.UTF8String ?: "", typeCap - 1); outType[typeCap - 1] = 0; }
+    } else if (outCode) *outCode = 200;
+    size_t n = respData.length;
+    uint8_t *buf = (uint8_t *)malloc(n ? n : 1);
+    if (!buf) return false;
+    if (n) memcpy(buf, respData.bytes, n);
+    *outData = buf; *outLen = (int)n;
+    return true;
+}
+
 bool native_socket_test(const char *url) {
     if (!url) return false;
     NSString *s = [NSString stringWithUTF8String:url];
