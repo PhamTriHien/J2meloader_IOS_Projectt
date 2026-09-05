@@ -14,9 +14,10 @@ A high-performance, native J2ME (Java ME / MIDP 2.0 / CLDC 1.1) emulator ported 
   - Transparent overlay mode.
   - Direct touchscreen canvas support.
 * **Haptic Touch Feedback**: Realistic tactile button clicks via `UIImpactFeedbackGenerator`.
-* **Audio & MIDI Synthesizer**: Native CoreAudio / AVAudioEngine integration with MIDI playback and tone generation.
+* **Audio**: Sonivox EAS (MIDI/iMelody) + WAV/MP3/AMR via `AVAudioPlayer`, tone Nokia/Samsung/Siemens.
 * **RMS (Record Management System)**: Persistent save states and high scores stored securely in the app sandbox.
 * **Aspect Ratios & Resolutions**: Support for 128x128, 128x160, 176x208, 176x220, 240x320 (QVGA), 320x240 (Landscape), 360x640, and custom dimensions.
+* **Unicode font**: Vietnamese/CJK via CoreText, ASCII keeps retro 8x8.
 
 ---
 
@@ -29,11 +30,14 @@ ios/J2MELoader-iOS/
     ├── App/                     # SwiftUI App Lifecycle (J2MELoaderApp.swift)
     ├── Models/                  # Data Models (GameItem, EmulatorConfig, KeyMapping, GameManager)
     ├── Views/                   # UI Screens (LibraryView, GameScreenView, VirtualKeypadView, SettingsView, MetalView)
-    ├── Bridge/                  # Objective-C++ Bridges (J2MEBridge, AudioBridge, Bridging Header)
-    ├── Core/                    # C++ J2ME Engine (jar_loader, lcdui_display, rms_storage, jvm_interpreter)
+    ├── Bridge/                  # Obj-C++ Bridges (J2MEBridge, AudioBridge, NativeExtBridge, NativeFontBridge)
+    ├── Core/                    # C++ J2ME Engine (jvm_bytecode/interpreter, j2me_full_apis, m3g/micro3d, lcdui, rms)
+    ├── Audio/                   # Sonivox EAS engine + eas_engine_bridge
     ├── Shaders/                 # Metal Vertex & Fragment Shaders (Shaders.metal)
     └── Resources/               # Info.plist & Assets.xcassets
 ```
+
+> Scope: core game-running features only. No BT-classic multiplayer, no background carrier SMS.
 
 ---
 
