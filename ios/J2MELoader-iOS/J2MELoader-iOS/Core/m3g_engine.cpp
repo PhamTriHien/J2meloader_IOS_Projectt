@@ -181,6 +181,7 @@ void M3GGraphics3D::renderWorld(const std::vector<M3GVertex>& verts, const std::
 // ---- Real M3G v1.0 parser (header + sections + embedded PNG/JPEG + float verts) ----
 #include "png_decoder.h"
 #include <cstring>
+#include <zlib.h>
 static uint32_t m3gU32(const uint8_t* p) { return ((uint32_t)p[0]) | ((uint32_t)p[1]<<8) | ((uint32_t)p[2]<<16) | ((uint32_t)p[3]<<24); }
 static uint32_t m3gVarInt(const uint8_t* d, size_t n, size_t& pos) {
     uint32_t v = 0; int shift = 0;
@@ -200,67 +201,72 @@ bool M3GLoader::parse(const uint8_t* data, size_t size,
     size_t pos = 12;
     std::vector<float> floatPool;
     floatPool.reserve(4096);
-    // Scan sections
+    std::vector<uint8_t> secBuf;
+    // Scan sections (comp 0 = raw, 1 = zlib)
     while (pos + 9 <= size) {
         uint8_t comp = data[pos];
         uint32_t secLen = m3gU32(data + pos + 1);
         uint32_t uncompLen = m3gU32(data + pos + 5);
-        (void)comp; (void)uncompLen;
         if (secLen < 13 || pos + secLen > size) break;
-        size_t secEnd = pos + secLen - 4; // exclude checksum
-        size_t p = pos + 9;
-        // Objects in section
+        const uint8_t* secData = data + pos + 9;
+        size_t secDataLen = secLen - 13; // minus header(9) and checksum(4)
+        if (comp == 1) {
+            if (uncompLen == 0 || uncompLen > (8 << 20)) { pos += secLen; continue; }
+            secBuf.assign(uncompLen, 0);
+            uLongf dl = (uLongf)uncompLen;
+            if (uncompress(secBuf.data(), &dl, secData, (uLong)secDataLen) != Z_OK) { pos += secLen; continue; }
+            secData = secBuf.data();
+            secDataLen = (size_t)dl;
+        } else if (comp != 0) { pos += secLen; continue; }
+        size_t secEnd = secDataLen;
+        size_t p = 0;
+        // Objects in section (secData may be decompressed)
+        auto saneF = [](float f) -> bool {
+            if (!(f == f)) return false; // NaN
+            float a = f < 0 ? -f : f;
+            if (a == 0.0f) return true;
+            return a >= 1e-4f && a <= 20.0f; // kills header denormals + garbage
+        };
         while (p + 2 <= secEnd) {
-            uint8_t otype = data[p++];
+            uint8_t otype = secData[p++];
             size_t lp = p;
-            uint32_t olen = m3gVarInt(data, secEnd, lp);
+            uint32_t olen = m3gVarInt(secData, secEnd, lp);
             p = lp;
             if (p + olen > secEnd) break;
-            const uint8_t* ob = data + p;
-            // Background (4): byte red,green,blue, image?
+            const uint8_t* ob = secData + p;
+            // Background (4): byte red,green,blue
             if (otype == 4 && olen >= 3) {
                 bgColor = 0xFF000000 | (ob[0] << 16) | (ob[1] << 8) | ob[2];
             }
-            // VertexArray (23): [numVertices varint][numComponents byte][componentSize byte][scale+bias?][data...]
+            // VertexArray (23): collect runs of sane float triplets
             if (otype == 23 && olen > 4) {
-                size_t q = 0;
-                // best-effort: collect all floats in object as candidate verts
-                for (size_t k = 0; k + 4 <= olen; k++) {
-                    float f; memcpy(&f, ob + k, 4);
-                    // M3G is little-endian floats; filter sane range
-                    if (f == f && f > -50.0f && f < 50.0f) {
-                        // require 3 consecutive sane floats to reduce noise
-                        if (k + 12 <= olen) {
-                            float f2, f3; memcpy(&f2, ob + k + 4, 4); memcpy(&f3, ob + k + 8, 4);
-                            if (f2 == f2 && f3 == f3 && f2 > -50 && f2 < 50 && f3 > -50 && f3 < 50) {
-                                floatPool.push_back(f); floatPool.push_back(f2); floatPool.push_back(f3);
-                                k += 8;
-                            }
-                        }
-                    }
-                    (void)q;
+                int run = 0;
+                for (size_t k = 0; k + 12 <= olen; k += 4) {
+                    float f, f2, f3; memcpy(&f, ob + k, 4); memcpy(&f2, ob + k + 4, 4); memcpy(&f3, ob + k + 8, 4);
+                    if (saneF(f) && saneF(f2) && saneF(f3)) {
+                        floatPool.push_back(f); floatPool.push_back(f2); floatPool.push_back(f3);
+                        k += 8; run++;
+                    } else if (run > 0 && run < 2) {
+                        // drop isolated false triplets
+                        for (int r = 0; r < run * 3; r++) floatPool.pop_back();
+                        run = 0;
+                    } else run = 0;
                 }
+                if (run > 0 && run < 2) for (int r = 0; r < run * 3; r++) floatPool.pop_back();
             }
-            // Image2D (9): try find embedded PNG/JPEG inside object
-            if (otype == 9 && olen > 16) {
+            // Image2D (9): embedded PNG
+            if (otype == 9 && olen > 16 && outTex.empty()) {
                 for (size_t k = 0; k + 8 <= olen; k++) {
-                    bool isPng = (ob[k]==0x89&&ob[k+1]=='P'&&ob[k+2]=='N'&&ob[k+3]=='G');
-                    bool isJpg = (ob[k]==0xFF&&ob[k+1]==0xD8);
-                    if (isPng || outTex.empty()) {
-                        if (isPng) {
-                            // PNG length unknown: try decode from k to end of object
-                            int w=0,h=0; std::vector<uint32_t> px;
-                            // Try increasing windows (object may contain exact PNG)
-                            for (size_t e = olen; e > k + 64; e -= 64) {
-                                if (PngDecoder::decode(ob+k, e-k, w, h, px) && w>0 && h>0 && w<=1024 && h<=1024) {
-                                    outTex = std::move(px); texW = w; texH = h; break;
-                                }
-                                if (!outTex.empty()) break;
+                    if (ob[k]==0x89&&ob[k+1]=='P'&&ob[k+2]=='N'&&ob[k+3]=='G') {
+                        int w=0,h=0; std::vector<uint32_t> px;
+                        for (size_t e = olen; e > k + 64; e -= 64) {
+                            if (PngDecoder::decode(ob+k, e-k, w, h, px) && w>0 && h>0 && w<=1024 && h<=1024) {
+                                outTex = std::move(px); texW = w; texH = h; break;
                             }
                             if (!outTex.empty()) break;
                         }
+                        if (!outTex.empty()) break;
                     }
-                    (void)isJpg;
                 }
             }
             p += olen;

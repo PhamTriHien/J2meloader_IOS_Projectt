@@ -810,7 +810,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 Mat4 view=Mat4::identity(); view.m[14]=-4;
                 M3GGraphics3D::getInstance().setCamera(cam,view);
                 if(wit != g_m3gWorlds.end() && !wit->second.verts.empty()){
-                    // Apply World.animate(time): rotate model by animTime for visible motion
+                    // Apply World.animate(time): rotate model by animTime (real animation state)
                     JavaObject*wo=ENG().getObject(worldRef);
                     int at=wo?wo->fields["animTime"].asInt():0;
                     if(at!=0){
@@ -826,12 +826,8 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                             wit->second.tex.empty()?nullptr:wit->second.tex.data(), wit->second.tw, wit->second.th, wit->second.bg);
                     }
                 } else {
+                    // No parsed mesh: clear only (no fake geometry)
                     M3GGraphics3D::getInstance().clear(0xFF000000);
-                    static float ang=0; ang+=0.05f;
-                    Mat4 model=Mat4::identity(); float c=cosf(ang),s=sinf(ang); model.m[0]=c; model.m[2]=s; model.m[8]=-s; model.m[10]=c;
-                    std::vector<M3GVertex> v={ {Vec3(-1,-1,1),Vec3(0,0,1),0,0,0xFFFF0000},{Vec3(1,-1,1),Vec3(0,0,1),1,0,0xFF00FF00},{Vec3(1,1,1),Vec3(0,0,1),1,1,0xFF0000FF},{Vec3(-1,1,1),Vec3(0,0,1),0,1,0xFFFFFFFF} };
-                    std::vector<uint16_t> idx={0,1,2,0,2,3};
-                    M3GGraphics3D::getInstance().renderMesh(v,idx,model);
                 }
                 M3GGraphics3D::getInstance().releaseTarget();
                 return true;
@@ -934,9 +930,12 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             if(methodName=="getActiveCamera"){ outResult=JavaValue(ENG().allocObject("javax/microedition/m3g/Camera"),true); return true; }
         }
         if(className=="javax/microedition/m3g/SkinnedMesh"||className=="javax/microedition/m3g/MorphingMesh"){
-            if(methodName=="<init>") return true;
+            uint32_t self=args.empty()?0:args[0].asRef();
+            if(methodName=="<init>"){ JavaObject*o=ENG().getObject(self); if(o){ o->fields["blend"]=JavaValue(1.0f); o->fields["target"]=JavaValue(0); } return true; }
             if(methodName=="getSkeleton"||methodName=="getTargets"){ uint32_t arr=ENG().allocArray(0,0); outResult=JavaValue(arr,true); return true; }
-            if(methodName=="setBlend"||methodName=="getBlend"||methodName=="addTransform") return true;
+            if(methodName=="setBlend"&&args.size()>=3){ JavaObject*o=ENG().getObject(self); if(o){ o->fields["target"]=args[1]; o->fields["blend"]=args[2]; } return true; }
+            if(methodName=="getBlend"&&args.size()>=2){ JavaObject*o=ENG().getObject(self); outResult=o?o->fields["blend"]:JavaValue(1.0f); return true; }
+            if(methodName=="addTransform"||methodName=="getSkeleton") return true;
             return true;
         }
         // generic M3G stub: return plausible defaults
@@ -1082,14 +1081,8 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 }
                 if(fit!=g_microFig.end() && fit->second){
                     fit->second->draw(display, tr);
-                } else {
-                    M3GGraphics3D::getInstance().bindTarget(display);
-                    M3GCamera cam; M3GGraphics3D::getInstance().setCamera(cam,Mat4::identity());
-                    Mat4 m=Mat4::identity();
-                    std::vector<M3GVertex> v={ {Vec3(-1,-1,0),Vec3(0,0,1),0,0,0xFF00FFFF},{Vec3(1,-1,0),Vec3(0,0,1),1,0,0xFFFFFF00},{Vec3(0,1,0),Vec3(0,0,1),0.5f,1,0xFFFF00FF} };
-                    std::vector<uint16_t> ix={0,1,2}; M3GGraphics3D::getInstance().renderMesh(v,ix,m);
-                    M3GGraphics3D::getInstance().releaseTarget();
                 }
+                // Unknown figure: draw nothing (no fake triangle)
                 return true;
             }
             if(methodName=="dispose") return true;

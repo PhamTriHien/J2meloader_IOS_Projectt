@@ -71,30 +71,9 @@ Micro3DFigure::Micro3DFigure(const std::vector<uint8_t>& mbacData) {
     parseMbac(mbacData.data(), mbacData.size());
 }
 
-static void micro3dFallbackCube(std::vector<M3GVertex>& v, std::vector<uint16_t>& idx) {
-    v = {
-        { Vec3(-1.0f, -1.0f,  1.0f), Vec3(0,0,1), 0.0f, 0.0f },
-        { Vec3( 1.0f, -1.0f,  1.0f), Vec3(0,0,1), 1.0f, 0.0f },
-        { Vec3( 1.0f,  1.0f,  1.0f), Vec3(0,0,1), 1.0f, 1.0f },
-        { Vec3(-1.0f,  1.0f,  1.0f), Vec3(0,0,1), 0.0f, 1.0f },
-        { Vec3(-1.0f, -1.0f, -1.0f), Vec3(0,0,-1), 1.0f, 0.0f },
-        { Vec3(-1.0f,  1.0f, -1.0f), Vec3(0,0,-1), 1.0f, 1.0f },
-        { Vec3( 1.0f,  1.0f, -1.0f), Vec3(0,0,-1), 0.0f, 1.0f },
-        { Vec3( 1.0f, -1.0f, -1.0f), Vec3(0,0,-1), 0.0f, 0.0f }
-    };
-    idx = {
-        0, 1, 2,  0, 2, 3,
-        4, 5, 6,  4, 6, 7,
-        5, 0, 3,  5, 3, 6,
-        4, 7, 1,  4, 1, 0,
-        1, 7, 6,  1, 6, 2,
-        4, 0, 3,  4, 3, 5
-    };
-}
-
 void Micro3DFigure::parseMbac(const uint8_t* data, size_t size) {
     m_vertices.clear(); m_indices.clear();
-    if (!data || size < 16) { micro3dFallbackCube(m_vertices, m_indices); return; }
+    if (!data || size < 16) return; // no fake geometry: unknown format renders nothing
     bool isMbac = (size >= 4 && memcmp(data, "MBAC", 4) == 0);
     // Try real vertex extraction: BE s16 triplets after header
     // Layout guess: [0..3 magic][4..5 ver][6..7 nObj][8..9 nVert][10..11 nIdx][12.. verts s16 BE]
@@ -127,10 +106,10 @@ void Micro3DFigure::parseMbac(const uint8_t* data, size_t size) {
         float mnx=xs[0],mxx=xs[0],mny=ys[0],mxy=ys[0],mnz=zs[0],mxz=zs[0];
         for (size_t i=1;i<vcount;i++){ mnx=std::min(mnx,xs[i]); mxx=std::max(mxx,xs[i]); mny=std::min(mny,ys[i]); mxy=std::max(mxy,ys[i]); mnz=std::min(mnz,zs[i]); mxz=std::max(mxz,zs[i]); }
         float ex=mxx-mnx, ey=mxy-mny, ez=mxz-mnz;
-        // Reject garbage (extreme range or zero volume and huge values)
+        // Reject garbage (extreme range): try LE variant below instead of fake cube
         if (ex < 0.5f || ex > 2000.0f || ey < 0.5f || ey > 2000.0f || ez < 0.5f || ez > 2000.0f) {
-            micro3dFallbackCube(m_vertices, m_indices); return;
-        }
+            m_vertices.clear(); m_indices.clear();
+        } else {
         float sc = 2.0f / std::max({ex, ey, ez});
         for (size_t i=0;i<vcount && i<3000;i++){
             M3GVertex vtx;
@@ -143,23 +122,55 @@ void Micro3DFigure::parseMbac(const uint8_t* data, size_t size) {
         }
         while (m_indices.size()%3) m_indices.pop_back();
         if (m_vertices.size()>=3 && m_indices.size()>=3) return;
+        m_vertices.clear(); m_indices.clear();
+        // Retry little-endian s16 (some exporters)
+        for (size_t i = 0; i < vcount && i < 3000; i++) {
+            size_t o = voff + i*6;
+            if (o + 5 >= size) break;
+            float x = (int16_t)((uint16_t)data[o] | ((uint16_t)data[o+1] << 8)) / 256.0f;
+            float y = (int16_t)((uint16_t)data[o+2] | ((uint16_t)data[o+3] << 8)) / 256.0f;
+            float z = (int16_t)((uint16_t)data[o+4] | ((uint16_t)data[o+5] << 8)) / 256.0f;
+            xs[i]=x; ys[i]=y; zs[i]=z;
+        }
+        mnx=xs[0];mxx=xs[0];mny=ys[0];mxy=ys[0];mnz=zs[0];mxz=zs[0];
+        for (size_t i=1;i<vcount;i++){ mnx=std::min(mnx,xs[i]); mxx=std::max(mxx,xs[i]); mny=std::min(mny,ys[i]); mxy=std::max(mxy,ys[i]); mnz=std::min(mnz,zs[i]); mxz=std::max(mxz,zs[i]); }
+        ex=mxx-mnx; ey=mxy-mny; ez=mxz-mnz;
+        if (ex >= 0.5f && ex <= 2000.0f && ey >= 0.5f && ey <= 2000.0f && ez >= 0.5f && ez <= 2000.0f) {
+            float sc2 = 2.0f / std::max({ex, ey, ez});
+            for (size_t i=0;i<vcount && i<3000;i++){
+                M3GVertex vtx;
+                vtx.position.x=(xs[i]-(mnx+mxx)*0.5f)*sc2;
+                vtx.position.y=(ys[i]-(mny+mxy)*0.5f)*sc2;
+                vtx.position.z=(zs[i]-(mnz+mxz)*0.5f)*sc2;
+                vtx.normal=Vec3(0,0,1); vtx.u=(i%2)?1.0f:0.0f; vtx.v=(i/2%2)?1.0f:0.0f; vtx.color=0xFFFFFFFF;
+                m_vertices.push_back(vtx);
+                m_indices.push_back((uint16_t)i);
+            }
+            while (m_indices.size()%3) m_indices.pop_back();
+            if (m_vertices.size()>=3 && m_indices.size()>=3) return;
+            m_vertices.clear(); m_indices.clear();
+        }
     }
-    // Generic float-triplet scan fallback (some MBAC store float)
+    // Generic float-triplet scan (some MBAC store LE float): strict runs only
     if (size >= 48) {
-        std::vector<float> pool;
+        auto okF = [](float f)->bool{ if(!(f==f)) return false; float a=f<0?-f:f; if(a==0) return true; return a>=1e-4f&&a<=20.0f; };
+        std::vector<float> pool; int run=0;
         for (size_t k=0;k+12<=size && pool.size()<9000;k+=4){
             float a,b,c; memcpy(&a,data+k,4); memcpy(&b,data+k+4,4); memcpy(&c,data+k+8,4);
-            // MBAC LE floats typically small
-            if (a==a&&b==b&&c==c&&a>-64&&a<64&&b>-64&&b<64&&c>-64&&c<64) { pool.push_back(a); pool.push_back(b); pool.push_back(c); k+=8; }
+            if (okF(a)&&okF(b)&&okF(c)) { pool.push_back(a); pool.push_back(b); pool.push_back(c); k+=8; run++; }
+            else if (run>0&&run<2){ for(int r=0;r<run*3;r++) pool.pop_back(); run=0; }
+            else run=0;
         }
+        if (run>0&&run<2) for(int r=0;r<run*3;r++) pool.pop_back();
         if (pool.size()>=27){
             size_t nv=std::min<size_t>(pool.size()/3,2000);
             for(size_t i=0;i<nv;i++){ M3GVertex vtx; vtx.position=Vec3(pool[i*3]*0.1f,pool[i*3+1]*0.1f,pool[i*3+2]*0.1f); vtx.normal=Vec3(0,0,1); vtx.color=0xFFFFFFFF; m_vertices.push_back(vtx); m_indices.push_back((uint16_t)i); }
             while(m_indices.size()%3) m_indices.pop_back();
             if(m_vertices.size()>=3) return;
+            m_vertices.clear(); m_indices.clear();
         }
     }
-    micro3dFallbackCube(m_vertices, m_indices);
+    // No fake geometry: unknown format renders nothing (caller draws empty)
 }
 
 void Micro3DFigure::setTexture(const Micro3DTexture& tex) {
