@@ -310,6 +310,9 @@ int FullApis::reconnectSocket(uint32_t streamRef){
     }
     return fd;
 }
+
+static void renderScreen(uint32_t ref, LcduiDisplay* display);
+
 void FullApis::onKey(int keyCode, bool isDown, LcduiDisplay* display){
     if(!isDown) return;
     if(g_currentScreen==0) return;
@@ -620,7 +623,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             if(methodName=="<init>"){ g_baos[self]={}; return true; }
             if(methodName=="writeInt"&&args.size()>=2){ int32_t v=args[1].asInt(); auto&b=g_baos[self]; b.push_back((v>>24)&0xFF); b.push_back((v>>16)&0xFF); b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
             if(methodName=="writeShort"&&args.size()>=2){ int v=args[1].asInt(); auto&b=g_baos[self]; b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
-            if(methodName=="writeByte"||methodName=="write"&&args.size()==2){ g_baos[self].push_back((uint8_t)args[1].asInt()); return true; }
+            if((methodName=="writeByte"||methodName=="write")&&args.size()==2){ g_baos[self].push_back((uint8_t)args[1].asInt()); return true; }
             if(methodName=="writeUTF"&&args.size()>=2){ std::string s=ENG().getString(args[1].asRef()); auto&b=g_baos[self]; uint16_t l=(uint16_t)s.size(); b.push_back((l>>8)&0xFF); b.push_back(l&0xFF); for(char c:s)b.push_back(c); return true; }
             if(methodName=="flush"||methodName=="close") return true;
             if(methodName=="size"){ auto it=g_baos.find(self); outResult=JavaValue(it==g_baos.end()?0:(int32_t)it->second.size()); return true; }
@@ -1519,7 +1522,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 if(d&&src) for(int i=0;i<sz&&(size_t)i<src->byteData.size()&&(size_t)i<d->byteData.size();i++) d->byteData[i]=src->byteData[i];
                 o->fields["buf"]=JavaValue(arr,true); o->fields["len"]=JavaValue(sz);
                 o->fields["addr"]=JavaValue(args.size()>=4?args[3].asRef():0,true);
-                o->fields["sockFd"]=JavaValue(self);
+                o->fields["sockFd"]=JavaValue((int32_t)self);
             }
             outResult=JavaValue(dg,true); return true;
         }
