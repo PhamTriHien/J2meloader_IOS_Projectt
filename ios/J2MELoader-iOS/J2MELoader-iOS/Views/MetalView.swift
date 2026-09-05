@@ -67,14 +67,28 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
     }
     
     func updateConfig(_ config: EmulatorConfig) {
+        let needPipelineUpdate = self.config.filterMode != config.filterMode
         self.config = config
+        if needPipelineUpdate {
+            setupPipeline()
+        }
     }
     
     func setupPipeline() {
         guard let device = device else { return }
         let defaultLibrary = device.makeDefaultLibrary()
         let vertexFunc = defaultLibrary?.makeFunction(name: "vertexShader")
-        let fragmentFunc = defaultLibrary?.makeFunction(name: "fragmentShader")
+        
+        let fragName: String
+        switch config.filterMode {
+        case .crtScanlines:
+            fragName = "crtFragmentShader"
+        case .lcdGrid:
+            fragName = "lcdGridFragmentShader"
+        default:
+            fragName = "fragmentShader"
+        }
+        let fragmentFunc = defaultLibrary?.makeFunction(name: fragName)
         
         let pipelineDescriptor = MTLRenderPipelineDescriptor()
         pipelineDescriptor.vertexFunction = vertexFunc

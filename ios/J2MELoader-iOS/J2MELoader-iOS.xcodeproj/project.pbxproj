@@ -114,40 +114,40 @@
 		BB0000292C88000100000001 /* jvm_interpreter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = jvm_interpreter.h; sourceTree = "<group>"; };
 		BB0000182C88000100000002 /* jvm_bytecode.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = jvm_bytecode.cpp; sourceTree = "<group>"; };
 		BB00002A2C88000100000002 /* jvm_bytecode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = jvm_bytecode.h; sourceTree = "<group>"; };
-				CC00002C880001000001 /* eas_config.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_config.c"; sourceTree = "<group>"; };
-		CC00012C880001000001 /* eas_data.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_data.c"; sourceTree = "<group>"; };
-		CC00022C880001000001 /* eas_dlssynth.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_dlssynth.c"; sourceTree = "<group>"; };
-		CC00032C880001000001 /* eas_flog.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_flog.c"; sourceTree = "<group>"; };
-		CC00042C880001000001 /* eas_hostmm.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_hostmm.c"; sourceTree = "<group>"; };
-		CC00052C880001000001 /* eas_imelody.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_imelody.c"; sourceTree = "<group>"; };
-		CC00062C880001000001 /* eas_imelodydata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_imelodydata.c"; sourceTree = "<group>"; };
-		CC00072C880001000001 /* eas_math.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_math.c"; sourceTree = "<group>"; };
-		CC00082C880001000001 /* eas_mdls.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_mdls.c"; sourceTree = "<group>"; };
-		CC00092C880001000001 /* eas_midi.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_midi.c"; sourceTree = "<group>"; };
-		CC00102C880001000001 /* eas_mididata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_mididata.c"; sourceTree = "<group>"; };
-		CC00112C880001000001 /* eas_mixbuf.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_mixbuf.c"; sourceTree = "<group>"; };
-		CC00122C880001000001 /* eas_mixer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_mixer.c"; sourceTree = "<group>"; };
-		CC00132C880001000001 /* eas_ota.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_ota.c"; sourceTree = "<group>"; };
-		CC00142C880001000001 /* eas_otadata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_otadata.c"; sourceTree = "<group>"; };
-		CC00152C880001000001 /* eas_pan.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_pan.c"; sourceTree = "<group>"; };
-		CC00162C880001000001 /* eas_pcm.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_pcm.c"; sourceTree = "<group>"; };
-		CC00172C880001000001 /* eas_pcmdata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_pcmdata.c"; sourceTree = "<group>"; };
-		CC00182C880001000001 /* eas_public.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_public.c"; sourceTree = "<group>"; };
-		CC00192C880001000001 /* eas_report.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_report.c"; sourceTree = "<group>"; };
-		CC00202C880001000001 /* eas_reverb.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_reverb.c"; sourceTree = "<group>"; };
-		CC00212C880001000001 /* eas_reverbdata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_reverbdata.c"; sourceTree = "<group>"; };
-		CC00222C880001000001 /* eas_rtttl.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_rtttl.c"; sourceTree = "<group>"; };
-		CC00232C880001000001 /* eas_rtttldata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_rtttldata.c"; sourceTree = "<group>"; };
-		CC00242C880001000001 /* eas_smf.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_smf.c"; sourceTree = "<group>"; };
-		CC00252C880001000001 /* eas_smfdata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_smfdata.c"; sourceTree = "<group>"; };
-		CC00262C880001000001 /* eas_tcdata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_tcdata.c"; sourceTree = "<group>"; };
-		CC00272C880001000001 /* eas_voicemgt.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_voicemgt.c"; sourceTree = "<group>"; };
-		CC00282C880001000001 /* eas_wtengine.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_wtengine.c"; sourceTree = "<group>"; };
-		CC00292C880001000001 /* eas_wtsynth.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_wtsynth.c"; sourceTree = "<group>"; };
-		CC00302C880001000001 /* eas_xmf.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_xmf.c"; sourceTree = "<group>"; };
-		CC00312C880001000001 /* eas_xmfdata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/eas_xmfdata.c"; sourceTree = "<group>"; };
-		CC00322C880001000001 /* jet.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/jet.c"; sourceTree = "<group>"; };
-		CC00332C880001000001 /* wt_22khz.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "Audio/eas/wt_22khz.c"; sourceTree = "<group>"; };
+				CC00002C880001000001 /* eas_config.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_config.c"; sourceTree = SOURCE_ROOT; };
+		CC00012C880001000001 /* eas_data.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_data.c"; sourceTree = SOURCE_ROOT; };
+		CC00022C880001000001 /* eas_dlssynth.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_dlssynth.c"; sourceTree = SOURCE_ROOT; };
+		CC00032C880001000001 /* eas_flog.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_flog.c"; sourceTree = SOURCE_ROOT; };
+		CC00042C880001000001 /* eas_hostmm.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_hostmm.c"; sourceTree = SOURCE_ROOT; };
+		CC00052C880001000001 /* eas_imelody.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_imelody.c"; sourceTree = SOURCE_ROOT; };
+		CC00062C880001000001 /* eas_imelodydata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_imelodydata.c"; sourceTree = SOURCE_ROOT; };
+		CC00072C880001000001 /* eas_math.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_math.c"; sourceTree = SOURCE_ROOT; };
+		CC00082C880001000001 /* eas_mdls.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_mdls.c"; sourceTree = SOURCE_ROOT; };
+		CC00092C880001000001 /* eas_midi.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_midi.c"; sourceTree = SOURCE_ROOT; };
+		CC00102C880001000001 /* eas_mididata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_mididata.c"; sourceTree = SOURCE_ROOT; };
+		CC00112C880001000001 /* eas_mixbuf.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_mixbuf.c"; sourceTree = SOURCE_ROOT; };
+		CC00122C880001000001 /* eas_mixer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_mixer.c"; sourceTree = SOURCE_ROOT; };
+		CC00132C880001000001 /* eas_ota.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_ota.c"; sourceTree = SOURCE_ROOT; };
+		CC00142C880001000001 /* eas_otadata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_otadata.c"; sourceTree = SOURCE_ROOT; };
+		CC00152C880001000001 /* eas_pan.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_pan.c"; sourceTree = SOURCE_ROOT; };
+		CC00162C880001000001 /* eas_pcm.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_pcm.c"; sourceTree = SOURCE_ROOT; };
+		CC00172C880001000001 /* eas_pcmdata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_pcmdata.c"; sourceTree = SOURCE_ROOT; };
+		CC00182C880001000001 /* eas_public.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_public.c"; sourceTree = SOURCE_ROOT; };
+		CC00192C880001000001 /* eas_report.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_report.c"; sourceTree = SOURCE_ROOT; };
+		CC00202C880001000001 /* eas_reverb.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_reverb.c"; sourceTree = SOURCE_ROOT; };
+		CC00212C880001000001 /* eas_reverbdata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_reverbdata.c"; sourceTree = SOURCE_ROOT; };
+		CC00222C880001000001 /* eas_rtttl.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_rtttl.c"; sourceTree = SOURCE_ROOT; };
+		CC00232C880001000001 /* eas_rtttldata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_rtttldata.c"; sourceTree = SOURCE_ROOT; };
+		CC00242C880001000001 /* eas_smf.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_smf.c"; sourceTree = SOURCE_ROOT; };
+		CC00252C880001000001 /* eas_smfdata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_smfdata.c"; sourceTree = SOURCE_ROOT; };
+		CC00262C880001000001 /* eas_tcdata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_tcdata.c"; sourceTree = SOURCE_ROOT; };
+		CC00272C880001000001 /* eas_voicemgt.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_voicemgt.c"; sourceTree = SOURCE_ROOT; };
+		CC00282C880001000001 /* eas_wtengine.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_wtengine.c"; sourceTree = SOURCE_ROOT; };
+		CC00292C880001000001 /* eas_wtsynth.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_wtsynth.c"; sourceTree = SOURCE_ROOT; };
+		CC00302C880001000001 /* eas_xmf.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_xmf.c"; sourceTree = SOURCE_ROOT; };
+		CC00312C880001000001 /* eas_xmfdata.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_xmfdata.c"; sourceTree = SOURCE_ROOT; };
+		CC00322C880001000001 /* jet.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/jet.c"; sourceTree = SOURCE_ROOT; };
+		CC00332C880001000001 /* wt_22khz.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/wt_22khz.c"; sourceTree = SOURCE_ROOT; };
 		BB0000192C88000100000002 /* eas_engine_bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = eas_engine_bridge.c; sourceTree = "<group>"; };
 		BB00002B2C88000100000002 /* eas_engine_bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = eas_engine_bridge.h; sourceTree = "<group>"; };
 		BB00001A2C88000100000001 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = "Shaders/Shaders.metal"; sourceTree = "<group>"; };
@@ -271,6 +271,40 @@
 			children = (
 				BB00002B2C88000100000002 /* eas_engine_bridge.h */,
 				BB0000192C88000100000002 /* eas_engine_bridge.c */,
+				CC00002C880001000001 /* eas_config.c */,
+				CC00012C880001000001 /* eas_data.c */,
+				CC00022C880001000001 /* eas_dlssynth.c */,
+				CC00032C880001000001 /* eas_flog.c */,
+				CC00042C880001000001 /* eas_hostmm.c */,
+				CC00052C880001000001 /* eas_imelody.c */,
+				CC00062C880001000001 /* eas_imelodydata.c */,
+				CC00072C880001000001 /* eas_math.c */,
+				CC00082C880001000001 /* eas_mdls.c */,
+				CC00092C880001000001 /* eas_midi.c */,
+				CC00102C880001000001 /* eas_mididata.c */,
+				CC00112C880001000001 /* eas_mixbuf.c */,
+				CC00122C880001000001 /* eas_mixer.c */,
+				CC00132C880001000001 /* eas_ota.c */,
+				CC00142C880001000001 /* eas_otadata.c */,
+				CC00152C880001000001 /* eas_pan.c */,
+				CC00162C880001000001 /* eas_pcm.c */,
+				CC00172C880001000001 /* eas_pcmdata.c */,
+				CC00182C880001000001 /* eas_public.c */,
+				CC00192C880001000001 /* eas_report.c */,
+				CC00202C880001000001 /* eas_reverb.c */,
+				CC00212C880001000001 /* eas_reverbdata.c */,
+				CC00222C880001000001 /* eas_rtttl.c */,
+				CC00232C880001000001 /* eas_rtttldata.c */,
+				CC00242C880001000001 /* eas_smf.c */,
+				CC00252C880001000001 /* eas_smfdata.c */,
+				CC00262C880001000001 /* eas_tcdata.c */,
+				CC00272C880001000001 /* eas_voicemgt.c */,
+				CC00282C880001000001 /* eas_wtengine.c */,
+				CC00292C880001000001 /* eas_wtsynth.c */,
+				CC00302C880001000001 /* eas_xmf.c */,
+				CC00312C880001000001 /* eas_xmfdata.c */,
+				CC00322C880001000001 /* jet.c */,
+				CC00332C880001000001 /* wt_22khz.c */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -437,6 +471,22 @@
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",
+					"EAS_WT_SYNTH",
+					"NUM_OUTPUT_CHANNELS=2",
+					"_SAMPLE_RATE_22050",
+					"MAX_SYNTH_VOICES=64",
+					"_8_BIT_SAMPLES",
+					"_FILTER_ENABLED",
+					"_IMELODY_PARSER",
+					"_RTTTL_PARSER",
+					"_OTA_PARSER",
+					"_XMF_PARSER",
+					"_WAVE_PARSER",
+					"_REVERB_ENABLED",
+					"_CHORUS_ENABLED",
+					"DLS_SYNTHESIZER",
+					"MMAPI_SUPPORT",
+					"JET_INTERFACE",
 					"_EAS_OPT_FILE",
 					"_ARM_WORKAROUND",
 					"$(inherited)",
@@ -472,6 +522,22 @@
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_PREPROCESSOR_DEFINITIONS = (
+					"EAS_WT_SYNTH",
+					"NUM_OUTPUT_CHANNELS=2",
+					"_SAMPLE_RATE_22050",
+					"MAX_SYNTH_VOICES=64",
+					"_8_BIT_SAMPLES",
+					"_FILTER_ENABLED",
+					"_IMELODY_PARSER",
+					"_RTTTL_PARSER",
+					"_OTA_PARSER",
+					"_XMF_PARSER",
+					"_WAVE_PARSER",
+					"_REVERB_ENABLED",
+					"_CHORUS_ENABLED",
+					"DLS_SYNTHESIZER",
+					"MMAPI_SUPPORT",
+					"JET_INTERFACE",
 					"_EAS_OPT_FILE",
 					"_ARM_WORKAROUND",
 					"$(inherited)",
