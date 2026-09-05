@@ -64,8 +64,6 @@ public struct KeyMapperView: View {
                     .foregroundColor(J2MEColors.accent)
                 }
             }
-            .dynamicTypeSize(.medium)
-            .environment(\.sizeCategory, .medium)
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }

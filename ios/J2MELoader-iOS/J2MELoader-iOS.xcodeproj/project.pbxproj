@@ -583,12 +583,15 @@
 					"-framework", "MetalKit",
 					"-framework", "AVFoundation",
 					"-framework", "AudioToolbox",
-					"-framework", "CoreBluetooth",
-					"-framework", "CoreLocation",
+					"-weak_framework", "CoreBluetooth",
+					"-weak_framework", "CoreLocation",
 					"-weak_framework", "Contacts",
 					"-weak_framework", "EventKit",
 					"-weak_framework", "MessageUI",
 					"-framework", "Network",
+					"-framework", "CoreText",
+					"-framework", "CoreGraphics",
+					"-framework", "UIKit",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.playsoftware.j2meloader;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -630,12 +633,15 @@
 					"-framework", "MetalKit",
 					"-framework", "AVFoundation",
 					"-framework", "AudioToolbox",
-					"-framework", "CoreBluetooth",
-					"-framework", "CoreLocation",
+					"-weak_framework", "CoreBluetooth",
+					"-weak_framework", "CoreLocation",
 					"-weak_framework", "Contacts",
 					"-weak_framework", "EventKit",
 					"-weak_framework", "MessageUI",
 					"-framework", "Network",
+					"-framework", "CoreText",
+					"-framework", "CoreGraphics",
+					"-framework", "UIKit",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.playsoftware.j2meloader;
 				PRODUCT_NAME = "$(TARGET_NAME)";

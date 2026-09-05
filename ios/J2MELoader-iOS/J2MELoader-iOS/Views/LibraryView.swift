@@ -11,17 +11,31 @@ public struct J2MEColors {
     public static let cardDark = Color(red: 0x1e/255.0, green: 0x1e/255.0, blue: 0x1e/255.0)
 }
 
+public enum ActiveSheet: Identifiable {
+    case importer
+    case settings(GameItem)
+    case generalSettings
+    case help
+    case about
+    
+    public var id: String {
+        switch self {
+        case .importer: return "importer"
+        case .settings(let game): return "settings_\(game.id.uuidString)"
+        case .generalSettings: return "general"
+        case .help: return "help"
+        case .about: return "about"
+        }
+    }
+}
+
 public struct LibraryView: View {
     @ObservedObject var gameManager: GameManager
     @State private var searchText = ""
     @State private var isSearching = false
-    @State private var showingImporter = false
-    @State private var selectedGameForSettings: GameItem?
+    @State private var activeSheet: ActiveSheet? = nil
     
     // Dialog states
-    @State private var showingAbout = false
-    @State private var showingHelp = false
-    @State private var showingSettingsGeneral = false
     @State private var gameToRename: GameItem? = nil
     @State private var newGameName: String = ""
     @State private var showingRenameAlert = false
@@ -112,13 +126,13 @@ public struct LibraryView: View {
                                         if quickLaunch {
                                             gameManager.launchGame(game)
                                         } else {
-                                            selectedGameForSettings = game
+                                            activeSheet = .settings(game)
                                         }
                                     },
                                     onDirectPlay: {
                                         gameManager.launchGame(game)
                                     },
-                                    onSettings: { selectedGameForSettings = game },
+                                    onSettings: { activeSheet = .settings(game) },
                                     onRename: {
                                         gameToRename = game
                                         newGameName = game.title
@@ -142,7 +156,7 @@ public struct LibraryView: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        Button(action: { showingImporter = true }) {
+                        Button(action: { activeSheet = .importer }) {
                             Image(systemName: "plus")
                                 .font(.system(size: 22, weight: .bold))
                                 .foregroundColor(.white)
@@ -177,13 +191,13 @@ public struct LibraryView: View {
                         }
                         
                         Menu {
-                            Button(action: { showingSettingsGeneral = true }) {
+                            Button(action: { activeSheet = .generalSettings }) {
                                 Label("Cài đặt chung", systemImage: "gearshape")
                             }
-                            Button(action: { showingHelp = true }) {
+                            Button(action: { activeSheet = .help }) {
                                 Label("Hướng dẫn sử dụng", systemImage: "questionmark.circle")
                             }
-                            Button(action: { showingAbout = true }) {
+                            Button(action: { activeSheet = .about }) {
                                 Label("Thông tin ứng dụng", systemImage: "info.circle")
                             }
                         } label: {
@@ -195,26 +209,31 @@ public struct LibraryView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingImporter) {
-                DocumentPickerView { url in
-                    gameManager.importJar(from: url)
+            .sheet(item: $activeSheet) { sheet in
+                switch sheet {
+                case .importer:
+                    DocumentPickerView { url in
+                        gameManager.importJar(from: url)
+                    }
+                case .settings(let game):
+                    SettingsView(
+                        game: game,
+                        onSave: { updated in
+                            gameManager.updateGame(updated)
+                        },
+                        onStart: { updated in
+                            gameManager.updateGame(updated)
+                            gameManager.launchGame(updated)
+                        }
+                    )
+                case .generalSettings:
+                    GeneralSettingsView()
+                case .help:
+                    HelpView()
+                case .about:
+                    AboutView()
                 }
             }
-            .sheet(item: $selectedGameForSettings) { game in
-                SettingsView(
-                    game: game,
-                    onSave: { updated in
-                        gameManager.updateGame(updated)
-                    },
-                    onStart: { updated in
-                        gameManager.updateGame(updated)
-                        gameManager.launchGame(updated)
-                    }
-                )
-            }
-            .sheet(isPresented: $showingSettingsGeneral) { GeneralSettingsView() }
-            .sheet(isPresented: $showingHelp) { HelpView() }
-            .sheet(isPresented: $showingAbout) { AboutView() }
             .fullScreenCover(isPresented: $gameManager.isEmulating) {
                 if let current = gameManager.currentGame {
                     GameScreenView(game: current, gameManager: gameManager)
@@ -223,30 +242,33 @@ public struct LibraryView: View {
             .alert("Đổi tên ứng dụng", isPresented: $showingRenameAlert) {
                 TextField("Tên mới của game", text: $newGameName)
                 Button("Đồng ý") {
-                    if let target = gameToRename, !newGameName.isEmpty {
+                    if let target = gameToRename, !newGameName.trimmingCharacters(in: .whitespaces).isEmpty {
                         var updated = target
-                        updated.title = newGameName
+                        updated.title = newGameName.trimmingCharacters(in: .whitespaces)
                         gameManager.updateGame(updated)
                     }
                 }
                 Button("Huỷ", role: .cancel) {}
             }
-            .alert("Xóa dữ liệu lưu (RMS)?", isPresented: $showingClearDataAlert) {
-                Button("Xóa dữ liệu", role: .destructive) {
-                    if let target = gameToClearData {
-                        let rmsDir = gameManager.documentsDirectory.appendingPathComponent("RMS")
-                        let pattern = "\(target.title)_"
-                        if let files = try? FileManager.default.contentsOfDirectory(atPath: rmsDir.path) {
-                            for file in files where file.contains(pattern) {
-                                try? FileManager.default.removeItem(at: rmsDir.appendingPathComponent(file))
+            .background(
+                EmptyView()
+                    .alert("Xóa dữ liệu lưu (RMS)?", isPresented: $showingClearDataAlert) {
+                        Button("Xóa dữ liệu", role: .destructive) {
+                            if let target = gameToClearData {
+                                let rmsDir = gameManager.documentsDirectory.appendingPathComponent("RMS")
+                                let pattern = "\(target.title)_"
+                                if let files = try? FileManager.default.contentsOfDirectory(atPath: rmsDir.path) {
+                                    for file in files where file.contains(pattern) {
+                                        try? FileManager.default.removeItem(at: rmsDir.appendingPathComponent(file))
+                                    }
+                                }
                             }
                         }
+                        Button("Huỷ", role: .cancel) {}
+                    } message: {
+                        Text("Toàn bộ dữ liệu điểm cao và màn chơi đã lưu của '\(gameToClearData?.title ?? "")' sẽ bị xóa vĩnh viễn.")
                     }
-                }
-                Button("Huỷ", role: .cancel) {}
-            } message: {
-                Text("Toàn bộ dữ liệu điểm cao và màn chơi đã lưu của '\(gameToClearData?.title ?? "")' sẽ bị xóa vĩnh viễn.")
-            }
+            )
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
@@ -379,8 +401,6 @@ struct GeneralSettingsView: View {
                         .font(.system(size: 14, weight: .bold))
                 }
             }
-            .dynamicTypeSize(.medium)
-            .environment(\.sizeCategory, .medium)
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }

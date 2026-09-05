@@ -219,8 +219,6 @@ public struct GameScreenView: View {
                 }
             }
         }
-        .dynamicTypeSize(.medium)
-        .environment(\.sizeCategory, .medium)
         .onAppear {
             startEmulation()
         }

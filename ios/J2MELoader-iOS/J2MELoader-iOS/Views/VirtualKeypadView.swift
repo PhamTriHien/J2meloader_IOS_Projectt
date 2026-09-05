@@ -24,8 +24,6 @@ public struct VirtualKeypadView: View {
                 EmptyView()
             }
         }
-        .dynamicTypeSize(.medium)
-        .environment(\.sizeCategory, .medium)
     }
 }
 

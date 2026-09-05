@@ -1,13 +1,24 @@
 import SwiftUI
 
+public enum SettingsSubSheet: Identifiable {
+    case keyMapper
+    case shaderTune
+    
+    public var id: String {
+        switch self {
+        case .keyMapper: return "keyMapper"
+        case .shaderTune: return "shaderTune"
+        }
+    }
+}
+
 public struct SettingsView: View {
     @State public var game: GameItem
     public var onSave: (GameItem) -> Void
     public var onStart: ((GameItem) -> Void)?
     @Environment(\.presentationMode) var presentationMode
     
-    @State private var showingKeyMapper = false
-    @State private var showingShaderTune = false
+    @State private var subSheet: SettingsSubSheet? = nil
     
     public init(game: GameItem, onSave: @escaping (GameItem) -> Void, onStart: ((GameItem) -> Void)? = nil) {
         _game = State(initialValue: game)
@@ -152,7 +163,7 @@ public struct SettingsView: View {
                             .font(.system(size: 13.5, weight: .regular))
                     }
                     
-                    Button(action: { showingShaderTune = true }) {
+                    Button(action: { subSheet = .shaderTune }) {
                         HStack {
                             Image(systemName: "slider.horizontal.3")
                                 .font(.system(size: 13.5))
@@ -185,7 +196,7 @@ public struct SettingsView: View {
                             .font(.system(size: 13.5, weight: .regular))
                     }
                     
-                    Button(action: { showingKeyMapper = true }) {
+                    Button(action: { subSheet = .keyMapper }) {
                         HStack {
                             Image(systemName: "gamecontroller")
                                 .font(.system(size: 13.5))
@@ -328,13 +339,13 @@ public struct SettingsView: View {
                     .foregroundColor(J2MEColors.accent)
                 }
             }
-            .dynamicTypeSize(.medium)
-            .environment(\.sizeCategory, .medium)
-            .sheet(isPresented: $showingKeyMapper) {
-                KeyMapperView()
-            }
-            .sheet(isPresented: $showingShaderTune) {
-                ShaderTuneView()
+            .sheet(item: $subSheet) { sheet in
+                switch sheet {
+                case .keyMapper:
+                    KeyMapperView()
+                case .shaderTune:
+                    ShaderTuneView()
+                }
             }
         }
     }

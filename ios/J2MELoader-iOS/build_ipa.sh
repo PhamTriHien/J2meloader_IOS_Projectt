@@ -44,10 +44,16 @@ if [ $BUILD_STATUS -ne 0 ]; then
 fi
 
 echo "[2/4] Packaging Payload and Device IPA..."
+rm -rf build/Payload
+mkdir -p build/Payload
 cp -R build/Release-iphoneos/*.app build/Payload/
 
-echo "Ad-hoc code signing iOS application bundle with entitlements..."
-codesign --force --deep --sign - --entitlements J2MELoader-iOS/Resources/entitlements.plist build/Payload/*.app || true
+echo "Setting permissions on application bundle..."
+chmod -R 755 build/Payload/*.app
+chmod +x build/Payload/*.app/J2MELoader-iOS 2>/dev/null || true
+
+echo "Ad-hoc code signing iOS application bundle with distribution entitlements and DER encoding..."
+codesign --force --deep --sign - --entitlements J2MELoader-iOS/Resources/entitlements.plist --generate-entitlement-der build/Payload/*.app || true
 
 cd build
 zip -r -y J2HienLoader.ipa Payload
