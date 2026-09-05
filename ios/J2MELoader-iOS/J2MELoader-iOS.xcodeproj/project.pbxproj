@@ -114,6 +114,8 @@
 		BB0000292C88000100000001 /* jvm_interpreter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = jvm_interpreter.h; sourceTree = "<group>"; };
 		BB0000182C88000100000002 /* jvm_bytecode.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = jvm_bytecode.cpp; sourceTree = "<group>"; };
 		BB00002A2C88000100000002 /* jvm_bytecode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = jvm_bytecode.h; sourceTree = "<group>"; };
+		BB00001C2C88000100000001 /* j2me_full_apis.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = j2me_full_apis.cpp; sourceTree = "<group>"; };
+		BB00001D2C88000100000001 /* j2me_full_apis.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = j2me_full_apis.h; sourceTree = "<group>"; };
 				CC00002C880001000001 /* eas_config.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_config.c"; sourceTree = SOURCE_ROOT; };
 		CC00012C880001000001 /* eas_data.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_data.c"; sourceTree = SOURCE_ROOT; };
 		CC00022C880001000001 /* eas_dlssynth.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "J2MELoader-iOS/Audio/eas/eas_dlssynth.c"; sourceTree = SOURCE_ROOT; };
@@ -482,9 +484,7 @@
 					"_RTTTL_PARSER",
 					"_OTA_PARSER",
 					"_XMF_PARSER",
-					"_WAVE_PARSER",
 					"_REVERB_ENABLED",
-					"_CHORUS_ENABLED",
 					"DLS_SYNTHESIZER",
 					"MMAPI_SUPPORT",
 					"JET_INTERFACE",
@@ -534,9 +534,7 @@
 					"_RTTTL_PARSER",
 					"_OTA_PARSER",
 					"_XMF_PARSER",
-					"_WAVE_PARSER",
 					"_REVERB_ENABLED",
-					"_CHORUS_ENABLED",
 					"DLS_SYNTHESIZER",
 					"MMAPI_SUPPORT",
 					"JET_INTERFACE",
