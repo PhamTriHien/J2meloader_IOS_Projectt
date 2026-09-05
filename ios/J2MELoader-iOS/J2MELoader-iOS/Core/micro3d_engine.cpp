@@ -1,4 +1,4 @@
-﻿#include "micro3d_engine.h"
+#include "micro3d_engine.h"
 #include <cstring>
 #include <cmath>
 #include <algorithm>
@@ -150,6 +150,7 @@ void Micro3DFigure::parseMbac(const uint8_t* data, size_t size) {
             if (m_vertices.size()>=3 && m_indices.size()>=3) return;
             m_vertices.clear(); m_indices.clear();
         }
+    }
     }
     // Generic float-triplet scan (some MBAC store LE float): strict runs only
     if (size >= 48) {
