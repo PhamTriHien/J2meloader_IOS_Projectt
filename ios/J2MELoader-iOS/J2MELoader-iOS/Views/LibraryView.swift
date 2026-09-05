@@ -276,6 +276,7 @@ public struct LibraryView: View {
         }
     }
 }
+}
 
 // MARK: - Hàng hiển thị game chuẩn (list_row_jar.xml)
 struct OriginalListRowJar: View {
