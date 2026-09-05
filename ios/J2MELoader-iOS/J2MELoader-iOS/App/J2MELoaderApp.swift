@@ -10,8 +10,6 @@ struct J2MELoaderApp: App {
     var body: some Scene {
         WindowGroup {
             LibraryView(gameManager: gameManager)
-                .dynamicTypeSize(.medium)
-                .environment(\.sizeCategory, .medium)
                 .onOpenURL { url in
                     gameManager.importJar(from: url)
                 }

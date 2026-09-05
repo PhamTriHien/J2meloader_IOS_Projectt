@@ -30,7 +30,7 @@ public struct LibraryView: View {
     @Environment(\.colorScheme) var colorScheme
     
     public init(gameManager: GameManager) {
-        self.gameManager = gameManager
+        _gameManager = ObservedObject(wrappedValue: gameManager)
     }
     
     public var filteredGames: [GameItem] {
@@ -195,8 +195,6 @@ public struct LibraryView: View {
                     }
                 }
             }
-            .dynamicTypeSize(.medium)
-            .environment(\.sizeCategory, .medium)
             .sheet(isPresented: $showingImporter) {
                 DocumentPickerView { url in
                     gameManager.importJar(from: url)
@@ -454,8 +452,6 @@ struct AboutView: View {
                         .font(.system(size: 14, weight: .bold))
                 }
             }
-            .dynamicTypeSize(.medium)
-            .environment(\.sizeCategory, .medium)
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
@@ -492,8 +488,6 @@ struct HelpView: View {
                         .font(.system(size: 14, weight: .bold))
                 }
             }
-            .dynamicTypeSize(.medium)
-            .environment(\.sizeCategory, .medium)
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }

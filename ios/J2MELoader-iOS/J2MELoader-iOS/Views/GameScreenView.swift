@@ -13,7 +13,7 @@ public struct GameScreenView: View {
     
     public init(game: GameItem, gameManager: GameManager) {
         self.game = game
-        self.gameManager = gameManager
+        _gameManager = ObservedObject(wrappedValue: gameManager)
         _currentConfig = State(initialValue: game.config)
     }
     

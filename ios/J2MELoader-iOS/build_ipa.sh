@@ -46,8 +46,8 @@ fi
 echo "[2/4] Packaging Payload and Device IPA..."
 cp -R build/Release-iphoneos/*.app build/Payload/
 
-echo "Ad-hoc code signing iOS application bundle..."
-codesign --force --deep --sign - build/Payload/*.app || true
+echo "Ad-hoc code signing iOS application bundle with entitlements..."
+codesign --force --deep --sign - --entitlements J2MELoader-iOS/Resources/entitlements.plist build/Payload/*.app || true
 
 cd build
 zip -r -y J2HienLoader.ipa Payload
