@@ -38,9 +38,7 @@ struct J2MELoaderApp: App {
         
         // Begin persistent iOS background task
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "J2HienLoader.ContinuousBackgroundEngine") {
-            // Watchdog expiration handler - renew task to prevent iOS suspend
             self.endBackgroundTask()
-            self.handleAppEnteredBackground()
         }
     }
     

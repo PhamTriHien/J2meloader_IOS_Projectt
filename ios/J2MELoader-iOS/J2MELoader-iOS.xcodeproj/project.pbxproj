@@ -585,9 +585,9 @@
 					"-framework", "AudioToolbox",
 					"-framework", "CoreBluetooth",
 					"-framework", "CoreLocation",
-					"-framework", "Contacts",
-					"-framework", "EventKit",
-					"-framework", "MessageUI",
+					"-weak_framework", "Contacts",
+					"-weak_framework", "EventKit",
+					"-weak_framework", "MessageUI",
 					"-framework", "Network",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.playsoftware.j2meloader;
@@ -632,9 +632,9 @@
 					"-framework", "AudioToolbox",
 					"-framework", "CoreBluetooth",
 					"-framework", "CoreLocation",
-					"-framework", "Contacts",
-					"-framework", "EventKit",
-					"-framework", "MessageUI",
+					"-weak_framework", "Contacts",
+					"-weak_framework", "EventKit",
+					"-weak_framework", "MessageUI",
 					"-framework", "Network",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.playsoftware.j2meloader;

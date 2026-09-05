@@ -13,9 +13,9 @@ xcodebuild build \
   -sdk iphoneos \
   -destination "generic/platform=iOS" \
   CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphoneos" \
-  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_ALLOWED=YES \
   CODE_SIGNING_REQUIRED=NO \
-  CODE_SIGN_IDENTITY="" \
+  CODE_SIGN_IDENTITY="-" \
   AD_HOC_CODE_SIGNING_ALLOWED=YES > build/xcodebuild.log 2>&1
 
 BUILD_STATUS=$?
@@ -45,6 +45,10 @@ fi
 
 echo "[2/4] Packaging Payload and Device IPA..."
 cp -R build/Release-iphoneos/*.app build/Payload/
+
+echo "Ad-hoc code signing iOS application bundle..."
+codesign --force --deep --sign - build/Payload/*.app || true
+
 cd build
 zip -r -y J2HienLoader.ipa Payload
 cp J2HienLoader.ipa J2MELoader-iOS.ipa
@@ -59,12 +63,14 @@ xcodebuild build \
   -sdk iphonesimulator \
   -destination "generic/platform=iOS Simulator" \
   CONFIGURATION_BUILD_DIR="$(pwd)/build/Release-iphonesimulator" \
-  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_ALLOWED=YES \
   CODE_SIGNING_REQUIRED=NO \
-  CODE_SIGN_IDENTITY="" || true
+  CODE_SIGN_IDENTITY="-" \
+  AD_HOC_CODE_SIGNING_ALLOWED=YES || true
 
 if [ -d "build/Release-iphonesimulator/J2MELoader-iOS.app" ]; then
   echo "[4/4] Creating J2HienLoader-Simulator-iPad.zip for Appetize.io..."
+  codesign --force --deep --sign - build/Release-iphonesimulator/J2MELoader-iOS.app || true
   cd build/Release-iphonesimulator
   zip -r -y ../J2HienLoader-Simulator-iPad.zip J2MELoader-iOS.app
   cd ../..
