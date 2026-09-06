@@ -42,23 +42,51 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
 
     // Parse Manifest to extract real MIDlet class name
     auto manifest = m_jarLoader->parseManifest();
-    std::string midletEntry = manifest["MIDlet-1"];
     std::string targetClass = mainClass;
 
+    std::string midletEntry = "";
+    for (const auto& kv : manifest) {
+        std::string k = kv.first;
+        std::transform(k.begin(), k.end(), k.begin(), ::tolower);
+        if (k == "midlet-1" || k == "midlet-1:" || k.find("midlet-1") != std::string::npos) {
+            midletEntry = kv.second;
+            break;
+        }
+    }
+
     if (!midletEntry.empty()) {
-        // Format: "Name, /icon.png, com.package.MainClass"
+        // Format: "Name, /icon.png, com.package.MainClass" or "Name, com.package.MainClass" or "com.package.MainClass"
         std::stringstream ss(midletEntry);
         std::string item;
         std::vector<std::string> tokens;
         while (std::getline(ss, item, ',')) {
-            size_t first = item.find_first_not_of(' ');
-            size_t last = item.find_last_not_of(' ');
+            size_t first = item.find_first_not_of(" \t\r\n");
+            size_t last = item.find_last_not_of(" \t\r\n");
             if (first != std::string::npos && last != std::string::npos) {
                 tokens.push_back(item.substr(first, last - first + 1));
             }
         }
         if (tokens.size() >= 3) {
             targetClass = tokens[2];
+        } else if (tokens.size() == 2) {
+            targetClass = tokens[1];
+        } else if (tokens.size() == 1) {
+            targetClass = tokens[0];
+        }
+    }
+
+    // Fallback: If targetClass is empty, scan JAR for any class defining startApp:()V
+    if (targetClass.empty()) {
+        auto entries = m_jarLoader->listEntries();
+        for (const auto& entry : entries) {
+            if (entry.size() > 6 && entry.substr(entry.size() - 6) == ".class") {
+                std::string cname = entry.substr(0, entry.size() - 6);
+                auto cls = jvm.findOrLoadClass(cname, m_jarLoader.get());
+                if (cls && cls->methods.find("startApp:()V") != cls->methods.end()) {
+                    targetClass = cname;
+                    break;
+                }
+            }
         }
     }
 
@@ -260,6 +288,10 @@ void JvmInterpreter::executionLoop() {
     auto& jvm = JvmBytecodeEngine::getInstance();
     jvm.setJarLoader(m_jarLoader.get());
 
+    if (!m_graphicsRef) {
+        m_graphicsRef = jvm.allocObject("javax/microedition/lcdui/Graphics");
+    }
+
     if (!m_targetClass.empty()) {
         m_midletClass = jvm.findOrLoadClass(m_targetClass, m_jarLoader.get());
         if (m_midletClass) {
@@ -282,6 +314,10 @@ void JvmInterpreter::executionLoop() {
             if (!m_canvasClass) {
                 findAndBindCanvas();
                 startRunnableThread();
+            }
+
+            if (!m_graphicsRef) {
+                m_graphicsRef = jvm.allocObject("javax/microedition/lcdui/Graphics");
             }
 
             // Execute real game bytecode paint(Graphics g) method

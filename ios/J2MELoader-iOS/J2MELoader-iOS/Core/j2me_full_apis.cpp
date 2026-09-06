@@ -494,9 +494,33 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     }
     // ============ java/lang/Class extended ============
     if(className=="java/lang/Class"){
-        if(methodName=="forName"&&!args.empty()){ std::string n=ENG().getString(args[0].asRef()); std::replace(n.begin(),n.end(),'.','/'); auto c=ENG().findOrLoadClass(n, ENG().getJarLoader()); (void)c; outResult=JavaValue(ENG().allocObject("java/lang/Class"),true); return true; }
-        if(methodName=="getName"){ outResult=JavaValue(ENG().createString("java.lang.Object"),true); return true; }
-        if(methodName=="newInstance"){ outResult=JavaValue(ENG().allocObject("java/lang/Object"),true); return true; }
+        if(methodName=="forName"&&!args.empty()){
+            std::string n=ENG().getString(args[0].asRef());
+            std::replace(n.begin(),n.end(),'.','/');
+            uint32_t cRef = ENG().allocObject("java/lang/Class");
+            JavaObject* cObj = ENG().getObject(cRef);
+            if(cObj) cObj->stringVal = n;
+            outResult=JavaValue(cRef,true);
+            return true;
+        }
+        if(methodName=="getName"&&!args.empty()){
+            JavaObject* cObj = ENG().getObject(args[0].asRef());
+            std::string cn = (cObj && !cObj->stringVal.empty()) ? cObj->stringVal : "java/lang/Object";
+            std::replace(cn.begin(), cn.end(), '/', '.');
+            outResult=JavaValue(ENG().createString(cn),true);
+            return true;
+        }
+        if(methodName=="newInstance"&&!args.empty()){
+            JavaObject* cObj = ENG().getObject(args[0].asRef());
+            std::string targetClass = (cObj && !cObj->stringVal.empty()) ? cObj->stringVal : "java/lang/Object";
+            uint32_t newRef = ENG().allocObject(targetClass);
+            auto cls = ENG().findOrLoadClass(targetClass, ENG().getJarLoader());
+            if (cls) {
+                ENG().executeMethod(cls, "<init>", "()V", { JavaValue(newRef, true) }, display);
+            }
+            outResult=JavaValue(newRef,true);
+            return true;
+        }
         if(methodName=="isAssignableFrom"||methodName=="isInstance"){ outResult=JavaValue(1); return true; }
         if(methodName=="getResourceAsStream") return false; // handled in core
     }
@@ -571,7 +595,15 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     }
     if(className=="java/util/Timer"||className=="java/util/TimerTask"){
         if(methodName=="<init>") return true;
-        if(methodName=="schedule"&&args.size()>=2){ uint32_t task=args[1].asRef(); JavaObject*to=ENG().getObject(task); if(to&&!to->className.empty()){ auto cls=ENG().findOrLoadClass(to->className, ENG().getJarLoader()); if(cls) JvmInterpreter::getInstance().registerRunnable(task, cls);} return true; }
+        if((methodName=="schedule"||methodName=="scheduleAtFixedRate")&&args.size()>=2){
+            uint32_t task=args[1].asRef();
+            JavaObject*to=ENG().getObject(task);
+            if(to&&!to->className.empty()){
+                auto cls=ENG().findOrLoadClass(to->className, ENG().getJarLoader());
+                if(cls) JvmInterpreter::getInstance().registerRunnable(task, cls);
+            }
+            return true;
+        }
         if(methodName=="cancel") return true;
     }
     // ============ java/io extended ============
@@ -728,9 +760,10 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 renderScreen(nxt, display);
                 return true;
             }
-            // Canvas case handled by core; still track screen
-            if(o&&(o->className.find("Canvas")!=std::string::npos)) return false;
-            if(display&&nxt!=0) renderScreen(nxt, display);
+            if (o && !o->className.empty()) {
+                auto cls = ENG().findOrLoadClass(o->className, ENG().getJarLoader());
+                JvmInterpreter::getInstance().setCurrentCanvas(nxt, cls);
+            }
             return true;
         }
         if(methodName=="getDisplay"){ outResult=JavaValue(ENG().allocObject("javax/microedition/lcdui/Display"),true); return true; }

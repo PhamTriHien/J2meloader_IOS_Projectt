@@ -116,7 +116,7 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
         if let frameBytes = J2MEBridge.getFrameBufferBytes(), coreW > 0, coreH > 0 {
             if texture == nil || texture?.width != coreW || texture?.height != coreH {
                 let texDesc = MTLTextureDescriptor.texture2DDescriptor(
-                    pixelFormat: .rgba8Unorm,
+                    pixelFormat: .bgra8Unorm,
                     width: coreW,
                     height: coreH,
                     mipmapped: false

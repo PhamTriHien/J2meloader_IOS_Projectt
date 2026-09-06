@@ -405,6 +405,9 @@ public:
     // Reset Engine State
     void reset();
 
+    void ensureClinit(std::shared_ptr<ClassFile> cls, LcduiDisplay* display);
+    bool isInstanceOf(const std::string& className, const std::string& targetType);
+
     // Cooperative cancel for game thread shutdown (checked each opcode).
     // Lets a blocking run() return promptly so shutdown can join, not detach.
     void requestCancel() { m_cancel.store(true); }
