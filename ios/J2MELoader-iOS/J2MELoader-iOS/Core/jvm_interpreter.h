@@ -48,10 +48,7 @@ public:
         m_playToneCallback = playToneCb;
     }
 
-    void setCurrentCanvas(uint32_t ref, std::shared_ptr<ClassFile> cls) {
-        m_canvasRef = ref;
-        m_canvasClass = cls;
-    }
+    void setCurrentCanvas(uint32_t ref, std::shared_ptr<ClassFile> cls);
 
     void registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> cls);
     void startRunnableThread();

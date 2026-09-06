@@ -280,6 +280,7 @@ struct ClassFile {
     std::vector<std::string> interfaces;
     std::map<std::string, FieldInfo> fields;
     std::map<std::string, MethodInfo> methods; // Key: "name:desc"
+    bool clinitDone = false;
 };
 
 // JVM Runtime Heap Objects

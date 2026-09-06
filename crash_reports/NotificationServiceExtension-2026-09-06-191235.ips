@@ -1,0 +1,304 @@
+{"app_name":"NotificationServiceExtension","timestamp":"2026-09-06 19:12:35.00 +0700","app_version":"260802","slice_uuid":"76ad2129-0255-3662-8ee9-0d7f760233fa","adam_id":"579523206","build_version":"260802802","platform":2,"bundleID":"vn.com.vng.zingalo.notificationserviceextension","share_with_app_devs":0,"is_first_party":0,"bug_type":"309","os_version":"iPhone OS 16.7.16 (20H392)","roots_installed":0,"name":"NotificationServiceExtension","incident_id":"3CE8D772-1662-4712-9149-E434D90AC032"}
+{
+  "uptime" : 26000,
+  "procRole" : "Unspecified",
+  "version" : 2,
+  "userID" : 501,
+  "deployVersion" : 210,
+  "modelCode" : "iPhone10,2",
+  "coalitionID" : 594,
+  "osVersion" : {
+    "isEmbedded" : true,
+    "train" : "iPhone OS 16.7.16",
+    "releaseType" : "User",
+    "build" : "20H392"
+  },
+  "captureTime" : "2026-09-06 19:12:30.6419 +0700",
+  "incident" : "3CE8D772-1662-4712-9149-E434D90AC032",
+  "pid" : 426,
+  "cpuType" : "ARM-64",
+  "roots_installed" : 0,
+  "bug_type" : "309",
+  "procLaunch" : "2026-09-06 01:13:53.1106 +0700",
+  "procStartAbsTime" : 115051182684,
+  "procExitAbsTime" : 647210831105,
+  "procName" : "NotificationServiceExtension",
+  "procPath" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/PlugIns\/NotificationServiceExtension.appex\/NotificationServiceExtension",
+  "bundleInfo" : {"CFBundleShortVersionString":"260802","CFBundleVersion":"260802802","CFBundleIdentifier":"vn.com.vng.zingalo.notificationserviceextension"},
+  "storeInfo" : {"storeCohortMetadata":"10|date=1734273000000&sf=143471&pgtp=Search&pgid=02359eb7-dd7e-4499-b9a1-b263de8fe093&prpg=SearchLanding_SearchLanding&ctxt=Search&issrch=1&imptyp=card&kind=iosSoftware&lngid=43","itemID":"579523206","deviceIdentifierForVendor":"2E8DB6CE-1AB1-48A5-AF72-49CA7A72314A","softwareVersionExternalIdentifier":"889881390","thirdParty":true,"applicationVariant":"1:iPhone10,2:15"},
+  "parentProc" : "launchd",
+  "parentPid" : 1,
+  "coalitionName" : "vn.com.vng.zingalo.notificationserviceextension",
+  "crashReporterKey" : "fa868d4a3f34815015016ede044f1c97f04cf8e3",
+  "throttleTimeout" : 10,
+  "codeSigningID" : "vn.com.vng.zingalo.notificationserviceextension",
+  "codeSigningTeamID" : "CVB6BX97VM",
+  "codeSigningFlags" : 570450689,
+  "codeSigningValidationCategory" : 4,
+  "codeSigningTrustLevel" : 0,
+  "basebandVersion" : "9.00.02",
+  "exception" : {"codes":"0x0000000000000000, 0x0000000000000000","rawCodes":[0,0],"type":"EXC_CRASH","signal":"SIGKILL"},
+  "termination" : {"namespace":"RUNNINGBOARD","flags":6,"code":3735883980},
+  "faultingThread" : 0,
+  "threads" : [{"triggered":true,"id":33234,"threadState":{"x":[{"value":268451845},{"value":21592279046},{"value":8589934592},{"value":19804094201856},{"value":0},{"value":19804094201856},{"value":2},{"value":4294967295},{"value":18446744073709550527},{"value":0},{"value":4611},{"value":0},{"value":24000000},{"value":4611},{"value":0},{"value":0},{"value":18446744073709551569},{"value":2},{"value":0},{"value":4294967295},{"value":2},{"value":19804094201856},{"value":0},{"value":19804094201856},{"value":6132196424},{"value":8589934592},{"value":21592279046},{"value":21592279046},{"value":8999813120,"symbolLocation":448,"symbol":"sDataLists"}],"flavor":"ARM_THREAD_STATE64","lr":{"value":8472308504},"cpsr":{"value":1073741824},"fp":{"value":6132196272},"sp":{"value":6132196192},"esr":{"value":1442840704,"description":" Address size fault"},"pc":{"value":8472236080,"matchesCrashFrame":1},"far":{"value":0}},"queue":"com.apple.main-thread","frames":[{"imageOffset":4144,"symbol":"mach_msg2_trap","symbolLocation":8,"imageIndex":16},{"imageOffset":76568,"symbol":"mach_msg2_internal","symbolLocation":76,"imageIndex":16},{"imageOffset":77240,"symbol":"mach_msg_overwrite","symbolLocation":484,"imageIndex":16},{"imageOffset":5412,"symbol":"mach_msg","symbolLocation":20,"imageIndex":16},{"imageOffset":475464,"symbol":"__CFRunLoopServiceMachPort","symbolLocation":156,"imageIndex":17},{"imageOffset":479968,"symbol":"__CFRunLoopRun","symbolLocation":1208,"imageIndex":17},{"imageOffset":498976,"symbol":"CFRunLoopRunSpecific","symbolLocation":584,"imageIndex":17},{"imageOffset":257784,"symbol":"-[NSRunLoop(NSRunLoop) runMode:beforeDate:]","symbolLocation":208,"imageIndex":18},{"imageOffset":257444,"symbol":"-[NSRunLoop(NSRunLoop) run]","symbolLocation":60,"imageIndex":18},{"imageOffset":96320,"symbol":"_xpc_objc_main","symbolLocation":492,"imageIndex":19},{"imageOffset":104808,"symbol":"xpc_main","symbolLocation":152,"imageIndex":19},{"imageOffset":533780,"symbol":"-[NSXPCListener resume]","symbolLocation":260,"imageIndex":18},{"imageOffset":98392,"imageIndex":20},{"imageOffset":22936,"imageIndex":20},{"imageOffset":19780,"imageIndex":20},{"imageOffset":134304,"symbol":"EXExtensionMain","symbolLocation":248,"imageIndex":21},{"imageOffset":796184,"symbol":"NSExtensionMain","symbolLocation":176,"imageIndex":18},{"imageOffset":82756,"symbol":"start","symbolLocation":1860,"imageIndex":22}]},{"id":33256,"name":"com.google.firebase.crashlytics.MachExceptionServer","frames":[{"imageOffset":4144,"symbol":"mach_msg2_trap","symbolLocation":8,"imageIndex":16},{"imageOffset":76568,"symbol":"mach_msg2_internal","symbolLocation":76,"imageIndex":16},{"imageOffset":77240,"symbol":"mach_msg_overwrite","symbolLocation":484,"imageIndex":16},{"imageOffset":5412,"symbol":"mach_msg","symbolLocation":20,"imageIndex":16},{"imageOffset":95512,"symbol":"FIRCLSMachExceptionServer","symbolLocation":104,"imageIndex":5},{"imageOffset":12524,"symbol":"_pthread_start","symbolLocation":116,"imageIndex":23},{"imageOffset":5932,"symbol":"thread_start","symbolLocation":8,"imageIndex":23}]},{"id":33295,"name":"com.apple.NSURLConnectionLoader","frames":[{"imageOffset":4144,"symbol":"mach_msg2_trap","symbolLocation":8,"imageIndex":16},{"imageOffset":76568,"symbol":"mach_msg2_internal","symbolLocation":76,"imageIndex":16},{"imageOffset":77240,"symbol":"mach_msg_overwrite","symbolLocation":484,"imageIndex":16},{"imageOffset":5412,"symbol":"mach_msg","symbolLocation":20,"imageIndex":16},{"imageOffset":475464,"symbol":"__CFRunLoopServiceMachPort","symbolLocation":156,"imageIndex":17},{"imageOffset":479968,"symbol":"__CFRunLoopRun","symbolLocation":1208,"imageIndex":17},{"imageOffset":498976,"symbol":"CFRunLoopRunSpecific","symbolLocation":584,"imageIndex":17},{"imageOffset":2266384,"imageIndex":24},{"imageOffset":354908,"symbol":"__NSThread__start__","symbolLocation":704,"imageIndex":18},{"imageOffset":12524,"symbol":"_pthread_start","symbolLocation":116,"imageIndex":23},{"imageOffset":5932,"symbol":"thread_start","symbolLocation":8,"imageIndex":23}]},{"id":218005,"frames":[{"imageOffset":5912,"symbol":"start_wqthread","symbolLocation":0,"imageIndex":23}]},{"id":219101,"frames":[{"imageOffset":5912,"symbol":"start_wqthread","symbolLocation":0,"imageIndex":23}]},{"id":219102,"frames":[{"imageOffset":5912,"symbol":"start_wqthread","symbolLocation":0,"imageIndex":23}]},{"id":219103,"frames":[{"imageOffset":5912,"symbol":"start_wqthread","symbolLocation":0,"imageIndex":23}]}],
+  "usedImages" : [
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4334682112,
+    "size" : 2899968,
+    "uuid" : "76ad2129-0255-3662-8ee9-0d7f760233fa",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/PlugIns\/NotificationServiceExtension.appex\/NotificationServiceExtension",
+    "name" : "NotificationServiceExtension"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4339924992,
+    "size" : 114688,
+    "uuid" : "22f09bda-613b-3a68-ab1f-7a9721429f5a",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/ZAImageCoder.framework\/ZAImageCoder",
+    "name" : "ZAImageCoder"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4343496704,
+    "size" : 2703360,
+    "uuid" : "255abf55-e92a-3cc6-8df0-42588bb0a827",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/libzjxl.framework\/libzjxl",
+    "name" : "libzjxl"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4340531200,
+    "size" : 147456,
+    "uuid" : "44142b4c-62ef-3103-892e-0356818b7cfb",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/ZAFoundation.framework\/ZAFoundation",
+    "name" : "ZAFoundation"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4340187136,
+    "size" : 81920,
+    "uuid" : "2ce8b266-dd13-3209-8a05-30f95bf0e967",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/FirebaseCore.framework\/FirebaseCore",
+    "name" : "FirebaseCore"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4341579776,
+    "size" : 327680,
+    "uuid" : "43eced53-87a0-3873-88e9-da7b3b91e05a",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/FirebaseCrashlytics.framework\/FirebaseCrashlytics",
+    "name" : "FirebaseCrashlytics"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4341202944,
+    "size" : 114688,
+    "uuid" : "3bd99f68-a527-3e0b-ae18-361a2763a1b9",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/FirebaseCoreInternal.framework\/FirebaseCoreInternal",
+    "name" : "FirebaseCoreInternal"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4340875264,
+    "size" : 131072,
+    "uuid" : "cccd2628-1d81-36e4-8a7f-00134c2df896",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/GoogleUtilities.framework\/GoogleUtilities",
+    "name" : "GoogleUtilities"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4340367360,
+    "size" : 65536,
+    "uuid" : "b8202a65-3fa6-3b4c-a550-b5b4cc4de3f5",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/FBLPromises.framework\/FBLPromises",
+    "name" : "FBLPromises"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4342284288,
+    "size" : 98304,
+    "uuid" : "ce4d9104-40ae-35f5-9fb0-40267fdc2d16",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/FirebaseInstallations.framework\/FirebaseInstallations",
+    "name" : "FirebaseInstallations"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4342513664,
+    "size" : 49152,
+    "uuid" : "5a507b54-1783-3850-8ab4-64853c37fcbb",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/FirebaseRemoteConfigInterop.framework\/FirebaseRemoteConfigInterop",
+    "name" : "FirebaseRemoteConfigInterop"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4342988800,
+    "size" : 131072,
+    "uuid" : "df62515b-a6dc-371f-afe7-4c82c8a64a1d",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/FirebaseSessions.framework\/FirebaseSessions",
+    "name" : "FirebaseSessions"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4347166720,
+    "size" : 163840,
+    "uuid" : "86a49a9a-9a8b-3245-b325-5b273eca1518",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/GoogleDataTransport.framework\/GoogleDataTransport",
+    "name" : "GoogleDataTransport"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4339761152,
+    "size" : 32768,
+    "uuid" : "1d78a370-0861-3af4-9619-40be551743b3",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/nanopb.framework\/nanopb",
+    "name" : "nanopb"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4342661120,
+    "size" : 32768,
+    "uuid" : "b851a197-a1b5-3aaa-8109-31b6cce2ac1e",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/FirebaseCoreExtension.framework\/FirebaseCoreExtension",
+    "name" : "FirebaseCoreExtension"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4346822656,
+    "size" : 81920,
+    "uuid" : "ea6e1e42-9e49-3620-9d45-43b7f6580e33",
+    "path" : "\/private\/var\/containers\/Bundle\/Application\/03CF9231-3BE7-45B9-8E29-EC1ED8748E44\/Zalo.app\/Frameworks\/Promises.framework\/Promises",
+    "name" : "Promises"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 8472231936,
+    "size" : 221176,
+    "uuid" : "2e54c705-1974-30d2-b371-81fd168f8d76",
+    "path" : "\/usr\/lib\/system\/libsystem_kernel.dylib",
+    "name" : "libsystem_kernel.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 7473823744,
+    "size" : 3993600,
+    "uuid" : "55b9ba28-4c5c-3fe7-9c47-4983337d6e83",
+    "path" : "\/System\/Library\/Frameworks\/CoreFoundation.framework\/CoreFoundation",
+    "name" : "CoreFoundation"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 7376871424,
+    "size" : 8687616,
+    "uuid" : "dce5e587-2a0d-34cf-8245-23e1b12936a9",
+    "path" : "\/System\/Library\/Frameworks\/Foundation.framework\/Foundation",
+    "name" : "Foundation"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 8729985024,
+    "size" : 249856,
+    "uuid" : "dd50de06-4365-361e-a7e8-0e013e7ddc1d",
+    "path" : "\/usr\/lib\/system\/libxpc.dylib",
+    "name" : "libxpc.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 8079085568,
+    "size" : 212992,
+    "uuid" : "4bec9f11-e33b-38b9-a96a-f495e61c248d",
+    "path" : "\/System\/Library\/PrivateFrameworks\/PlugInKit.framework\/PlugInKit",
+    "name" : "PlugInKit"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 7684739072,
+    "size" : 393216,
+    "uuid" : "f1100ce5-49b1-34bd-aafd-30cfb2466b47",
+    "path" : "\/System\/Library\/Frameworks\/ExtensionFoundation.framework\/ExtensionFoundation",
+    "name" : "ExtensionFoundation"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 7968915456,
+    "size" : 510172,
+    "uuid" : "199941a5-95ee-3054-8e54-ae6387a9fa9a",
+    "path" : "\/usr\/lib\/dyld",
+    "name" : "dyld"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 8729694208,
+    "size" : 69632,
+    "uuid" : "78c98f18-5985-3be3-bc4b-f2a3a34ae906",
+    "path" : "\/usr\/lib\/system\/libsystem_pthread.dylib",
+    "name" : "libsystem_pthread.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 7490404352,
+    "size" : 3768320,
+    "uuid" : "62f20f83-c142-3bc3-83c8-ad47bfc9297f",
+    "path" : "\/System\/Library\/Frameworks\/CFNetwork.framework\/CFNetwork",
+    "name" : "CFNetwork"
+  }
+],
+  "sharedCache" : {
+  "base" : 7358578688,
+  "size" : 2866184192,
+  "uuid" : "6cc69d47-36f1-32a1-ae28-afed14bd6e23"
+},
+  "vmSummary" : "ReadOnly portion of Libraries: Total=795.8M resident=0K(0%) swapped_out_or_unallocated=795.8M(100%)\nWritable regions: Total=67.9M written=0K(0%) resident=0K(0%) swapped_out=0K(0%) unallocated=67.9M(100%)\n\n                                VIRTUAL   REGION \nREGION TYPE                        SIZE    COUNT (non-coalesced) \n===========                     =======  ======= \nActivity Tracing                   256K        1 \nDispatch continuations            6144K        1 \nKernel Alloc Once                   32K        1 \nMALLOC                            56.6M       35 \nMALLOC guard page                  128K        8 \nSQLite page cache                  384K        3 \nSTACK GUARD                         96K        6 \nStack                             3744K        7 \nVM_ALLOCATE                        640K        5 \n__CTF                               824        1 \n__DATA                            7125K      497 \n__DATA_CONST                      43.7M      512 \n__DATA_DIRTY                      4592K      456 \n__FONT_DATA                          4K        1 \n__INFO_FILTER                         8        1 \n__LINKEDIT                       319.9M       17 \n__OBJC_RO                         79.8M        1 \n__OBJC_RW                         2464K        1 \n__TEXT                           475.9M      518 \ndyld private memory                272K        2 \nlibnetwork                         128K        8 \nmapped file                       30.5M       25 \nshared memory                       48K        3 \n===========                     =======  ======= \nTOTAL                              1.0G     2110 \n",
+  "legacyInfo" : {
+  "threadTriggered" : {
+    "queue" : "com.apple.main-thread"
+  }
+},
+  "logWritingSignature" : "6914fe64908f074e3a3779e77eaf7746cbb5ded4",
+  "trialInfo" : {
+  "rollouts" : [
+    {
+      "rolloutId" : "6425c75e4327780c10cc4252",
+      "factorPackIds" : {
+        "SIRI_HOME_AUTOMATION_INTENT_SELECTION_CACHE" : "642600a457e7664b1698eb32"
+      },
+      "deploymentId" : 240000004
+    },
+    {
+      "rolloutId" : "64628732bf2f5257dedc8988",
+      "factorPackIds" : {
+
+      },
+      "deploymentId" : 240000001
+    }
+  ],
+  "experiments" : [
+
+  ]
+}
+}

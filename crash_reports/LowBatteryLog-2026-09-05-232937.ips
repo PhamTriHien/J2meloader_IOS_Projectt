@@ -1,0 +1,130 @@
+{"bug_type":"120","timestamp":"2026-09-05 23:29:37.00 +0700","os_version":"iPhone OS 16.7.16 (20H392)","roots_installed":0,"incident_id":"22A8D78C-26FC-4DEB-A55F-7296FB0ADCAC"}
+{"bug_type":"120","os_version":"iPhone OS 16.7.16 (20H392)"}
+Incident Identifier: 928B2789-19B9-47D2-833F-324EAE4E2704
+CrashReporter Key:   fa868d4a3f34815015016ede044f1c97f04cf8e3
+Date:                2026-09-05 23:29:36.427 +0700
+OS Version:          iPhone OS 16.7.16 (20H392)
+
+SpringBoard: BacklightServices.backlightActiveOn	SystemIsActive == 255, held for 00:51:54
+mediaserverd: com.apple.audio.VAD [vdef] AggDev 3.context.preventuseridlesleep	PreventUserIdleSystemSleep == 255, held for 00:21:51
+runningboardd: application<com.Company.ProductName>31-34-10488:MediaExperience.610."com.Company.ProductName"."sid:0x2205c, KoiUltra237(610), 'prim'"."AmbientSound".isPlayingProcessAssertion	SystemIsActive == 255, held for 00:21:52
+runningboardd: osservice<com.apple.SpringBoard>31-33-9759:FBSystemApp-PreventIdleSleep	SystemIsActive == 255, held for 00:51:54
+
+Foreground Applications: com.Company.ProductName 
+Screen Brightness: 0.801908
+Hardware Model: D21AP
+Awake Time: 47:17:24 (170243)
+Standby Time: 81:14:19 (292458)
+Partial Charge: 1
+Capacity: 1
+Voltage: 3198 mV
+Voltage Droop Time: 3259361328
+Voltage Droop Transitions: 6647
+PPMDebug has keys:
+ (
+        {
+        BaselineSysCap =         (
+            43700
+        );
+        Client0 =         {
+            Bdg = 1;
+            Car =             (
+                0
+            );
+            Idx = 10;
+            Pwr =             (
+                285
+            );
+            reqBdg = 100;
+        };
+        Client2 =         {
+            Bdg = 1000;
+            Car =             (
+                0
+            );
+            Idx = 14;
+            Pwr =             (
+                1000
+            );
+            reqBdg = 13001;
+        };
+        Client5 =         {
+            Bdg = 0;
+            Car =             (
+                0
+            );
+            Idx = 5;
+            Pwr =             (
+                323
+            );
+            reqBdg = 65536;
+        };
+        Client6 =         {
+            Bdg = 1;
+            Car =             (
+                0
+            );
+            Idx = 1;
+            Pwr =             (
+                889
+            );
+            reqBdg = 0;
+        };
+        Client7 =         {
+            Bdg = 4;
+            Car =             (
+                0
+            );
+            Idx = 0;
+            Pwr =             (
+                10
+            );
+            reqBdg = 4;
+        };
+        DroopCtrlEff =         (
+            65536
+        );
+        DroopPwrRemoval =         (
+            15000
+        );
+        ModeledSysCap =         (
+            2894
+        );
+        NetSysCap =         (
+            0
+        );
+        OverrideSysCap =         (
+            0
+        );
+        PPMBatteryModel =         {
+            Iss = 476;
+            Pb = 791;
+            Pp = 851;
+            Ps = 2894;
+            R0 = 17;
+            R1 = 14;
+            R2 = 11;
+            R3 = 40;
+            RCParamsHash = {length = 20, bytes = 0x8cb018799dcfd1bd65d36ff5a3f4ad7437c66620};
+            Vgg = 3200;
+            avgRdcRatio = 100;
+            baselineR0 = 17;
+            baselineR1 = 14;
+            baselineR2 = 11;
+            baselineR3 = 761;
+            mPb = 0;
+            mPp = 0;
+            outputFlag = 2359296;
+        };
+        ProactiveSysCap =         (
+            2894
+        );
+        TStamp = 1788625777420906415;
+        TotalDemandAdj =         (
+            2507
+        );
+        TotalDemandRaw =         (
+            2507
+        );
+    }
+) 

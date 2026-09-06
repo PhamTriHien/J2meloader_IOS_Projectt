@@ -122,7 +122,27 @@ bool JarLoader::readCentralDirectory() {
 }
 
 bool JarLoader::extractEntry(const std::string& entryName, std::vector<uint8_t>& outData) {
-    auto it = m_entries.find(entryName);
+    std::string norm = entryName;
+    if (!norm.empty() && norm[0] == '/') norm.erase(0, 1);
+
+    auto it = m_entries.find(norm);
+    if (it == m_entries.end()) {
+        it = m_entries.find(entryName);
+    }
+    if (it == m_entries.end()) {
+        // Case-insensitive lookup fallback
+        for (auto eit = m_entries.begin(); eit != m_entries.end(); ++eit) {
+            if (eit->first.size() == norm.size()) {
+                std::string a = eit->first, b = norm;
+                std::transform(a.begin(), a.end(), a.begin(), ::tolower);
+                std::transform(b.begin(), b.end(), b.begin(), ::tolower);
+                if (a == b) {
+                    it = eit;
+                    break;
+                }
+            }
+        }
+    }
     if (it == m_entries.end()) return false;
 
     const JarEntry& entry = it->second;

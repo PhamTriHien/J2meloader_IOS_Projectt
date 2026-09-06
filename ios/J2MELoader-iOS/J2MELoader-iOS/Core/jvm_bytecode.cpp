@@ -1371,13 +1371,39 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         ~DepthGuard() { --d; }
     } depthGuard(t_callDepth);
 
+    // Run static class initializer (<clinit>) once when class is first accessed
+    if (!cls->clinitDone) {
+        cls->clinitDone = true;
+        auto clinitIt = cls->methods.find("<clinit>:()V");
+        if (clinitIt != cls->methods.end()) {
+            executeMethod(cls, "<clinit>", "()V", {}, display);
+        }
+    }
+
     std::string key = methodName + ":" + desc;
-    auto it = cls->methods.find(key);
-    if (it == cls->methods.end()) {
-        // Try native dispatch
+    std::shared_ptr<ClassFile> curCls = cls;
+    auto it = curCls->methods.find(key);
+    while (it == curCls->methods.end() && !curCls->superClassName.empty() && curCls->superClassName != "java/lang/Object") {
+        auto superCls = findOrLoadClass(curCls->superClassName, m_activeJar);
+        if (!superCls || superCls == curCls) break;
+        curCls = superCls;
+        it = curCls->methods.find(key);
+    }
+
+    if (it == curCls->methods.end()) {
+        // Try native dispatch on target class and its superclass hierarchy
         JavaValue res;
-        if (dispatchNativeMethod(cls->thisClassName, methodName, desc, args, res, display)) {
-            return res;
+        std::string checkClass = cls->thisClassName;
+        while (!checkClass.empty()) {
+            if (dispatchNativeMethod(checkClass, methodName, desc, args, res, display)) {
+                return res;
+            }
+            auto checkCls = findOrLoadClass(checkClass, m_activeJar);
+            if (checkCls && !checkCls->superClassName.empty() && checkCls->superClassName != checkClass && checkCls->superClassName != "java/lang/Object") {
+                checkClass = checkCls->superClassName;
+            } else {
+                break;
+            }
         }
         return JavaValue(0);
     }
@@ -1386,7 +1412,7 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
     if (method.code.empty()) return JavaValue(0);
 
     StackFrame frame;
-    frame.classRef = cls;
+    frame.classRef = curCls;
     frame.method = &method;
     frame.locals.resize(std::max<size_t>(method.maxLocals, args.size()), JavaValue(0));
     for (size_t i = 0; i < args.size(); ++i) frame.locals[i] = args[i];

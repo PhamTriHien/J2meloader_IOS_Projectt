@@ -180,28 +180,37 @@ void JvmInterpreter::processEvents() {
     }
 }
 
+void JvmInterpreter::setCurrentCanvas(uint32_t ref, std::shared_ptr<ClassFile> cls) {
+    m_canvasRef = ref;
+    m_canvasClass = cls;
+    if (cls && ref != 0) {
+        auto& jvm = JvmBytecodeEngine::getInstance();
+        // J2ME spec: showNotify() MUST be called when canvas is made current
+        std::string showKey = "showNotify:()V";
+        if (cls->methods.find(showKey) != cls->methods.end()) {
+            jvm.executeMethod(cls, "showNotify", "()V", { JavaValue(ref, true) }, m_display.get());
+        }
+        // If the canvas itself implements Runnable, start its game loop thread
+        std::string runKey = "run:()V";
+        if (cls->methods.find(runKey) != cls->methods.end()) {
+            registerRunnable(ref, cls);
+        }
+    }
+}
+
 void JvmInterpreter::registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> cls) {
+    if (!cls || ref == 0) return;
     m_runnableRef = ref;
     m_runnableClass = cls;
-    startRunnableThread();
+    std::thread([this, ref, cls]() {
+        auto& jvm = JvmBytecodeEngine::getInstance();
+        jvm.executeMethod(cls, "run", "()V", { JavaValue(ref, true) }, m_display.get());
+    }).detach();
 }
 
 void JvmInterpreter::startRunnableThread() {
-    if (m_runnableRunning) return;
     if (m_runnableClass && m_runnableRef != 0) {
-        m_runnableRunning = true;
-        if (m_gameThread.joinable()) {
-            if (std::this_thread::get_id() != m_gameThread.get_id()) {
-                m_gameThread.join();
-            } else {
-                m_gameThread.detach();
-            }
-        }
-        m_gameThread = std::thread([this]() {
-            auto& jvm = JvmBytecodeEngine::getInstance();
-            jvm.executeMethod(m_runnableClass, "run", "()V", { JavaValue(m_runnableRef, true) }, m_display.get());
-            m_runnableRunning = false;
-        });
+        registerRunnable(m_runnableRef, m_runnableClass);
     }
 }
 
