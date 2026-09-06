@@ -21,8 +21,14 @@ public struct ReleaseInfo: Decodable, Identifiable {
     
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(Int.self, forKey: .id)
-        tagName = try container.decode(String.self, forKey: .tagName)
+        // Tolerant: GitHub error JSON (rate-limit/404) has no id/tag_name.
+        // Throw a meaningful error instead of "data missing".
+        guard let tag = try container.decodeIfPresent(String.self, forKey: .tagName) else {
+            throw DecodingError.dataCorruptedError(forKey: .tagName, in: container,
+                debugDescription: "Phản hồi không phải bản phát hành (sai endpoint hoặc hết lượt truy vấn).")
+        }
+        id = try container.decodeIfPresent(Int.self, forKey: .id) ?? -1
+        tagName = tag
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? tagName
         body = try container.decodeIfPresent(String.self, forKey: .body) ?? ""
         publishedAt = try container.decodeIfPresent(String.self, forKey: .publishedAt) ?? ""
@@ -69,6 +75,9 @@ public class AppUpdateManager: NSObject, ObservableObject, URLSessionDownloadDel
     
     @AppStorage("autoCheckUpdates") public var autoCheckUpdates: Bool = true
     @AppStorage("lastDismissedVersion") public var lastDismissedVersion: String = ""
+    // CI rebuilds the same tag on every push, so numeric compare alone never
+    // fires. Track the release id to notify once per rebuilt release.
+    @AppStorage("lastSeenReleaseId") public var lastSeenReleaseId: Int = -1
     
     private var downloadTask: URLSessionDownloadTask?
     
@@ -98,40 +107,61 @@ public class AppUpdateManager: NSObject, ObservableObject, URLSessionDownloadDel
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isChecking = false
-                
+
+                func note(_ msg: String) {
+                    // Auto-check stays silent except when an update is found;
+                    // manual check always reports the reason.
+                    if manual { self.statusMessage = msg }
+                }
+
                 if let error = error {
-                    if manual {
-                        self.statusMessage = "Không có kết nối mạng (\(error.localizedDescription))"
-                    }
+                    note("Không có kết nối mạng (\(error.localizedDescription))")
                     return
                 }
-                
-                guard let data = data else {
-                    if manual { self.statusMessage = "Không nhận được phản hồi từ máy chủ." }
+
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                if status == 404 {
+                    note("Chưa có bản phát hành nào trên GitHub (404). CI phải chạy xong và tạo Release trước.")
                     return
                 }
-                
+                if status == 403 || status == 429 {
+                    note("GitHub giới hạn truy vấn tạm thời, thử lại sau vài phút.")
+                    return
+                }
+                if status != 0 && (status < 200 || status >= 300) {
+                    note("Lỗi mạng (mã \(status)).")
+                    return
+                }
+
+                guard let data = data, !data.isEmpty else {
+                    note("Không nhận được phản hồi từ máy chủ.")
+                    return
+                }
+
                 do {
                     let release = try JSONDecoder().decode(ReleaseInfo.self, from: data)
                     self.latestRelease = release
-                    
-                    let isNewer = self.isVersionNewer(remoteTag: release.tagName, currentTag: AppUpdateManager.currentVersion)
-                    self.hasUpdate = isNewer
-                    
-                    if isNewer {
+
+                    let numericNewer = self.isVersionNewer(remoteTag: release.tagName, currentTag: AppUpdateManager.currentVersion)
+                    let newBuild = release.id >= 0 && release.id != self.lastSeenReleaseId
+                    self.hasUpdate = numericNewer || newBuild
+
+                    if self.hasUpdate {
                         self.statusMessage = "Có bản cập nhật mới: \(release.tagName)"
-                        if manual || self.lastDismissedVersion != release.tagName {
+                        if manual || newBuild {
                             self.showingUpdateModal = true
+                            self.lastSeenReleaseId = release.id
                         }
                     } else {
                         if manual {
-                            self.statusMessage = "Ứng dụng đang ở phiên bản mới nhất (\(AppUpdateManager.currentVersion))"
+                            self.statusMessage = "Ứng dụng đang ở phiên bản mới nhất (\(release.tagName))"
                         }
                     }
+                } catch let decErr as DecodingError {
+                    // Should no longer be the cryptic "data missing" message.
+                    note("Dữ liệu bản phát hành không hợp lệ: \(decErr.localizedDescription)")
                 } catch {
-                    if manual {
-                        self.statusMessage = "Lỗi phân tích bản phát hành: \(error.localizedDescription)"
-                    }
+                    note("Lỗi phân tích bản phát hành: \(error.localizedDescription)")
                 }
             }
         }.resume()
@@ -182,8 +212,9 @@ public class AppUpdateManager: NSObject, ObservableObject, URLSessionDownloadDel
     }
     
     public func dismissUpdate() {
-        if let currentTag = latestRelease?.tagName {
-            lastDismissedVersion = currentTag
+        if let rel = latestRelease {
+            lastDismissedVersion = rel.tagName
+            lastSeenReleaseId = rel.id
         }
         showingUpdateModal = false
     }
