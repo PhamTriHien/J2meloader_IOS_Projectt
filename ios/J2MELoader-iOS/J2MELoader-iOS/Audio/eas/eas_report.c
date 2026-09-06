@@ -38,10 +38,10 @@
 
 #include "eas_report.h"
 
-static int severityLevel = 9999;
+static int severityLevel __attribute__((unused)) = 9999;
 
 /* debug file */
-static FILE *debugFile = NULL;
+static FILE *debugFile __attribute__((unused)) = NULL;
 int flush = 0;
 
 #ifndef _NO_DEBUG_PREPROCESSOR
@@ -143,37 +143,9 @@ S_DEBUG_MESSAGES debugMessages[] =
 */
 void EAS_ReportEx (int severity, unsigned long hashCode, int serialNum, ...)
 {
-    va_list vargs;
-    int i;
-
-    /* check severity level */
-    if (severity > severityLevel)
-        return;
-
-    /* find the error message and output to stdout */
-    /*lint -e{661} we check for NULL pointer - no fence post error here */
-    for (i = 0; debugMessages[i].m_pDebugMsg; i++)
-    {
-        if ((debugMessages[i].m_nHashCode == hashCode) &&
-        (debugMessages[i].m_nSerialNum == serialNum))
-        {
-            /*lint -e{826} <allow variable args> */
-            va_start(vargs, serialNum);
-            if (debugFile)
-            {
-                vfprintf(debugFile, debugMessages[i].m_pDebugMsg, vargs);
-                if (flush)
-                    fflush(debugFile);
-            }
-            else
-            {
-                vprintf(debugMessages[i].m_pDebugMsg, vargs);
-            }
-            va_end(vargs);
-            return;
-        }
-    }
-    printf("Unrecognized error: Severity=%d; HashCode=%lu; SerialNum=%d\n", severity, hashCode, serialNum);
+    /* Production iOS: silence stdout spam (see EAS_Report). */
+    (void)severity; (void)hashCode; (void)serialNum;
+    return;
 } /* end EAS_ReportEx */
 
 #else
@@ -186,25 +158,11 @@ void EAS_ReportEx (int severity, unsigned long hashCode, int serialNum, ...)
 */
 void EAS_Report (int severity, const char *fmt, ...)
 {
-    va_list vargs;
-
-    /* check severity level */
-    if (severity > severityLevel)
-        return;
-
-    /*lint -e{826} <allow variable args> */
-    va_start(vargs, fmt);
-    if (debugFile)
-    {
-        vfprintf(debugFile, fmt, vargs);
-        if (flush)
-            fflush(debugFile);
-    }
-    else
-    {
-        vprintf(fmt, vargs);
-    }
-    va_end(vargs);
+    /* Production iOS: silence stdout spam (device console noise on every
+     * MIDI parse hiccup). Re-enable by setting severityLevel low during
+     * debugging. Callers already fall back to AVAudioPlayer on failure. */
+    (void)severity; (void)fmt;
+    return;
 } /* end EAS_Report */
 
 /*----------------------------------------------------------------------------

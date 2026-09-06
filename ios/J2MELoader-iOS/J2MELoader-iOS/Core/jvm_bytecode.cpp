@@ -847,7 +847,25 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             JavaObject* canvasObj = getObject(nextRef);
             if (canvasObj && !canvasObj->className.empty()) {
                 auto cls = findOrLoadClass(canvasObj->className, m_activeJar);
-                JvmInterpreter::getInstance().setCurrentCanvas(nextRef, cls);
+                // Only Canvas subclasses become the paint target. High-level
+                // screens (Form/List/TextBox/Alert) fall through to FullApis,
+                // which renders them and tracks CommandListener. Binding them
+                // here would paint black and kill their commands.
+                bool isCanvas = false;
+                for (auto c = cls, d = 0; c && d < 16; ++d) {
+                    if (c->thisClassName == "javax/microedition/lcdui/Canvas" ||
+                        c->thisClassName.find("Canvas") != std::string::npos) {
+                        isCanvas = true;
+                        break;
+                    }
+                    if (c->superClassName.empty()) break;
+                    c = findOrLoadClass(c->superClassName, m_activeJar);
+                }
+                if (isCanvas) {
+                    JvmInterpreter::getInstance().setCurrentCanvas(nextRef, cls);
+                    return true;
+                }
+                return false; // let FullApis handle high-level screens
             }
             return true;
         }
@@ -906,6 +924,46 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 outResult = JavaValue(allocateNativeImage(w, h, true), true);
                 return true;
             }
+            // Region variant createImage(Image,int,int,int,int,int) MUST come first:
+            // its descriptor contains "(L...Image;" as a prefix substring.
+            if (desc.find("(Ljavax/microedition/lcdui/Image;") != std::string::npos && args.size() >= 6) {
+                syncImageFromDisplay(args[0].asRef());
+                NativeImage* src = getNativeImage(args[0].asRef());
+                int x = args[1].asInt(), y = args[2].asInt(), w = args[3].asInt(), h = args[4].asInt();
+                int t = args[5].asInt();
+                bool swapDims = (t == 4 || t == 5 || t == 6 || t == 7);
+                int dw = swapDims ? h : w, dh = swapDims ? w : h;
+                uint32_t resRef = allocateNativeImage(dw > 0 ? dw : 1, dh > 0 ? dh : 1, false);
+                NativeImage* dst = getNativeImage(resRef);
+                if (src && dst && w > 0 && h > 0) {
+                    auto at = [&](int c, int r) -> uint32_t {
+                        int sx = x + c, sy = y + r;
+                        if (sx >= 0 && sx < src->width && sy >= 0 && sy < src->height)
+                            return src->pixels[(size_t)sy * src->width + sx];
+                        return 0;
+                    };
+                    for (int r = 0; r < h; ++r) {
+                        for (int c = 0; c < w; ++c) {
+                            uint32_t px = at(c, r);
+                            int dx = c, dy = r;
+                            switch (t) {
+                            case 1: dx = c; dy = h - 1 - r; break;
+                            case 2: dx = w - 1 - c; dy = r; break;
+                            case 3: dx = w - 1 - c; dy = h - 1 - r; break;
+                            case 4: dx = h - 1 - r; dy = w - 1 - c; break;
+                            case 5: dx = h - 1 - r; dy = c; break;
+                            case 6: dx = r; dy = w - 1 - c; break;
+                            case 7: dx = r; dy = c; break;
+                            default: break;
+                            }
+                            if (dx >= 0 && dx < dw && dy >= 0 && dy < dh)
+                                dst->pixels[(size_t)dy * dw + dx] = px;
+                        }
+                    }
+                }
+                outResult = JavaValue(resRef, true);
+                return true;
+            }
             if (desc.find("(Ljavax/microedition/lcdui/Image;)") != std::string::npos && args.size() >= 1) {
                 syncImageFromDisplay(args[0].asRef());
                 NativeImage* src = getNativeImage(args[0].asRef());
@@ -917,25 +975,6 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 } else {
                     outResult = JavaValue(allocateNativeImage(16, 16, false), true);
                 }
-                return true;
-            }
-            if (args.size() >= 6) {
-                syncImageFromDisplay(args[0].asRef());
-                NativeImage* src = getNativeImage(args[0].asRef());
-                int x = args[1].asInt(), y = args[2].asInt(), w = args[3].asInt(), h = args[4].asInt();
-                uint32_t resRef = allocateNativeImage(w, h, false);
-                NativeImage* dst = getNativeImage(resRef);
-                if (src && dst && w > 0 && h > 0) {
-                    for (int r = 0; r < h; ++r) {
-                        for (int c = 0; c < w; ++c) {
-                            int sx = x + c, sy = y + r;
-                            if (sx >= 0 && sx < src->width && sy >= 0 && sy < src->height) {
-                                dst->pixels[r * w + c] = src->pixels[sy * src->width + sx];
-                            }
-                        }
-                    }
-                }
-                outResult = JavaValue(resRef, true);
                 return true;
             }
         }

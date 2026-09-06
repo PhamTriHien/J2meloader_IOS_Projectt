@@ -1416,7 +1416,8 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         std::string ret=returnTypeOf(desc);
         if(ret=="V") return true;
         if(ret=="Z"){ outResult=JavaValue(1); return true; }
-        if(ret=="I"||ret=="B"||ret=="S"||ret=="C"){ outResult=JavaValue(0); if(methodName=="getColor"||methodName=="getDisplayWidth") outResult=JavaValue(display?display->getWidth():240); if(methodName=="getDisplayHeight") outResult=JavaValue(display?display->getHeight():320); return true; }
+        if(methodName=="getColor"){ outResult=JavaValue(0); return true; }
+        if(ret=="I"||ret=="B"||ret=="S"||ret=="C"){ outResult=JavaValue(0); if(methodName=="getDisplayWidth") outResult=JavaValue(display?display->getWidth():240); if(methodName=="getDisplayHeight") outResult=JavaValue(display?display->getHeight():320); return true; }
         if(ret=="J"){outResult=JavaValue((int64_t)0);return true;}
         if(ret=="F"){outResult=JavaValue(0.0f);return true;}
         if(ret=="D"){outResult=JavaValue(0.0);return true;}
