@@ -82,10 +82,14 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
 
     // NOTE: the startApp fallback scan (loads every class in the JAR) moved to
     // midletInitRoutine() so big JARs never freeze the UI thread here.
-    if (m_initThread.joinable()) {
-        // Leftover from a previous session that shutdown() missed; must join
-        // before overwriting (assigning a joinable thread calls terminate).
-        m_initThread.join();
+    {
+        // Reap any leftover init thread under lock (same handoff as shutdown).
+        std::thread leftover;
+        {
+            std::lock_guard<std::mutex> lk(m_stateMutex);
+            if (m_initThread.joinable()) leftover = std::move(m_initThread);
+        }
+        if (leftover.joinable()) leftover.join();
     }
 
     if (targetClass.empty()) {
@@ -112,6 +116,13 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
 }
 
 void JvmInterpreter::shutdown() {
+    // Move threads out under lock so a concurrently starting worker can never
+    // race on the std::thread objects (assigning a joinable thread terminates).
+    auto takeThread = [this](std::thread& t) -> std::thread {
+        std::lock_guard<std::mutex> lk(m_stateMutex);
+        if (t.joinable()) return std::move(t);
+        return std::thread();
+    };
     auto joinGuarded = [](std::thread& t) {
         if (t.joinable()) {
             if (std::this_thread::get_id() != t.get_id()) {
@@ -140,12 +151,16 @@ void JvmInterpreter::shutdown() {
         // Cooperative stop: running bytecode sees cancel and returns promptly,
         // so threads can be joined (no detach onto a reset heap).
         JvmBytecodeEngine::getInstance().requestCancel();
-        joinGuarded(m_initThread);
-        joinGuarded(m_gameThread);
-        joinGuarded(m_workerThread);
+        std::thread initT = takeThread(m_initThread);
+        std::thread gameT = takeThread(m_gameThread);
+        std::thread workerT = takeThread(m_workerThread);
+        joinGuarded(initT);
+        joinGuarded(gameT);
+        joinGuarded(workerT);
     } else {
         // Session never started: still reap a stray init thread if present.
-        joinGuarded(m_initThread);
+        std::thread initT = takeThread(m_initThread);
+        joinGuarded(initT);
     }
     m_jarLoader->close();
     {
@@ -181,6 +196,18 @@ void JvmInterpreter::resume() {
         auto& jvm = JvmBytecodeEngine::getInstance();
         jvm.executeMethod(cls, "startApp", "()V", { JavaValue(ref, true) }, m_display.get());
     }
+}
+
+std::string JvmInterpreter::getBootStatus() {
+    {
+        std::lock_guard<std::mutex> lk(m_bootMutex);
+        if (!m_bootError.empty()) return "error:" + m_bootError;
+    }
+    {
+        std::lock_guard<std::mutex> lk(m_stateMutex);
+        if (m_canvasClass && m_canvasRef != 0) return "running";
+    }
+    return "loading";
 }
 
 void JvmInterpreter::postKeyEvent(int32_t keyCode, bool isDown) {
@@ -447,8 +474,13 @@ void JvmInterpreter::executionLoop() {
     drawBootSplash("Dang tai game Java");
 
     // MIDlet lifecycle runs on its own thread; the loop below keeps painting.
+    // Published under lock: shutdown() may concurrently move it out to join.
     unsigned long gen = m_generation.load();
-    m_initThread = std::thread(&JvmInterpreter::midletInitRoutine, this, gen);
+    {
+        std::lock_guard<std::mutex> lk(m_stateMutex);
+        if (!m_running.load()) return;
+        m_initThread = std::thread(&JvmInterpreter::midletInitRoutine, this, gen);
+    }
 
     findAndBindCanvas();
     startRunnableThread();
@@ -492,6 +524,7 @@ void JvmInterpreter::executionLoop() {
                         { JavaValue(canvasRef, true), JavaValue(m_graphicsRef, true) },
                         m_display.get()
                     );
+                    ++m_paintTick;
                 } else {
                     // Bound class lost its paint (stale bind): drop it so the
                     // loading splash shows instead of a frozen black frame.

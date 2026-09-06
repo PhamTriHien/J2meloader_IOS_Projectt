@@ -9,12 +9,15 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 #if !defined(_WIN32) && !defined(_WIN64)
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
 extern "C" bool native_text_measure(const char *utf8, int px, int *outW, int *outH) __attribute__((weak));
+extern "C" bool native_decode_image(const uint8_t *data, int len, uint8_t **out_rgba, int *outW, int *outH) __attribute__((weak));
+extern "C" void native_free(void *p) __attribute__((weak));
 
 // Big-Endian Stream Helper
 class ByteStream {
@@ -216,6 +219,24 @@ uint32_t JvmBytecodeEngine::loadNativeImageFromBytes(const uint8_t* data, size_t
     int w = 0, h = 0;
     std::vector<uint32_t> pixels;
     if (!PngDecoder::decode(data, size, w, h, pixels)) {
+        // Fallback: UIImage decodes JPEG/GIF/BMP and odd PNGs game artists used.
+        if (native_decode_image && size > 0 && size <= (8 << 20)) {
+            uint8_t* rgba = nullptr;
+            int dw = 0, dh = 0;
+            if (native_decode_image(data, (int)size, &rgba, &dw, &dh) && rgba && dw > 0 && dh > 0) {
+                uint32_t ref = allocObject("javax/microedition/lcdui/Image");
+                NativeImage img;
+                img.width = dw;
+                img.height = dh;
+                img.isMutable = false;
+                img.pixels.assign((uint32_t*)rgba, (uint32_t*)rgba + (size_t)dw * dh);
+                m_nativeImages[ref] = std::move(img);
+                if (native_free) native_free(rgba);
+                else free(rgba);
+                return ref;
+            }
+            if (rgba) { if (native_free) native_free(rgba); else free(rgba); }
+        }
         return allocateNativeImage(16, 16, false);
     }
     uint32_t ref = allocObject("javax/microedition/lcdui/Image");

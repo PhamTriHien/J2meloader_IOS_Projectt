@@ -365,6 +365,42 @@ bool native_camera_snapshot(uint8_t **outPNG, int *outLen) {
 #endif
 }
 
+bool native_decode_image(const uint8_t *data, int len,
+                         uint8_t **out_rgba, int *outW, int *outH) {
+    if (!data || len <= 0 || !out_rgba || !outW || !outH) return false;
+    *out_rgba = NULL; *outW = 0; *outH = 0;
+    @autoreleasepool {
+        NSData *ns = [NSData dataWithBytes:data length:(NSUInteger)len];
+        UIImage *img = [UIImage imageWithData:ns];
+        if (!img) return false;
+        CGImageRef cg = img.CGImage;
+        if (!cg) return false;
+        size_t w = CGImageGetWidth(cg), h = CGImageGetHeight(cg);
+        if (w == 0 || h == 0 || w > 2048 || h > 2048) return false;
+        uint8_t *buf = (uint8_t *)malloc(w * h * 4);
+        if (!buf) return false;
+        // BGRA byte order in memory == engine uint32 0xAARRGGBB on little-endian.
+        CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+        CGContextRef ctx = CGBitmapContextCreate(buf, w, h, 8, w * 4, cs,
+            kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+        CGColorSpaceRelease(cs);
+        if (!ctx) { free(buf); return false; }
+        CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), cg);
+        CGContextRelease(ctx);
+        // Unpremultiply to straight alpha (memory bytes stay B,G,R,A).
+        for (size_t i = 0; i < w * h; ++i) {
+            uint8_t a = buf[i * 4 + 3];
+            if (a != 0 && a != 255) {
+                buf[i * 4] = (uint8_t)((uint16_t)buf[i * 4] * 255 / a);
+                buf[i * 4 + 1] = (uint8_t)((uint16_t)buf[i * 4 + 1] * 255 / a);
+                buf[i * 4 + 2] = (uint8_t)((uint16_t)buf[i * 4 + 2] * 255 / a);
+            }
+        }
+        *out_rgba = buf; *outW = (int)w; *outH = (int)h;
+        return true;
+    }
+}
+
 void native_vibrate(int ms) {
 #if __has_include(<AudioToolbox/AudioToolbox.h>)
     if (ms <= 0) return;

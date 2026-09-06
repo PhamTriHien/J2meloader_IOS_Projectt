@@ -41,6 +41,9 @@ public:
 
     LcduiDisplay* getDisplay() { return m_display.get(); }
     bool isRunning() const { return m_running; }
+    // Diagnostics for the loading overlay: "error:<msg>" | "running" | "loading".
+    std::string getBootStatus();
+    int getPaintTick() const { return m_paintTick.load(); }
 
     void setAudioCallback(std::function<void(const uint8_t*, size_t)> playMidiCb,
                           std::function<void(int, int)> playToneCb) {
@@ -77,6 +80,7 @@ private:
     std::atomic<bool> m_running;
     std::atomic<bool> m_paused;
     std::atomic<bool> m_runnableRunning;
+    std::atomic<int> m_paintTick{0};
 
     std::unique_ptr<JarLoader> m_jarLoader;
     std::unique_ptr<LcduiDisplay> m_display;

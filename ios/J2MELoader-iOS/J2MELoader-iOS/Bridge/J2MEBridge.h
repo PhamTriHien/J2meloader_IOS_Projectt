@@ -23,6 +23,9 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable NSData *)getFramebufferData;
 + (int)getFrameBufferWidth;
 + (int)getFrameBufferHeight;
+// Diagnostics: "error:<msg>" | "running" | "loading", plus paint frame counter.
++ (NSString *)getBootStatus;
++ (int)getPaintTick;
 
 @end
 

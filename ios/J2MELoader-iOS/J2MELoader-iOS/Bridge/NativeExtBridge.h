@@ -55,6 +55,10 @@ void native_background_keepalive_start(void);
 void native_background_keepalive_stop(void);
 // Vibration (Nokia/Samsung/Siemens): ms<=0 stops
 void native_vibrate(int ms);
+// Decode JPEG/PNG/GIF/BMP bytes to RGBA8888 via UIImage (game assets).
+// Returns true with malloc'd *out_rgba (w*h*4). Free with native_free().
+bool native_decode_image(const uint8_t *data, int len,
+                         uint8_t **out_rgba, int *outW, int *outH);
 
 #ifdef __cplusplus
 }

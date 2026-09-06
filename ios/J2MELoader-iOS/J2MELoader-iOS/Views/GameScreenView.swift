@@ -9,7 +9,11 @@ public struct GameScreenView: View {
     @State private var showingSettings: Bool = false
     @State private var showingKeyMapper: Bool = false
     @State private var currentConfig: EmulatorConfig
+    @State private var bootDiag: String? = nil
+    @State private var lastPaintTick: Int32 = -1
+    @State private var frozenChecks: Int = 0
     @Environment(\.presentationMode) var presentationMode
+    private let diagTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
     
     public init(game: GameItem, gameManager: GameManager) {
         self.game = game
@@ -207,6 +211,22 @@ public struct GameScreenView: View {
                             Spacer()
                         }
                     }
+
+                    // Nhãn chẩn đoán khởi động: chỉ hiện khi game chưa vẽ
+                    // (đang tải / lỗi JAR / treo không vẽ), tự ẩn khi chạy.
+                    if let diag = bootDiag {
+                        VStack {
+                            Spacer()
+                            Text(diag)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(8)
+                                .padding(.bottom, 10)
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
@@ -225,6 +245,9 @@ public struct GameScreenView: View {
         .onDisappear {
             J2MEBridge.stopEmulator()
         }
+        .onReceive(diagTimer) { _ in
+            refreshBootDiag()
+        }
         .sheet(isPresented: $showingSettings) {
             SettingsView(game: game, onSave: { updated in
                 self.currentConfig = updated.config
@@ -238,6 +261,9 @@ public struct GameScreenView: View {
     }
     
     private func startEmulation() {
+        bootDiag = "Đang tải game…"
+        lastPaintTick = -1
+        frozenChecks = 0
         let jarURL = gameManager.gamesDirectory.appendingPathComponent(game.jarFileName)
         J2MEBridge.startEmulator(
             jarURL.path,
@@ -248,6 +274,32 @@ public struct GameScreenView: View {
         )
     }
     
+    // Poll engine boot/paint state 1 lần/giây để hiện chẩn đoán khi treo đen.
+    private func refreshBootDiag() {
+        let status = J2MEBridge.getBootStatus()
+        if status.hasPrefix("error:") {
+            bootDiag = String(status.dropFirst(6))
+            frozenChecks = 0
+            return
+        }
+        if status == "running" {
+            let tick = J2MEBridge.getPaintTick()
+            if tick == lastPaintTick {
+                frozenChecks += 1
+                if frozenChecks >= 3 {
+                    bootDiag = "Game treo (không vẽ) — thử game khác"
+                }
+            } else {
+                frozenChecks = 0
+                bootDiag = nil
+            }
+            lastPaintTick = tick
+            return
+        }
+        frozenChecks = 0
+        bootDiag = "Đang tải game…"
+    }
+
     private func restartEmulation() {
         J2MEBridge.stopEmulator()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

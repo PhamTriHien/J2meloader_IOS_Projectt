@@ -119,4 +119,13 @@
     return disp ? disp->getHeight() : 0;
 }
 
++ (NSString *)getBootStatus {
+    std::string s = JvmInterpreter::getInstance().getBootStatus();
+    return [NSString stringWithUTF8String:s.c_str()];
+}
+
++ (int)getPaintTick {
+    return JvmInterpreter::getInstance().getPaintTick();
+}
+
 @end
