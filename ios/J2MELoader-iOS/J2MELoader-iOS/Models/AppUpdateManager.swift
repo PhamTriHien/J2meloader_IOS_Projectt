@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-public struct ReleaseInfo: Codable, Identifiable {
+public struct ReleaseInfo: Decodable, Identifiable {
     public var id: Int
     public var tagName: String
     public var name: String
@@ -36,7 +36,7 @@ public struct ReleaseInfo: Codable, Identifiable {
     }
 }
 
-public struct ReleaseAsset: Codable {
+public struct ReleaseAsset: Decodable {
     public var name: String
     public var browserDownloadUrl: String
     public var size: Int

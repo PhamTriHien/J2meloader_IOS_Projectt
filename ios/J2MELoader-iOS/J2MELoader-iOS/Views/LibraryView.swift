@@ -266,6 +266,7 @@ public struct LibraryView: View {
                     } message: {
                         Text("Toàn bộ dữ liệu điểm cao và màn chơi đã lưu của '\(gameToClearData?.title ?? "")' sẽ bị xóa vĩnh viễn.")
                     }
+            )
             .sheet(isPresented: $updateManager.showingUpdateModal) {
                 UpdateModalView()
             }
