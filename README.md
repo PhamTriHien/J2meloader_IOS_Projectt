@@ -39,6 +39,20 @@ A high-performance, native J2ME (Java ME / MIDP 2.0 / CLDC 1.1) emulator ported 
   - Hệ thống RMS (Record Management System) lưu điểm cao và dữ liệu màn chơi bền vững trong Sandbox.
   - Nạp game `.jar` / `.jad` từ Files, iCloud Drive, AirDrop, Safari hoặc chuyển trực tiếp qua USB.
 
+* **🖥️ Khởi động game ổn định (fix màn đen)**:
+  - Vẽ double-buffer đúng bộ đệm riêng (`Image.getGraphics`), game Teamobi/Gameloft hết đen màn hình.
+  - Nhận diện Canvas bỏ lớp trừu tượng/kế thừa, PNG palette 1/2/4-bit và interlaced.
+  - `startApp` chạy nền + splash hiện ngay; lỗi JAR/MIDlet báo chữ đỏ thay vì treo đen.
+  - Kiểm tra cập nhật báo rõ lý do (chưa có Release/bị giới hạn) và nhận diện đúng bản CI build lại cùng tag.
+
+---
+
+## ❓ Game bị đen / không load thì làm gì
+
+1. Mở game xem có chữ loading không: có chữ rồi đứng yên = game chờ mạng (bản online server chết thì không cứu được, thử bản offline).
+2. Chữ đỏ "Khong mo duoc JAR" = file lỗi, tải lại `.jar`; "Khong tim thay MIDlet" = báo tên game để sửa tiếp.
+3. Game 3D nặng/online realtime/API hãng lạ có thể chưa chạy — báo tên game + dừng ở màn nào.
+
 ---
 
 ## 📲 Hướng dẫn Cài đặt & Sử dụng
