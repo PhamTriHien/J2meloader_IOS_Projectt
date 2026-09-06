@@ -1,54 +1,81 @@
-﻿# J2ME-Loader for iOS (Native Port)
+# J2HienLoader for iOS & iPadOS (Native Port)
 
-A native J2ME (Java ME / MIDP 2.0 / CLDC 1.1) emulator for iOS and iPadOS. Focus: core game-running features (JVM + Canvas + audio + saves).
+A high-performance, native J2ME (Java ME / MIDP 2.0 / CLDC 1.1) emulator ported for iOS, iPadOS, and Apple Silicon.
 
 [![Build iOS IPA](https://github.com/PhamTriHien/J2meloader_IOS_Projectt/actions/workflows/build-ios-ipa.yml/badge.svg)](https://github.com/PhamTriHien/J2meloader_IOS_Projectt/actions/workflows/build-ios-ipa.yml)
+[![Release](https://img.shields.io/github/v/release/PhamTriHien/J2meloader_IOS_Projectt?color=orange&label=B%E1%BA%A3n%20ph%C3%A1t%20h%C3%A0nh)](https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/latest)
 
 ---
 
-## Core chạy game
+## 🌟 Tính năng nổi bật (Key Features)
 
-* **JVM**: bytecode int/long/float/double, exception try/catch, `System.arraycopy` đủ kiểu, `Math` double, cooperative thread-stop (hết crash khi thoát/khởi động lại game).
-* **LCDUI 2D**: Canvas/GameCanvas, Graphics, Image/PNG, Sprite 8 hướng + va chạm pixel, TiledLayer/LayerManager, Form/List/TextBox/Alert + CommandListener, font Unicode/Tiếng Việt (CoreText) + ASCII 8x8 retro.
-* **3D cơ bản**: M3G parse mesh/texture thật, Micro3D MBAC parse thật, keyframe/animation cơ bản. File lạ không parse được sẽ màn đen (không hình giả).
-* **Âm thanh**: Sonivox EAS (MIDI/iMelody) + WAV/MP3/AMR, tone Nokia/Samsung/Siemens, VolumeControl.
-* **Lưu game**: RMS persistent trong sandbox.
-* **Mạng cơ bản**: HTTP(S) tải thật, TCP socket + Datagram, FileConnection đọc JAR/local. Không hỗ trợ: BT classic nhiều người chơi, SMS nhà mạng ngầm.
-* **Nhập game**: `.jar`/`.jad` từ Files, iCloud Drive, AirDrop, Safari (kèm `.jad` cùng tên để lấy metadata).
-* **Điều khiển**: bàn phím Nokia T9 + D-Pad/OK/LSK/RSK, haptic, remap tay cầm MFi/Xbox/PlayStation/Switch, cảm ứng, chụp màn hình, tăng tốc 1x/2x/4x, tạm dừng.
-* **Hiển thị**: Metal 60 FPS, shader Nearest/Bilinear/CRT/Nokia LCD, presets Nokia N73/6600, Sony Ericsson K750i, Motorola V3, Nokia 5800.
+* **🔄 Tự động Cập nhật & Bản vá In-App (Auto-Updater)**:
+  - Tự động kiểm tra bản cập nhật mới nhất từ GitHub Releases khi khởi động app hoặc khi mở lại có mạng.
+  - Hộp thoại chi tiết nội dung bản vá (`UpdateModalView`), thanh tiến trình tải real-time.
+  - Tích hợp 1 chạm cài đặt qua **ESign**, **TrollStore** hoặc mở liên kết tải trực tiếp qua **Safari**.
+  - Tùy chọn bật/tắt tự động kiểm tra và nút "Kiểm tra bản cập nhật ngay" trong phần *Cài đặt chung*.
+
+* **🚀 Core Máy Ảo JVM & Thực thi Bytecode thuần C++20**:
+  - Tự động kích hoạt `<clinit>` static initializer trên mọi bytecode `NEW`, `GETSTATIC`, `PUTSTATIC`, `INVOKESTATIC`.
+  - Hỗ trợ đầy đủ kiểu dữ liệu: `int`, `long`, `float`, `double`, exception handling `try/catch/finally`.
+  - Hỗ trợ đa luồng thật (`Thread`, `Runnable`, `synchronized`, `wait`, `notify`).
+  - Hệ thống API MIDP 2.0 & CLDC 1.1: `Image.createImage(InputStream/Image)`, `DataInputStream` đầy đủ, `Class.forName`, `Display.setCurrent` nhận diện canvas mã hóa obfuscated.
+
+* **🎮 LCDUI 2D & Đồ họa Metal 3 (60 - 120 FPS)**:
+  - Render Metal 3 siêu tốc với pixel format `bgra8Unorm` tối ưu Little Endian ARM64.
+  - Bộ lọc Shaders cổ điển: Nearest Neighbor (Pixel Art sắc nét), Bilinear, CRT TV cổ điển, Lưới điểm ảnh LCD Nokia.
+  - Full Canvas / GameCanvas, Graphics primitives, Sprite 8 hướng, TiledLayer, LayerManager.
+  - Hỗ trợ bàn phím ảo chuẩn Nokia T9, D-Pad điều hướng, tùy biến độ trong suốt, rung phản hồi Haptic Touch.
+
+* **🔋 Treo game ngầm 24/7 (Anti-Crash & Continuous Background)**:
+  - Duy trì luồng xử lý và kết nối mạng TCP socket liên tục khi tắt màn hình hoặc chuyển app.
+  - Cơ chế `UIBackgroundModes` + Audio Keep-Alive engine chống bị iOS đóng ứng dụng.
+
+* **🎵 Âm thanh Sonivox EAS thực thụ**:
+  - Bộ tổng hợp nhạc chuông MIDI, iMelody, RTTTL qua Sonivox EAS.
+  - Phát âm thanh hiệu ứng WAV, MP3, AMR qua AudioBridge.
+
+* **💾 Quản lý Lưu trữ RMS & Nhập Game Tiện lợi**:
+  - Hệ thống RMS (Record Management System) lưu điểm cao và dữ liệu màn chơi bền vững trong Sandbox.
+  - Nạp game `.jar` / `.jad` từ Files, iCloud Drive, AirDrop, Safari hoặc chuyển trực tiếp qua USB.
 
 ---
 
-## Tương thích thực tế
+## 📲 Hướng dẫn Cài đặt & Sử dụng
 
-* Game 2D Canvas/Sprite/RMS/lưu điểm: chơi được.
-* Game 3D/animation phức tạp, online realtime, API hãng lạ: có thể lỗi/thiếu. Báo tên game + hiện tượng để sửa tiếp.
+### 1. Cài đặt qua TrollStore / ESign / Sideloadly
+1. Tải file **`J2HienLoader.ipa`** từ [GitHub Releases](https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/latest).
+2. Cài đặt bằng các công cụ:
+   - **TrollStore** (iOS 14.0 - 17.0): Cài vĩnh viễn không bao giờ bị thu hồi chứng chỉ (No Revoke).
+   - **ESign / Scarlet / Feather / GBox**: Ký chứng chỉ cá nhân hoặc doanh nghiệp.
+   - **Sideloadly / AltStore / SideStore**: Ký bằng Apple ID miễn phí trên PC/Mac.
+
+### 2. Nạp game vào ứng dụng
+1. Mở **J2HienLoader** trên iPhone / iPad.
+2. Bấm nút **`+`** (Thêm game) ở góc trên bên phải màn hình.
+3. Chọn file `.jar` hoặc `.jad` từ ứng dụng Tệp (Files).
+4. Chọn game từ danh sách và thưởng thức!
 
 ---
 
-## Build & tải IPA
+## 🛠️ Biên dịch từ Mã nguồn (Build from Source)
 
-### Cách 1: Cloud Build (khuyên dùng)
-1. Tab **Actions** → **"Build iOS IPA"** → **Run workflow** (hoặc push lên `main` tự build).
-2. Tải artifact **`J2MELoader-iOS-ipa`**.
+### Yêu cầu hệ thống:
+* macOS 14.0+ kèm Xcode 15.4+.
+* Hoặc sử dụng GitHub Actions CI tự động build trên Cloud.
 
-### Cách 2: Xcode local (macOS 14 + Xcode 15.4)
 ```bash
-cd ios/J2MELoader-iOS
-open J2MELoader-iOS.xcodeproj
-```
-Chọn Team ở Signing & Capabilities → Cmd+R.
+# Clone repository
+git clone https://github.com/PhamTriHien/J2meloader_IOS_Projectt.git
+cd J2meloader_IOS_Projectt/ios/J2MELoader-iOS
 
-### Cách 3: Script (macOS)
-```bash
-cd ios/J2MELoader-iOS
+# Biên dịch ra file IPA
 chmod +x build_ipa.sh
 ./build_ipa.sh
 ```
 
 ---
 
-## Cài lên máy thật
-* **TrollStore** (iOS 14.0–17.0, khuyên dùng): không revoke 7 ngày.
-* **Sideloadly / AltStore / SideStore**: Apple ID free (revoke 7 ngày).
+## 📄 Bản quyền & Đóng góp
+* Dự án được phát triển và tối ưu cho cộng đồng người dùng iOS yêu thích các tựa game Java cổ điển.
+* Giấy phép: GNU General Public License v3.0 (GPLv3).
