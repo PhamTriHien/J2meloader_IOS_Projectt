@@ -80,24 +80,17 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
         }
     }
 
-    // Fallback: If targetClass is empty, scan JAR for any class defining startApp:()V
-    if (targetClass.empty()) {
-        auto entries = m_jarLoader->listEntries();
-        for (const auto& entry : entries) {
-            if (entry.size() > 6 && entry.substr(entry.size() - 6) == ".class") {
-                std::string cname = entry.substr(0, entry.size() - 6);
-                auto cls = jvm.findOrLoadClass(cname, m_jarLoader.get());
-                if (cls && cls->methods.find("startApp:()V") != cls->methods.end()) {
-                    targetClass = cname;
-                    break;
-                }
-            }
-        }
+    // NOTE: the startApp fallback scan (loads every class in the JAR) moved to
+    // midletInitRoutine() so big JARs never freeze the UI thread here.
+    if (m_initThread.joinable()) {
+        // Leftover from a previous session that shutdown() missed; must join
+        // before overwriting (assigning a joinable thread calls terminate).
+        m_initThread.join();
     }
 
     if (targetClass.empty()) {
         std::lock_guard<std::mutex> lk(m_bootMutex);
-        m_bootError = "Khong tim thay MIDlet";
+        m_bootError = "Dang tim MIDlet...";
     }
 
     m_runnableRunning = false;
@@ -107,7 +100,11 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
     if (!targetClass.empty()) {
         std::replace(targetClass.begin(), targetClass.end(), '.', '/');
     }
-    m_targetClass = targetClass;
+    {
+        std::lock_guard<std::mutex> lk(m_stateMutex);
+        m_targetClass = targetClass;
+    }
+    ++m_generation;
 
     // Start background emulation thread
     m_workerThread = std::thread(&JvmInterpreter::executionLoop, this);
@@ -115,55 +112,74 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
 }
 
 void JvmInterpreter::shutdown() {
+    auto joinGuarded = [](std::thread& t) {
+        if (t.joinable()) {
+            if (std::this_thread::get_id() != t.get_id()) {
+                t.join();
+            } else {
+                t.detach();
+            }
+        }
+    };
     if (m_running) {
-        if (m_midletClass && m_midletRef != 0) {
+        std::shared_ptr<ClassFile> midletCls;
+        uint32_t midletRef = 0;
+        {
+            std::lock_guard<std::mutex> lk(m_stateMutex);
+            midletCls = m_midletClass;
+            midletRef = m_midletRef;
+        }
+        if (midletCls && midletRef != 0) {
             auto& jvm = JvmBytecodeEngine::getInstance();
-            jvm.executeMethod(m_midletClass, "destroyApp", "(Z)V", { JavaValue(m_midletRef, true), JavaValue(1) }, m_display.get());
+            jvm.executeMethod(midletCls, "destroyApp", "(Z)V", { JavaValue(midletRef, true), JavaValue(1) }, m_display.get());
         }
         m_running = false;
         m_runnableRunning = false;
+        // Invalidate any in-flight init thread so its late results are dropped.
+        ++m_generation;
         // Cooperative stop: running bytecode sees cancel and returns promptly,
-        // so the game thread can be joined (no detach onto a reset heap).
+        // so threads can be joined (no detach onto a reset heap).
         JvmBytecodeEngine::getInstance().requestCancel();
-        if (m_gameThread.joinable()) {
-            if (std::this_thread::get_id() != m_gameThread.get_id()) {
-                m_gameThread.join();
-            } else {
-                m_gameThread.detach();
-            }
-        }
-        if (m_workerThread.joinable()) {
-            if (std::this_thread::get_id() != m_workerThread.get_id()) {
-                m_workerThread.join();
-            } else {
-                m_workerThread.detach();
-            }
-        }
+        joinGuarded(m_initThread);
+        joinGuarded(m_gameThread);
+        joinGuarded(m_workerThread);
+    } else {
+        // Session never started: still reap a stray init thread if present.
+        joinGuarded(m_initThread);
     }
     m_jarLoader->close();
-    m_midletClass = nullptr;
-    m_canvasClass = nullptr;
-    m_runnableClass = nullptr;
-    m_midletRef = 0;
-    m_canvasRef = 0;
-    m_graphicsRef = 0;
-    m_runnableRef = 0;
-    m_targetClass.clear();
+    {
+        std::lock_guard<std::mutex> lk(m_stateMutex);
+        m_midletClass = nullptr;
+        m_canvasClass = nullptr;
+        m_runnableClass = nullptr;
+        m_midletRef = 0;
+        m_canvasRef = 0;
+        m_graphicsRef = 0;
+        m_runnableRef = 0;
+        m_targetClass.clear();
+    }
 }
 
 void JvmInterpreter::pause() {
     m_paused = true;
-    if (m_midletClass && m_midletRef != 0) {
+    std::shared_ptr<ClassFile> cls;
+    uint32_t ref = 0;
+    { std::lock_guard<std::mutex> lk(m_stateMutex); cls = m_midletClass; ref = m_midletRef; }
+    if (cls && ref != 0) {
         auto& jvm = JvmBytecodeEngine::getInstance();
-        jvm.executeMethod(m_midletClass, "pauseApp", "()V", { JavaValue(m_midletRef, true) }, m_display.get());
+        jvm.executeMethod(cls, "pauseApp", "()V", { JavaValue(ref, true) }, m_display.get());
     }
 }
 
 void JvmInterpreter::resume() {
     m_paused = false;
-    if (m_midletClass && m_midletRef != 0) {
+    std::shared_ptr<ClassFile> cls;
+    uint32_t ref = 0;
+    { std::lock_guard<std::mutex> lk(m_stateMutex); cls = m_midletClass; ref = m_midletRef; }
+    if (cls && ref != 0) {
         auto& jvm = JvmBytecodeEngine::getInstance();
-        jvm.executeMethod(m_midletClass, "startApp", "()V", { JavaValue(m_midletRef, true) }, m_display.get());
+        jvm.executeMethod(cls, "startApp", "()V", { JavaValue(ref, true) }, m_display.get());
     }
 }
 
@@ -202,25 +218,36 @@ void JvmInterpreter::processEvents() {
 
             // High-level Form/List softkey -> CommandListener
             FullApis::onKey(ev.codeOrX, ev.isDownOrAction, m_display.get());
+            // Snapshot canvas under lock; execute outside it (engine calls back
+            // into setCurrentCanvas which takes the same mutex).
+            std::shared_ptr<ClassFile> canvasCls;
+            uint32_t canvasRef = 0;
+            { std::lock_guard<std::mutex> slk(m_stateMutex); canvasCls = m_canvasClass; canvasRef = m_canvasRef; }
             // Dispatch directly to active MIDP Canvas bytecode
-            if (m_canvasClass && m_canvasRef != 0) {
+            if (canvasCls && canvasRef != 0) {
                 std::string method = ev.isDownOrAction ? "keyPressed" : "keyReleased";
-                jvm.executeMethod(m_canvasClass, method, "(I)V", { JavaValue(m_canvasRef, true), JavaValue(ev.codeOrX) }, m_display.get());
+                jvm.executeMethod(canvasCls, method, "(I)V", { JavaValue(canvasRef, true), JavaValue(ev.codeOrX) }, m_display.get());
             }
         }
         else if (ev.type == InputEvent::Touch) {
+            std::shared_ptr<ClassFile> canvasCls;
+            uint32_t canvasRef = 0;
+            { std::lock_guard<std::mutex> slk(m_stateMutex); canvasCls = m_canvasClass; canvasRef = m_canvasRef; }
             // Dispatch directly to active MIDP Canvas touch bytecode
-            if (m_canvasClass && m_canvasRef != 0) {
+            if (canvasCls && canvasRef != 0) {
                 std::string method = ev.isDownOrAction ? "pointerPressed" : "pointerReleased";
-                jvm.executeMethod(m_canvasClass, method, "(II)V", { JavaValue(m_canvasRef, true), JavaValue(ev.codeOrX), JavaValue(ev.extraOrY) }, m_display.get());
+                jvm.executeMethod(canvasCls, method, "(II)V", { JavaValue(canvasRef, true), JavaValue(ev.codeOrX), JavaValue(ev.extraOrY) }, m_display.get());
             }
         }
     }
 }
 
 void JvmInterpreter::setCurrentCanvas(uint32_t ref, std::shared_ptr<ClassFile> cls) {
-    m_canvasRef = ref;
-    m_canvasClass = cls;
+    {
+        std::lock_guard<std::mutex> lk(m_stateMutex);
+        m_canvasRef = ref;
+        m_canvasClass = cls;
+    }
     if (cls && ref != 0) {
         auto& jvm = JvmBytecodeEngine::getInstance();
         // J2ME spec: showNotify() MUST be called when canvas is made current
@@ -238,8 +265,11 @@ void JvmInterpreter::setCurrentCanvas(uint32_t ref, std::shared_ptr<ClassFile> c
 
 void JvmInterpreter::registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> cls) {
     if (!cls || ref == 0) return;
-    m_runnableRef = ref;
-    m_runnableClass = cls;
+    {
+        std::lock_guard<std::mutex> lk(m_stateMutex);
+        m_runnableRef = ref;
+        m_runnableClass = cls;
+    }
     std::thread([this, ref, cls]() {
         auto& jvm = JvmBytecodeEngine::getInstance();
         jvm.executeMethod(cls, "run", "()V", { JavaValue(ref, true) }, m_display.get());
@@ -247,8 +277,11 @@ void JvmInterpreter::registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> c
 }
 
 void JvmInterpreter::startRunnableThread() {
-    if (m_runnableClass && m_runnableRef != 0) {
-        registerRunnable(m_runnableRef, m_runnableClass);
+    std::shared_ptr<ClassFile> cls;
+    uint32_t ref = 0;
+    { std::lock_guard<std::mutex> lk(m_stateMutex); cls = m_runnableClass; ref = m_runnableRef; }
+    if (cls && ref != 0) {
+        registerRunnable(ref, cls);
     }
 }
 
@@ -260,7 +293,10 @@ void JvmInterpreter::findAndBindCanvas() {
         m_graphicsRef = jvm.allocObject("javax/microedition/lcdui/Graphics");
     }
 
-    if (m_canvasClass && m_canvasRef != 0) return;
+    {
+        std::lock_guard<std::mutex> lk(m_stateMutex);
+        if (m_canvasClass && m_canvasRef != 0) return;
+    }
 
     // Scan all classes in JAR archive to locate Canvas / GameCanvas subclass.
     // Must skip abstract bases/interfaces (their paint has no Code and would
@@ -293,35 +329,109 @@ void JvmInterpreter::findAndBindCanvas() {
             if (!fallback) { fallback = cls; fallbackName = className; }
             continue;
         }
-        m_canvasClass = cls;
-        m_canvasRef = jvm.allocObject(className);
-        jvm.executeMethod(m_canvasClass, "<init>", "()V", { JavaValue(m_canvasRef, true) }, m_display.get());
+        // Publish under lock only; another thread may have bound meanwhile.
+        uint32_t newRef = 0;
+        {
+            std::lock_guard<std::mutex> lk(m_stateMutex);
+            if (m_canvasClass && m_canvasRef != 0) return;
+            m_canvasClass = cls;
+            newRef = m_canvasRef = jvm.allocObject(className);
+        }
+        jvm.executeMethod(cls, "<init>", "()V", { JavaValue(newRef, true) }, m_display.get());
 
         // Call showNotify() if defined
         if (cls->methods.find("showNotify:()V") != cls->methods.end()) {
-            jvm.executeMethod(cls, "showNotify", "()V", { JavaValue(m_canvasRef, true) }, m_display.get());
+            jvm.executeMethod(cls, "showNotify", "()V", { JavaValue(newRef, true) }, m_display.get());
         }
 
         // Check if class implements Runnable
         if (cls->methods.find("run:()V") != cls->methods.end()) {
-            m_runnableClass = cls;
-            m_runnableRef = m_canvasRef;
-            startRunnableThread();
+            registerRunnable(newRef, cls);
         }
         return;
     }
-    if (fallback && !m_canvasClass) {
+    if (fallback) {
         // Last resort: instantiate via no-arg even if not declared (may NPE inside,
         // still better than black screen without any splash).
-        m_canvasClass = fallback;
-        m_canvasRef = jvm.allocObject(fallbackName);
-        jvm.executeMethod(m_canvasClass, "<init>", "()V", { JavaValue(m_canvasRef, true) }, m_display.get());
+        uint32_t newRef = 0;
+        {
+            std::lock_guard<std::mutex> lk(m_stateMutex);
+            if (m_canvasClass && m_canvasRef != 0) return;
+            m_canvasClass = fallback;
+            newRef = m_canvasRef = jvm.allocObject(fallbackName);
+        }
+        jvm.executeMethod(fallback, "<init>", "()V", { JavaValue(newRef, true) }, m_display.get());
         if (fallback->methods.find("run:()V") != fallback->methods.end()) {
-            m_runnableClass = fallback;
-            m_runnableRef = m_canvasRef;
-            startRunnableThread();
+            registerRunnable(newRef, fallback);
         }
     }
+}
+
+void JvmInterpreter::drawBootSplash(const std::string& line1) {
+    int w = m_display->getWidth(), h = m_display->getHeight();
+    m_display->clear(0xFF0A0F1D);
+    m_display->drawString(line1, w / 2, h / 2 - 10, 1 | 2, 0xFF38BDF8);
+    m_display->drawString("J2HienLoader", w / 2, h / 2 + 15, 1 | 2, 0xFF94A3B8);
+}
+
+void JvmInterpreter::midletInitRoutine(unsigned long gen) {
+    auto& jvm = JvmBytecodeEngine::getInstance();
+    jvm.setJarLoader(m_jarLoader.get());
+
+    auto alive = [&]() -> bool {
+        return gen == m_generation.load() && m_running.load();
+    };
+
+    std::string target;
+    {
+        std::lock_guard<std::mutex> lk(m_stateMutex);
+        target = m_targetClass;
+    }
+    if (target.empty() && alive()) {
+        // Fallback scan (loads every class): was freezing the UI thread before.
+        auto entries = m_jarLoader->listEntries();
+        for (const auto& entry : entries) {
+            if (!alive()) return;
+            if (entry.size() <= 6 || entry.substr(entry.size() - 6) != ".class") continue;
+            std::string cname = entry.substr(0, entry.size() - 6);
+            auto cls = jvm.findOrLoadClass(cname, m_jarLoader.get());
+            if (cls && cls->methods.find("startApp:()V") != cls->methods.end()) {
+                target = cname;
+                break;
+            }
+        }
+        std::lock_guard<std::mutex> lk(m_stateMutex);
+        if (gen == m_generation.load() && m_targetClass.empty()) m_targetClass = target;
+    }
+
+    if (target.empty()) {
+        if (alive()) {
+            std::lock_guard<std::mutex> lk(m_bootMutex);
+            m_bootError = "Khong tim thay MIDlet";
+        }
+        return;
+    }
+    if (!alive()) return;
+    auto cls = jvm.findOrLoadClass(target, m_jarLoader.get());
+    if (!cls) {
+        if (alive()) {
+            std::lock_guard<std::mutex> lk(m_bootMutex);
+            m_bootError = "Khong nap duoc MIDlet";
+        }
+        return;
+    }
+    uint32_t ref = jvm.allocObject(target);
+    {
+        std::lock_guard<std::mutex> lk(m_stateMutex);
+        if (gen != m_generation.load() || !m_running.load()) return;
+        m_midletClass = cls;
+        m_midletRef = ref;
+    }
+    // <init>() then startApp(). May block on network for online games — the
+    // paint loop below keeps running the splash meanwhile.
+    jvm.executeMethod(cls, "<init>", "()V", { JavaValue(ref, true) }, m_display.get());
+    if (gen != m_generation.load() || !m_running.load()) return;
+    jvm.executeMethod(cls, "startApp", "()V", { JavaValue(ref, true) }, m_display.get());
 }
 
 void JvmInterpreter::executionLoop() {
@@ -332,16 +442,13 @@ void JvmInterpreter::executionLoop() {
         m_graphicsRef = jvm.allocObject("javax/microedition/lcdui/Graphics");
     }
 
-    if (!m_targetClass.empty()) {
-        m_midletClass = jvm.findOrLoadClass(m_targetClass, m_jarLoader.get());
-        if (m_midletClass) {
-            m_midletRef = jvm.allocObject(m_targetClass);
-            // Call <init>()
-            jvm.executeMethod(m_midletClass, "<init>", "()V", { JavaValue(m_midletRef, true) }, m_display.get());
-            // Call startApp()
-            jvm.executeMethod(m_midletClass, "startApp", "()V", { JavaValue(m_midletRef, true) }, m_display.get());
-        }
-    }
+    // Paint one splash frame immediately: the user never stares at a black
+    // screen while startApp() blocks (e.g. online games connecting).
+    drawBootSplash("Dang tai game Java");
+
+    // MIDlet lifecycle runs on its own thread; the loop below keeps painting.
+    unsigned long gen = m_generation.load();
+    m_initThread = std::thread(&JvmInterpreter::midletInitRoutine, this, gen);
 
     findAndBindCanvas();
     startRunnableThread();
@@ -351,7 +458,12 @@ void JvmInterpreter::executionLoop() {
         if (!m_paused) {
             processEvents();
 
-            if (!m_canvasClass) {
+            bool haveCanvas = false;
+            {
+                std::lock_guard<std::mutex> lk(m_stateMutex);
+                haveCanvas = (m_canvasClass && m_canvasRef != 0);
+            }
+            if (!haveCanvas) {
                 findAndBindCanvas();
                 startRunnableThread();
             }
@@ -362,22 +474,32 @@ void JvmInterpreter::executionLoop() {
 
             // Execute real game bytecode paint(Graphics g) method
             // (resolved through superclass chain: paint is often inherited)
-            if (m_canvasClass && m_canvasRef != 0 && m_graphicsRef != 0) {
+            std::shared_ptr<ClassFile> canvasCls;
+            uint32_t canvasRef = 0;
+            {
+                std::lock_guard<std::mutex> lk(m_stateMutex);
+                canvasCls = m_canvasClass;
+                canvasRef = m_canvasRef;
+            }
+            if (canvasCls && canvasRef != 0 && m_graphicsRef != 0) {
                 auto paintCls = jvm.resolveMethodClass(
-                    m_canvasClass, "paint:(Ljavax/microedition/lcdui/Graphics;)V");
+                    canvasCls, "paint:(Ljavax/microedition/lcdui/Graphics;)V");
                 if (paintCls) {
                     jvm.executeMethod(
                         paintCls,
                         "paint",
                         "(Ljavax/microedition/lcdui/Graphics;)V",
-                        { JavaValue(m_canvasRef, true), JavaValue(m_graphicsRef, true) },
+                        { JavaValue(canvasRef, true), JavaValue(m_graphicsRef, true) },
                         m_display.get()
                     );
                 } else {
                     // Bound class lost its paint (stale bind): drop it so the
                     // loading splash shows instead of a frozen black frame.
-                    m_canvasClass = nullptr;
-                    m_canvasRef = 0;
+                    std::lock_guard<std::mutex> lk(m_stateMutex);
+                    if (m_canvasRef == canvasRef) {
+                        m_canvasClass = nullptr;
+                        m_canvasRef = 0;
+                    }
                 }
             } else {
                 // Retro LCD loading splash screen with spinner animation.

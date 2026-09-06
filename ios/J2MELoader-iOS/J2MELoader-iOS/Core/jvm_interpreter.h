@@ -82,6 +82,13 @@ private:
     std::unique_ptr<LcduiDisplay> m_display;
     std::thread m_workerThread;
     std::thread m_gameThread;
+    std::thread m_initThread;
+    // Guards m_targetClass/m_midlet*/m_canvas*/m_runnable* across the worker,
+    // init and game threads. Never hold while calling into the engine.
+    std::mutex m_stateMutex;
+    // Bumped on every init/shutdown so a late init thread discards its work
+    // instead of binding a canvas into a newer (or dead) session.
+    std::atomic<unsigned long> m_generation{0};
 
     std::mutex m_eventMutex;
     std::queue<InputEvent> m_eventQueue;
@@ -100,6 +107,11 @@ private:
     void executionLoop();
     void processEvents();
     void findAndBindCanvas();
+    // Resolves targetClass (incl. startApp fallback scan), runs <init>/startApp.
+    // Runs off the worker thread so slow JAR scans / blocking network connects
+    // in startApp never freeze the UI or the paint loop (splash stays visible).
+    void midletInitRoutine(unsigned long gen);
+    void drawBootSplash(const std::string& line1);
 };
 
 #endif // JVM_INTERPRETER_H
