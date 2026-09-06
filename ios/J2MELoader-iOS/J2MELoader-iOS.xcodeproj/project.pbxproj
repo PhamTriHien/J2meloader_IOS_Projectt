@@ -21,6 +21,8 @@
 		AA00000C2C88000100000001 /* ShaderTuneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000C2C88000100000002 /* ShaderTuneView.swift */; };
 		AA00000D2C88000100000001 /* DocumentPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000D2C88000100000001 /* DocumentPickerView.swift */; };
 		AA00000E2C88000100000001 /* MetalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000E2C88000100000001 /* MetalView.swift */; };
+		AA0000402C88000100000001 /* AppUpdateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000402C88000100000001 /* AppUpdateManager.swift */; };
+		AA0000412C88000100000001 /* UpdateModalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000412C88000100000001 /* UpdateModalView.swift */; };
 		AA00000F2C88000100000001 /* J2MEBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB00000F2C88000100000001 /* J2MEBridge.mm */; };
 		AA0000332C88000100000001 /* NativeFontBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0000332C88000100000001 /* NativeFontBridge.mm */; };
 		AA0000312C88000100000001 /* NativeExtBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0000312C88000100000001 /* NativeExtBridge.mm */; };
@@ -89,6 +91,8 @@
 		BB00000C2C88000100000002 /* ShaderTuneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShaderTuneView.swift; sourceTree = "<group>"; };
 		BB00000D2C88000100000001 /* DocumentPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPickerView.swift; sourceTree = "<group>"; };
 		BB00000E2C88000100000001 /* MetalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalView.swift; sourceTree = "<group>"; };
+		BB0000402C88000100000001 /* AppUpdateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateManager.swift; sourceTree = "<group>"; };
+		BB0000412C88000100000001 /* UpdateModalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateModalView.swift; sourceTree = "<group>"; };
 		BB00000F2C88000100000001 /* J2MEBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = J2MEBridge.mm; sourceTree = "<group>"; };
 		BB0000102C88000100000001 /* AudioBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AudioBridge.mm; sourceTree = "<group>"; };
 		BB0000202C88000100000001 /* J2MEBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = J2MEBridge.h; sourceTree = "<group>"; };
@@ -208,6 +212,7 @@
 				BB0000042C88000100000001 /* KeyMapping.swift */,
 				BB0000052C88000100000001 /* GameManager.swift */,
 				BB0000062C88000100000002 /* ProfileManager.swift */,
+				BB0000402C88000100000001 /* AppUpdateManager.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -223,6 +228,7 @@
 				BB00000C2C88000100000002 /* ShaderTuneView.swift */,
 				BB00000D2C88000100000001 /* DocumentPickerView.swift */,
 				BB00000E2C88000100000001 /* MetalView.swift */,
+				BB0000412C88000100000001 /* UpdateModalView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -402,6 +408,8 @@
 				AA00000C2C88000100000001 /* ShaderTuneView.swift in Sources */,
 				AA00000D2C88000100000001 /* DocumentPickerView.swift in Sources */,
 				AA00000E2C88000100000001 /* MetalView.swift in Sources */,
+				AA0000402C88000100000001 /* AppUpdateManager.swift in Sources */,
+				AA0000412C88000100000001 /* UpdateModalView.swift in Sources */,
 				AA00000F2C88000100000001 /* J2MEBridge.mm in Sources */,
 				AA0000332C88000100000001 /* NativeFontBridge.mm in Sources */,
 				AA0000312C88000100000001 /* NativeExtBridge.mm in Sources */,

@@ -31,6 +31,7 @@ public enum ActiveSheet: Identifiable {
 
 public struct LibraryView: View {
     @ObservedObject var gameManager: GameManager
+    @ObservedObject var updateManager = AppUpdateManager.shared
     @State private var searchText = ""
     @State private var isSearching = false
     @State private var activeSheet: ActiveSheet? = nil
@@ -265,7 +266,12 @@ public struct LibraryView: View {
                     } message: {
                         Text("Toàn bộ dữ liệu điểm cao và màn chơi đã lưu của '\(gameToClearData?.title ?? "")' sẽ bị xóa vĩnh viễn.")
                     }
-            )
+            .sheet(isPresented: $updateManager.showingUpdateModal) {
+                UpdateModalView()
+            }
+            .onAppear {
+                updateManager.checkForUpdates(manual: false)
+            }
         }
         .navigationViewStyle(StackNavigationViewStyle())
         
@@ -359,6 +365,7 @@ struct GeneralSettingsView: View {
     @AppStorage("J2ME_QUICK_LAUNCH") private var quickLaunch: Bool = false
     @AppStorage("J2ME_BG_KEEP_ALIVE") private var bgKeepAlive: Bool = true
     @AppStorage("J2ME_NETWORK_KEEP_ALIVE") private var networkKeepAlive: Bool = true
+    @ObservedObject private var updateManager = AppUpdateManager.shared
     @Environment(\.presentationMode) var presentationMode
     
     var body: some View {
@@ -382,6 +389,38 @@ struct GeneralSettingsView: View {
                     Toggle(isOn: $networkKeepAlive) {
                         Text("Giữ kết nối mạng Socket liên tục")
                             .font(.system(size: 13.5, weight: .regular))
+                    }
+                }
+                
+                Section(header: Text("TỰ ĐỘNG CẬP NHẬT & BẢN VÁ").font(.system(size: 11.5, weight: .semibold))) {
+                    Toggle(isOn: $updateManager.autoCheckUpdates) {
+                        Text("Tự động kiểm tra bản vá khi có mạng")
+                            .font(.system(size: 13.5, weight: .regular))
+                    }
+                    
+                    Button(action: {
+                        updateManager.checkForUpdates(manual: true)
+                    }) {
+                        HStack {
+                            Text("Kiểm tra bản cập nhật ngay")
+                                .font(.system(size: 13.5, weight: .medium))
+                                .foregroundColor(J2MEColors.accent)
+                            Spacer()
+                            if updateManager.isChecking {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(J2MEColors.accent)
+                            }
+                        }
+                    }
+                    
+                    if let status = updateManager.statusMessage {
+                        Text(status)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(updateManager.hasUpdate ? J2MEColors.accent : .secondary)
                     }
                 }
                 
