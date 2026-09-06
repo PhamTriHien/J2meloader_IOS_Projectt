@@ -77,9 +77,65 @@ void JvmBytecodeEngine::reset() {
     m_heapArrays.clear();
     m_nativeImages.clear();
     m_staticFields.clear();
+    m_offscreens.clear();
+    m_graphicsTarget.clear();
     m_activeJar = nullptr;
     m_nextRef = 1;
     m_cancel.store(false);
+}
+
+uint32_t JvmBytecodeEngine::graphicsForImage(uint32_t imgRef) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    NativeImage* ni = getNativeImage(imgRef);
+    if (!ni || ni->width <= 0 || ni->height <= 0) {
+        uint32_t g = allocObject("javax/microedition/lcdui/Graphics");
+        m_graphicsTarget[g] = 0;
+        return g;
+    }
+    auto it = m_offscreens.find(imgRef);
+    if (it == m_offscreens.end()) {
+        auto disp = std::make_shared<LcduiDisplay>(ni->width, ni->height);
+        if (!ni->pixels.empty()) {
+            disp->drawRGB((const int32_t*)ni->pixels.data(), 0, ni->width,
+                          0, 0, ni->width, ni->height, true);
+        }
+        m_offscreens[imgRef] = disp;
+    }
+    uint32_t g = allocObject("javax/microedition/lcdui/Graphics");
+    m_graphicsTarget[g] = imgRef;
+    return g;
+}
+
+LcduiDisplay* JvmBytecodeEngine::resolveGraphics(uint32_t graphicsRef, LcduiDisplay* screen) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    auto it = m_graphicsTarget.find(graphicsRef);
+    if (it == m_graphicsTarget.end() || it->second == 0) return screen;
+    auto oi = m_offscreens.find(it->second);
+    if (oi != m_offscreens.end() && oi->second) return oi->second.get();
+    return screen;
+}
+
+void JvmBytecodeEngine::syncImageFromDisplay(uint32_t imgRef) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    auto oi = m_offscreens.find(imgRef);
+    // NOTE: getNativeImage takes m_mutex (recursive) — safe.
+    NativeImage* ni = getNativeImage(imgRef);
+    if (oi == m_offscreens.end() || !oi->second || !ni) return;
+    LcduiDisplay* d = oi->second.get();
+    int w = d->getWidth(), h = d->getHeight();
+    if (w != ni->width || h != ni->height || !d->getBuffer()) return;
+    std::lock_guard<std::mutex> dlock(d->getMutex());
+    ni->pixels.assign(d->getBuffer(), d->getBuffer() + w * h);
+}
+
+const uint32_t* JvmBytecodeEngine::readableImagePixels(uint32_t imgRef) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    auto oi = m_offscreens.find(imgRef);
+    if (oi != m_offscreens.end() && oi->second && oi->second->getBuffer())
+        return oi->second->getBuffer();
+    NativeImage* ni = getNativeImage(imgRef);
+    if (ni && !ni->pixels.empty()) return ni->pixels.data();
+    return nullptr;
 }
 
 uint32_t JvmBytecodeEngine::allocObject(const std::string& className) {
@@ -830,6 +886,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 return true;
             }
             if (desc.find("(Ljavax/microedition/lcdui/Image;)") != std::string::npos && args.size() >= 1) {
+                syncImageFromDisplay(args[0].asRef());
                 NativeImage* src = getNativeImage(args[0].asRef());
                 if (src) {
                     uint32_t resRef = allocateNativeImage(src->width, src->height, false);
@@ -842,6 +899,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 return true;
             }
             if (args.size() >= 6) {
+                syncImageFromDisplay(args[0].asRef());
                 NativeImage* src = getNativeImage(args[0].asRef());
                 int x = args[1].asInt(), y = args[2].asInt(), w = args[3].asInt(), h = args[4].asInt();
                 uint32_t resRef = allocateNativeImage(w, h, false);
@@ -887,7 +945,10 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             return true;
         }
         if (methodName == "getGraphics") {
-            outResult = JavaValue(allocObject("javax/microedition/lcdui/Graphics"), true);
+            // Bind the Graphics to this Image so offscreen drawing persists
+            // (double-buffered games); falls back to screen if image unknown.
+            uint32_t imgRef = args.empty() ? 0 : args[0].asRef();
+            outResult = JavaValue(graphicsForImage(imgRef), true);
             return true;
         }
         if (methodName == "isMutable") {
@@ -896,6 +957,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             return true;
         }
         if (methodName == "getRGB") {
+            syncImageFromDisplay(args[0].asRef());
             NativeImage* img = getNativeImage(args[0].asRef());
             JavaArray* arr = getArray(args[1].asRef());
             int offset = args[2].asInt(), scanlength = args[3].asInt(), x = args[4].asInt(), y = args[5].asInt(), width = args[6].asInt(), height = args[7].asInt();
@@ -916,97 +978,103 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
 
     if (className == "javax/microedition/lcdui/Graphics") {
         if (!display) return true;
+        // Route to the offscreen Image display when this Graphics came from
+        // Image.getGraphics() (double-buffered games); else the screen.
+        LcduiDisplay* tgt = args.empty() ? display : resolveGraphics(args[0].asRef(), display);
+        if (!tgt) return true;
         if (methodName == "setColor") {
             if (args.size() == 2) {
-                display->setColor((uint32_t)(args[1].asInt() | 0xFF000000));
+                tgt->setColor((uint32_t)(args[1].asInt() | 0xFF000000));
             } else if (args.size() >= 4) {
                 uint32_t r = (args[1].asInt() & 0xFF), g = (args[2].asInt() & 0xFF), b = (args[3].asInt() & 0xFF);
-                display->setColor(0xFF000000 | (r << 16) | (g << 8) | b);
+                tgt->setColor(0xFF000000 | (r << 16) | (g << 8) | b);
             }
             return true;
         }
         if (methodName == "getColor") {
-            outResult = JavaValue((int32_t)(display->getColor() & 0x00FFFFFF));
+            outResult = JavaValue((int32_t)(tgt->getColor() & 0x00FFFFFF));
             return true;
         }
         if (methodName == "fillRect" && args.size() >= 5) {
-            display->fillRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), display->getColor());
+            tgt->fillRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), tgt->getColor());
             return true;
         }
         if (methodName == "drawRect" && args.size() >= 5) {
-            display->drawRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), display->getColor());
+            tgt->drawRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), tgt->getColor());
             return true;
         }
         if (methodName == "drawLine" && args.size() >= 5) {
-            display->drawLine(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), display->getColor());
+            tgt->drawLine(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), tgt->getColor());
             return true;
         }
         if (methodName == "drawRoundRect" && args.size() >= 7) {
-            display->drawRoundRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), display->getColor());
+            tgt->drawRoundRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), tgt->getColor());
             return true;
         }
         if (methodName == "fillRoundRect" && args.size() >= 7) {
-            display->fillRoundRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), display->getColor());
+            tgt->fillRoundRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), tgt->getColor());
             return true;
         }
         if (methodName == "drawArc" && args.size() >= 7) {
-            display->drawArc(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), display->getColor());
+            tgt->drawArc(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), tgt->getColor());
             return true;
         }
         if (methodName == "fillArc" && args.size() >= 7) {
-            display->fillArc(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), display->getColor());
+            tgt->fillArc(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), tgt->getColor());
             return true;
         }
         if (methodName == "drawString" && args.size() >= 5) {
             std::string text = getString(args[1].asRef());
-            display->drawString(text, args[2].asInt(), args[3].asInt(), args[4].asInt(), display->getColor());
+            tgt->drawString(text, args[2].asInt(), args[3].asInt(), args[4].asInt(), tgt->getColor());
             return true;
         }
         if (methodName == "drawSubstring" && args.size() >= 7) {
             std::string text = getString(args[1].asRef());
             int off = args[2].asInt(), len = args[3].asInt();
             if (off >= 0 && off + len <= (int)text.length()) {
-                display->drawString(text.substr(off, len), args[4].asInt(), args[5].asInt(), args[6].asInt(), display->getColor());
+                tgt->drawString(text.substr(off, len), args[4].asInt(), args[5].asInt(), args[6].asInt(), tgt->getColor());
             }
             return true;
         }
         if (methodName == "drawChar" && args.size() >= 5) {
-            display->drawChar((char)args[1].asInt(), args[2].asInt(), args[3].asInt(), display->getColor());
+            tgt->drawChar((char)args[1].asInt(), args[2].asInt(), args[3].asInt(), tgt->getColor());
             return true;
         }
         if (methodName == "drawImage" && args.size() >= 5) {
             NativeImage* img = getNativeImage(args[1].asRef());
-            if (img && !img->pixels.empty()) {
-                display->drawRegion(img->pixels.data(), img->width, img->height, 0, 0, img->width, img->height, 0, args[2].asInt(), args[3].asInt(), args[4].asInt());
+            const uint32_t* px = readableImagePixels(args[1].asRef());
+            if (img && px) {
+                tgt->drawRegion(px, img->width, img->height, 0, 0, img->width, img->height, 0, args[2].asInt(), args[3].asInt(), args[4].asInt());
             }
             return true;
         }
         if (methodName == "drawRegion" && args.size() >= 10) {
             NativeImage* img = getNativeImage(args[1].asRef());
-            if (img && !img->pixels.empty()) {
-                display->drawRegion(img->pixels.data(), img->width, img->height, args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), args[7].asInt(), args[8].asInt(), args[9].asInt());
+            const uint32_t* px = readableImagePixels(args[1].asRef());
+            if (img && px) {
+                tgt->drawRegion(px, img->width, img->height, args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), args[7].asInt(), args[8].asInt(), args[9].asInt());
             }
             return true;
         }
         if (methodName == "drawRGB" && args.size() >= 9) {
             JavaArray* arr = getArray(args[1].asRef());
             if (arr && !arr->intData.empty()) {
-                display->drawRGB(arr->intData.data(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), args[7].asInt(), args[8].asInt() != 0);
+                tgt->drawRGB(arr->intData.data(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), args[7].asInt(), args[8].asInt() != 0);
             }
             return true;
         }
         if (methodName == "setClip" && args.size() >= 5) {
-            display->setClip(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt());
+            tgt->setClip(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt());
             return true;
         }
         if (methodName == "clipRect" && args.size() >= 5) {
-            display->clipRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt());
+            tgt->clipRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt());
             return true;
         }
-        if (methodName == "getClipX") { outResult = JavaValue(display->getClip().x); return true; }
-        if (methodName == "getClipY") { outResult = JavaValue(display->getClip().y); return true; }
-        if (methodName == "getClipWidth") { outResult = JavaValue(display->getClip().width); return true; }
-        if (methodName == "getClipHeight") { outResult = JavaValue(display->getClip().height); return true; }
+        if (methodName == "getClipX") { outResult = JavaValue(tgt->getClip().x); return true; }
+        if (methodName == "getClipY") { outResult = JavaValue(tgt->getClip().y); return true; }
+        if (methodName == "getClipWidth") { outResult = JavaValue(tgt->getClip().width); return true; }
+        if (methodName == "getClipHeight") { outResult = JavaValue(tgt->getClip().height); return true; }
         if (methodName == "setFont" || methodName == "translate") return true;
     }
 

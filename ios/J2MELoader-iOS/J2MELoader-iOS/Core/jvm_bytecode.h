@@ -390,6 +390,14 @@ public:
     uint32_t loadNativeImageFromJar(const std::string& path);
     uint32_t loadNativeImageFromBytes(const uint8_t* data, size_t size);
 
+    // Offscreen (Image-bound) Graphics: each Image drawn via getGraphics()
+    // owns a LcduiDisplay so double-buffered games render correctly.
+    // Graphics refs map to an image (0 = screen framebuffer).
+    uint32_t graphicsForImage(uint32_t imgRef);
+    LcduiDisplay* resolveGraphics(uint32_t graphicsRef, LcduiDisplay* screen);
+    void syncImageFromDisplay(uint32_t imgRef);
+    const uint32_t* readableImagePixels(uint32_t imgRef);
+
     // Active JAR reference
     void setJarLoader(JarLoader* jar) { std::lock_guard<std::recursive_mutex> lock(m_mutex); m_activeJar = jar; }
     JarLoader* getJarLoader() const { std::lock_guard<std::recursive_mutex> lock(m_mutex); return m_activeJar; }
@@ -425,6 +433,8 @@ private:
     JarLoader* m_activeJar = nullptr;
     uint32_t m_nextRef = 1;
     std::atomic<bool> m_cancel{false};
+    std::map<uint32_t, std::shared_ptr<LcduiDisplay>> m_offscreens;
+    std::map<uint32_t, uint32_t> m_graphicsTarget;
 
     // Native Dispatcher (MIDP 2.0 / CLDC 1.1)
     bool dispatchNativeMethod(const std::string& className, const std::string& methodName, const std::string& desc, const std::vector<JavaValue>& args, JavaValue& outResult, LcduiDisplay* display);

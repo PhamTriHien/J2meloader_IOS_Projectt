@@ -230,6 +230,8 @@ struct M3GWorldData { std::vector<M3GVertex> verts; std::vector<uint16_t> idx; s
 static std::map<uint32_t, M3GWorldData> g_m3gWorlds;
 static std::map<uint32_t, std::shared_ptr<Micro3DFigure>> g_microFig;
 static std::map<uint32_t, std::shared_ptr<Micro3DTexture>> g_microTex;
+static std::map<uint32_t, uint32_t> g_micro3dGfx; // Graphics3D ref -> bound Graphics ref (offscreen-aware)
+static std::map<uint32_t, uint32_t> g_m3dTarget; // M3G Graphics3D ref -> bound Graphics/Image ref
 static std::map<uint32_t, int> g_sockFd; // SocketConnection fd
 static std::map<uint32_t, std::vector<uint8_t>> g_baos; // ByteArrayOutputStream buffer
 static std::map<uint32_t, std::vector<std::pair<uint32_t,uint32_t>>> g_hashtable; // keyRef->valRef
@@ -285,7 +287,7 @@ static ConnData& httpEnsure(uint32_t ref){
 
 void FullApis::reset(){
     g_screens.clear(); g_sprites.clear(); g_tiled.clear(); g_layerMgr.clear();
-    g_m3gType.clear(); g_m3gWorlds.clear(); g_microFig.clear(); g_microTex.clear(); g_sockFd.clear();
+    g_m3gType.clear(); g_m3gWorlds.clear(); g_microFig.clear(); g_microTex.clear(); g_micro3dGfx.clear(); g_m3dTarget.clear(); g_sockFd.clear();
     g_baos.clear(); g_hashtable.clear(); g_enums.clear();
     g_players.clear(); g_conns.clear(); g_currentScreen=0;
     if(hasNative((const void*)native_background_keepalive_stop)) native_background_keepalive_stop();
@@ -371,6 +373,25 @@ static void renderScreen(uint32_t ref, LcduiDisplay* display){
 }
 
 static NativeImage* imgOf(uint32_t ref){ return ENG().getNativeImage(ref); }
+// Read image pixels through the offscreen display when the game drew on it
+// via getGraphics() (syncs back first), else raw pixels.
+static const uint32_t* imgPx(uint32_t ref){
+    ENG().syncImageFromDisplay(ref);
+    NativeImage* ni = ENG().getNativeImage(ref);
+    if (ni && !ni->pixels.empty()) return ni->pixels.data();
+    return nullptr;
+}
+// Resolve the LcduiDisplay a Nokia DirectGraphics should draw on:
+// the Graphics it was created from (offscreen-aware), else the screen.
+static LcduiDisplay* dgTarget(uint32_t dgRef, LcduiDisplay* screen){
+    JavaObject*o=ENG().getObject(dgRef);
+    if(o){
+        auto it=o->fields.find("gfx");
+        if(it!=o->fields.end() && it->second.asRef()!=0)
+            return ENG().resolveGraphics(it->second.asRef(), screen);
+    }
+    return screen;
+}
 
 static std::vector<uint8_t> streamBytes(uint32_t streamRef){
     JavaObject* o = ENG().getObject(streamRef);
@@ -784,13 +805,13 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     if(className=="javax/microedition/lcdui/game/Sprite"){
         uint32_t self=args.empty()?0:args[0].asRef();
         if(methodName=="<init>"){
-            // (LImage;)V , (LImage;II)V , (LSprite;)V
-            NativeImage* src=nullptr; int fw=0,fh=0;
-            if(args.size()>=2&&args[1].type==JavaValue::OBJ_REF) src=imgOf(args[1].asRef());
+            // (LImage;)V , (LImage;II)V , (LSprite;)V — pixels synced from offscreen if drawn
+            NativeImage* src=nullptr; const uint32_t* px=nullptr; int fw=0,fh=0;
+            if(args.size()>=2&&args[1].type==JavaValue::OBJ_REF){ src=imgOf(args[1].asRef()); px=imgPx(args[1].asRef()); }
             if(args.size()>=4){ fw=args[2].asInt(); fh=args[3].asInt(); }
-            if(src&&!src->pixels.empty()){
+            if(src&&px){
                 if(fw<=0) fw=src->width; if(fh<=0) fh=src->height;
-                g_sprites[self]=std::make_shared<Sprite>(src->pixels,src->width,src->height,fw,fh);
+                g_sprites[self]=std::make_shared<Sprite>(std::vector<uint32_t>(px,px+src->width*src->height),src->width,src->height,fw,fh);
             } else {
                 std::vector<uint32_t> px(16*16,0xFFFF0000); g_sprites[self]=std::make_shared<Sprite>(px,16,16,16,16);
             }
@@ -804,7 +825,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="nextFrame"){ sp->nextFrame(); return true; }
         if(methodName=="prevFrame"){ sp->prevFrame(); return true; }
         if(methodName=="setFrameSequence"&&args.size()>=2){ JavaArray*a=ENG().getArray(args[1].asRef()); if(a){ std::vector<int> seq(a->intData.begin(),a->intData.end()); sp->setFrameSequence(seq);} return true; }
-        if(methodName=="setImage"&&args.size()>=4){ NativeImage*ni=imgOf(args[1].asRef()); int fw=args[2].asInt(),fh=args[3].asInt(); if(ni&&!ni->pixels.empty()){ g_sprites[self]=std::make_shared<Sprite>(ni->pixels,ni->width,ni->height,fw,fh);} return true; }
+        if(methodName=="setImage"&&args.size()>=4){ NativeImage*ni=imgOf(args[1].asRef()); const uint32_t*px=imgPx(args[1].asRef()); int fw=args[2].asInt(),fh=args[3].asInt(); if(ni&&px){ g_sprites[self]=std::make_shared<Sprite>(std::vector<uint32_t>(px,px+ni->width*ni->height),ni->width,ni->height,fw,fh);} return true; }
         if(methodName=="setTransform"&&args.size()>=2){ sp->setTransform((SpriteTransform)args[1].asInt()); return true; }
         if(methodName=="defineReferencePixel"&&args.size()>=3){ sp->defineReferencePixel(args[1].asInt(),args[2].asInt()); return true; }
         if(methodName=="setRefPixelPosition"&&args.size()>=3){ sp->setRefPixelPosition(args[1].asInt(),args[2].asInt()); return true; }
@@ -825,13 +846,16 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             else if(args.size()>=2){ auto jt=g_sprites.find(args[1].asRef()); if(jt!=g_sprites.end()&&jt->second) r=sp->collidesWith(*jt->second, args.size()>=3?args[2].asInt()!=0:false); }
             outResult=JavaValue(r?1:0); return true;
         }
-        if(methodName=="paint"&&args.size()>=2&&display){ sp->paint(display); return true; }
+        if(methodName=="paint"&&args.size()>=2&&display){
+            LcduiDisplay* tgt = (args[1].type==JavaValue::OBJ_REF) ? ENG().resolveGraphics(args[1].asRef(), display) : display;
+            if(tgt) sp->paint(tgt); return true;
+        }
     }
     if(className=="javax/microedition/lcdui/game/TiledLayer"){
         uint32_t self=args.empty()?0:args[0].asRef();
         if(methodName=="<init>"&&args.size()>=6){
-            int cols=args[1].asInt(),rows=args[2].asInt(); NativeImage*ni=imgOf(args[3].asRef()); int tw=args[4].asInt(),th=args[5].asInt();
-            std::vector<uint32_t> px; int iw=16,ih=16; if(ni&&!ni->pixels.empty()){px=ni->pixels;iw=ni->width;ih=ni->height;}
+            int cols=args[1].asInt(),rows=args[2].asInt(); NativeImage*ni=imgOf(args[3].asRef()); const uint32_t*px0=imgPx(args[3].asRef()); int tw=args[4].asInt(),th=args[5].asInt();
+            std::vector<uint32_t> px; int iw=16,ih=16; if(ni&&px0){px.assign(px0,px0+ni->width*ni->height);iw=ni->width;ih=ni->height;}
             g_tiled[self]=std::make_shared<TiledLayer>(cols,rows,px,iw,ih,tw>0?tw:16,th>0?th:16);
             return true;
         }
@@ -852,7 +876,10 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="getHeight"){ outResult=JavaValue(tl->getHeight()); return true; }
         if(methodName=="getColumns"){ outResult=JavaValue(tl->getWidth()/16); return true; }
         if(methodName=="getRows"){ outResult=JavaValue(tl->getHeight()/16); return true; }
-        if(methodName=="paint"&&args.size()>=2&&display){ tl->paint(display); return true; }
+        if(methodName=="paint"&&args.size()>=2&&display){
+            LcduiDisplay* tgt = (args[1].type==JavaValue::OBJ_REF) ? ENG().resolveGraphics(args[1].asRef(), display) : display;
+            if(tgt) tl->paint(tgt); return true;
+        }
     }
     if(className=="javax/microedition/lcdui/game/LayerManager"){
         uint32_t self=args.empty()?0:args[0].asRef();
@@ -867,7 +894,10 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             return true;
         }
         if(methodName=="setViewWindow"&&args.size()>=5){ lm->setViewWindow(args[1].asInt(),args[2].asInt(),args[3].asInt(),args[4].asInt()); return true; }
-        if(methodName=="paint"&&args.size()>=4&&display){ lm->paint(display, args[2].asInt(), args[3].asInt()); return true; }
+        if(methodName=="paint"&&args.size()>=4&&display){
+            LcduiDisplay* tgt = (args[1].type==JavaValue::OBJ_REF) ? ENG().resolveGraphics(args[1].asRef(), display) : display;
+            if(tgt) lm->paint(tgt, args[2].asInt(), args[3].asInt()); return true;
+        }
         if(methodName=="getSize"){ outResult=JavaValue(0); return true; }
         if(methodName=="getLayerAt"){ outResult=JavaValue(0,true); return true; }
     }
@@ -883,20 +913,41 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="<init>"||methodName=="<clinit>") return true;
         if(className=="javax/microedition/m3g/Graphics3D"){
             if(methodName=="getInstance"){ uint32_t r=ENG().allocObject(className); g_m3gType[r]="Graphics3D"; outResult=JavaValue(r,true); return true; }
-            if(methodName=="bindTarget"&&display){ M3GGraphics3D::getInstance().bindTarget(display); return true; }
+            if(methodName=="bindTarget"&&display){
+                uint32_t self=args.empty()?0:args[0].asRef();
+                uint32_t tgt=args.size()>=2?args[1].asRef():0;
+                if(self) g_m3dTarget[self]=tgt;
+                // Target is a Graphics (offscreen-aware) or Image2D: resolve to its display
+                LcduiDisplay* d = ENG().resolveGraphics(tgt, display);
+                if(d==display && tgt!=0 && ENG().getNativeImage(tgt)){
+                    // Image2D target: ensure an offscreen display exists, then use it
+                    uint32_t tmpGfx = ENG().graphicsForImage(tgt);
+                    d = ENG().resolveGraphics(tmpGfx, display);
+                }
+                M3GGraphics3D::getInstance().bindTarget(d ? d : display);
+                return true;
+            }
             if(methodName=="releaseTarget"){ M3GGraphics3D::getInstance().releaseTarget(); return true; }
             if(methodName=="clear"&&display){ M3GGraphics3D::getInstance().clear(0xFF000000); return true; }
             if(methodName=="setViewport"||methodName=="setDepthRange"||methodName=="resetLights"){ if(methodName=="resetLights") M3GGraphics3D::getInstance().resetLights(); return true; }
             if(methodName=="setCamera"){ M3GCamera cam; Mat4 view=Mat4::identity(); M3GGraphics3D::getInstance().setCamera(cam,view); return true; }
             if(methodName=="addLight"){ M3GLight l; Mat4 t=Mat4::identity(); M3GGraphics3D::getInstance().addLight(l,t); outResult=JavaValue(0); return true; }
             if(methodName=="render"&&display){
-                // Real world if Loader.load parsed one, else fallback rotating quad
                 uint32_t worldRef = 0;
                 // args[0]=this Graphics3D, args[1]=World or Node
                 if(args.size()>=2 && args[1].type==JavaValue::OBJ_REF) worldRef = args[1].asRef();
                 auto wit = g_m3gWorlds.find(worldRef);
-                M3GGraphics3D::getInstance().bindTarget(display);
-                M3GCamera cam; cam.setPerspective(60, (float)display->getWidth()/display->getHeight(), 0.1f, 100);
+                // Render onto the bindTarget display (offscreen-aware), default screen
+                LcduiDisplay* rdisplay = display;
+                {
+                    uint32_t g3self = args.empty()?0:args[0].asRef();
+                    auto tit = g_m3dTarget.find(g3self);
+                    if(tit != g_m3dTarget.end() && tit->second != 0)
+                        rdisplay = ENG().resolveGraphics(tit->second, display);
+                }
+                if(!rdisplay) rdisplay = display;
+                M3GGraphics3D::getInstance().bindTarget(rdisplay);
+                M3GCamera cam; cam.setPerspective(60, (float)rdisplay->getWidth()/rdisplay->getHeight(), 0.1f, 100);
                 Mat4 view=Mat4::identity(); view.m[14]=-4;
                 M3GGraphics3D::getInstance().setCamera(cam,view);
                 if(wit != g_m3gWorlds.end() && !wit->second.verts.empty()){
@@ -906,7 +957,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                     if(at!=0){
                         Mat4 rot=Mat4::identity(); float a=at*0.003f; float c=cosf(a),s=sinf(a);
                         rot.m[0]=c; rot.m[2]=s; rot.m[8]=-s; rot.m[10]=c;
-                        M3GGraphics3D::getInstance().bindTarget(display);
+                        M3GGraphics3D::getInstance().bindTarget(rdisplay);
                         M3GGraphics3D::getInstance().clear(wit->second.bg);
                         M3GGraphics3D::getInstance().renderMesh(wit->second.verts, wit->second.idx, rot,
                             wit->second.tex.empty()?nullptr:wit->second.tex.data(), wit->second.tw, wit->second.th);
@@ -1152,13 +1203,24 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     if(className.rfind("com/mascotcapsule/micro3d/",0)==0||className.rfind("com/jblend/graphics/j3d/",0)==0||className.rfind("com/motorola/graphics/j3d/",0)==0||className=="com/nokia/mid/m3d/M3D"){
         if(methodName=="<init>"||methodName=="<clinit>") return true;
         if((className.find("Graphics3D")!=std::string::npos)){
-            if(methodName=="bind"&&display){ M3GGraphics3D::getInstance().bindTarget(display); return true; }
+            uint32_t g3dSelf = args.empty() ? 0 : args[0].asRef();
+            if(methodName=="bind"&&display){
+                uint32_t gfx = args.size()>=2 ? args[1].asRef() : 0;
+                if(g3dSelf) g_micro3dGfx[g3dSelf]=gfx;
+                M3GGraphics3D::getInstance().bindTarget(ENG().resolveGraphics(gfx, display));
+                return true;
+            }
             if(methodName=="release"){ M3GGraphics3D::getInstance().releaseTarget(); return true; }
             if(methodName=="flush"&&display){ return true; }
             if(methodName=="drawFigure"&&display){
                 // args: this, Figure, x,y, layout, effect (layout/effect ignored, trans from AffineTrans if passed)
                 uint32_t figRef = args.size()>=2 ? args[1].asRef() : 0;
                 auto fit = g_microFig.find(figRef);
+                // Draw onto the Graphics this instance is bound to (offscreen-aware)
+                uint32_t boundGfx = 0;
+                auto bit = g_micro3dGfx.find(g3dSelf);
+                if(bit != g_micro3dGfx.end()) boundGfx = bit->second;
+                LcduiDisplay* tgt = ENG().resolveGraphics(boundGfx, display);
                 Micro3DAffineTrans tr; // identity; AffineTrans object parsing omitted (rotation handled by game via setPosture)
                 // Try extract AffineTrans int[] from args (layout/effect may carry trans)
                 for(size_t k=2;k<args.size();k++) if(args[k].type==JavaValue::OBJ_REF){
@@ -1170,7 +1232,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                     }
                 }
                 if(fit!=g_microFig.end() && fit->second){
-                    fit->second->draw(display, tr);
+                    fit->second->draw(tgt ? tgt : display, tr);
                 }
                 // Unknown figure: draw nothing (no fake triangle)
                 return true;
@@ -1191,19 +1253,27 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="<init>") return true;
         if(className=="com/nokia/mid/ui/DirectUtils"){
             if(methodName=="createImage"&&args.size()>=3){ int w=args[1].asInt(),h=args[2].asInt(); uint32_t r=ENG().allocateNativeImage(w,h,false); outResult=JavaValue(r,true); return true; }
-            if(methodName=="getDirectGraphics"){ uint32_t r=ENG().allocObject("com/nokia/mid/ui/DirectGraphics"); outResult=JavaValue(r,true); return true; }
+            if(methodName=="getDirectGraphics"){
+                uint32_t r=ENG().allocObject("com/nokia/mid/ui/DirectGraphics");
+                JavaObject*o=ENG().getObject(r);
+                // Remember the Graphics this DirectGraphics wraps (may be offscreen-bound)
+                if(o && args.size()>=2 && args[1].type==JavaValue::OBJ_REF) o->fields["gfx"]=args[1];
+                outResult=JavaValue(r,true); return true;
+            }
         }
         if(className=="com/nokia/mid/ui/DirectGraphics"){
             if(!display) return true;
-            if(methodName=="setARGBColor"&&args.size()>=2){ display->setColor((uint32_t)args[1].asInt()); return true; }
-            if(methodName=="getAlphaComponent"){ outResult=JavaValue((int32_t)((display->getColor()>>24)&0xFF)); return true; }
+            LcduiDisplay* tgt = args.empty() ? display : dgTarget(args[0].asRef(), display);
+            if(!tgt) return true;
+            if(methodName=="setARGBColor"&&args.size()>=2){ tgt->setColor((uint32_t)args[1].asInt()); return true; }
+            if(methodName=="getAlphaComponent"){ outResult=JavaValue((int32_t)((tgt->getColor()>>24)&0xFF)); return true; }
             if(methodName=="getNativePixelFormat"){ outResult=JavaValue(0x8888); return true; }
-            if(methodName=="drawImage"&&args.size()>=5){ NativeImage*ni=imgOf(args[1].asRef()); if(ni&&!ni->pixels.empty()) display->drawRegion(ni->pixels.data(),ni->width,ni->height,0,0,ni->width,ni->height,0,args[2].asInt(),args[3].asInt(),args[4].asInt()); return true; }
-            if(methodName=="drawTriangle"&&args.size()>=8){ display->drawLine(args[1].asInt(),args[2].asInt(),args[3].asInt(),args[4].asInt(),display->getColor()); display->drawLine(args[3].asInt(),args[4].asInt(),args[5].asInt(),args[6].asInt(),display->getColor()); display->drawLine(args[5].asInt(),args[6].asInt(),args[1].asInt(),args[2].asInt(),display->getColor()); return true; }
-            if(methodName=="fillTriangle"&&args.size()>=8){ int x0=args[1].asInt(),y0=args[2].asInt(),x1=args[3].asInt(),y1=args[4].asInt(),x2=args[5].asInt(),y2=args[6].asInt(); for(int y=std::min({y0,y1,y2});y<=std::max({y0,y1,y2});y++) display->drawLine(std::min({x0,x1,x2}),y,std::max({x0,x1,x2}),y,display->getColor()); return true; }
-            if((methodName=="drawPolygon"||methodName=="fillPolygon")&&args.size()>=7){ JavaArray*xa=ENG().getArray(args[1].asRef()); JavaArray*ya=ENG().getArray(args[3].asRef()); int n=args[5].asInt(); if(xa&&ya){ for(int i=0;i<n;i++){ int x0=i<(int)xa->intData.size()?xa->intData[(args[2].asInt()+i)]:0; int y0=i<(int)ya->intData.size()?ya->intData[(args[4].asInt()+i)]:0; int x1=(i+1<n)?(xa->intData[args[2].asInt()+i+1]):xa->intData[args[2].asInt()]; int y1=(i+1<n)?(ya->intData[args[4].asInt()+i+1]):ya->intData[args[4].asInt()]; display->drawLine(x0,y0,x1,y1,args[6].asInt()|(0xFF000000)); } } return true; }
-            if(methodName=="drawPixels"&&args.size()>=10){ JavaArray*pa=ENG().getArray(args[1].asRef()); int x=args[5].asInt(),y=args[6].asInt(),w=args[7].asInt(),h=args[8].asInt(); if(pa&&!pa->intData.empty()&&display){ display->drawRGB(pa->intData.data(),args[3].asInt(),args[4].asInt(),x,y,w,h,true);} return true; }
-            if(methodName=="getPixels"&&args.size()>=9){ JavaArray*pa=ENG().getArray(args[1].asRef()); int x=args[4].asInt(),yy=args[5].asInt(),w=args[6].asInt(),h=args[7].asInt(); if(pa&&display){ if((int)pa->intData.size()<w*h) pa->intData.resize(w*h,0); for(int r=0;r<h;r++)for(int c=0;c<w;c++){ pa->intData[r*w+c]=0xFF000000; } } return true; }
+            if(methodName=="drawImage"&&args.size()>=5){ NativeImage*ni=imgOf(args[1].asRef()); const uint32_t*px=imgPx(args[1].asRef()); if(ni&&px) tgt->drawRegion(px,ni->width,ni->height,0,0,ni->width,ni->height,0,args[2].asInt(),args[3].asInt(),args[4].asInt()); return true; }
+            if(methodName=="drawTriangle"&&args.size()>=8){ tgt->drawLine(args[1].asInt(),args[2].asInt(),args[3].asInt(),args[4].asInt(),tgt->getColor()); tgt->drawLine(args[3].asInt(),args[4].asInt(),args[5].asInt(),args[6].asInt(),tgt->getColor()); tgt->drawLine(args[5].asInt(),args[6].asInt(),args[1].asInt(),args[2].asInt(),tgt->getColor()); return true; }
+            if(methodName=="fillTriangle"&&args.size()>=8){ int x0=args[1].asInt(),y0=args[2].asInt(),x1=args[3].asInt(),y1=args[4].asInt(),x2=args[5].asInt(),y2=args[6].asInt(); for(int y=std::min({y0,y1,y2});y<=std::max({y0,y1,y2});y++) tgt->drawLine(std::min({x0,x1,x2}),y,std::max({x0,x1,x2}),y,tgt->getColor()); return true; }
+            if((methodName=="drawPolygon"||methodName=="fillPolygon")&&args.size()>=7){ JavaArray*xa=ENG().getArray(args[1].asRef()); JavaArray*ya=ENG().getArray(args[3].asRef()); int n=args[5].asInt(); if(xa&&ya){ for(int i=0;i<n;i++){ int x0=i<(int)xa->intData.size()?xa->intData[(args[2].asInt()+i)]:0; int y0=i<(int)ya->intData.size()?ya->intData[(args[4].asInt()+i)]:0; int x1=(i+1<n)?(xa->intData[args[2].asInt()+i+1]):xa->intData[args[2].asInt()]; int y1=(i+1<n)?(ya->intData[args[4].asInt()+i+1]):ya->intData[args[4].asInt()]; tgt->drawLine(x0,y0,x1,y1,args[6].asInt()|(0xFF000000)); } } return true; }
+            if(methodName=="drawPixels"&&args.size()>=10){ JavaArray*pa=ENG().getArray(args[1].asRef()); int x=args[5].asInt(),y=args[6].asInt(),w=args[7].asInt(),h=args[8].asInt(); if(pa&&!pa->intData.empty()&&tgt){ tgt->drawRGB(pa->intData.data(),args[3].asInt(),args[4].asInt(),x,y,w,h,true);} return true; }
+            if(methodName=="getPixels"&&args.size()>=9){ JavaArray*pa=ENG().getArray(args[1].asRef()); int x=args[4].asInt(),yy=args[5].asInt(),w=args[6].asInt(),h=args[7].asInt(); if(pa&&tgt){ if((int)pa->intData.size()<w*h) pa->intData.resize(w*h,0); for(int r=0;r<h;r++)for(int c=0;c<w;c++){ pa->intData[r*w+c]=0xFF000000; } } return true; }
         }
         if(className=="com/nokia/mid/ui/DeviceControl"){
             if(methodName=="startVibra"&&args.size()>=2){ int ms=args[1].asInt(); if(hasNative((const void*)native_vibrate)) native_vibrate(ms>0?ms:400); return true; }
