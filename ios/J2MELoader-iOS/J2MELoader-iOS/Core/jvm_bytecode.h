@@ -373,6 +373,8 @@ public:
 
     // Execution
     JavaValue executeMethod(std::shared_ptr<ClassFile> cls, const std::string& methodName, const std::string& desc, const std::vector<JavaValue>& args, LcduiDisplay* display);
+    // Walk superclass chain for the class actually defining name:desc (virtual dispatch).
+    std::shared_ptr<ClassFile> resolveMethodClass(std::shared_ptr<ClassFile> cls, const std::string& key);
 
     // Object & String Allocation
     uint32_t allocObject(const std::string& className);

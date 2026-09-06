@@ -1586,6 +1586,18 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
     return false;
 }
 
+std::shared_ptr<ClassFile> JvmBytecodeEngine::resolveMethodClass(std::shared_ptr<ClassFile> cls, const std::string& key) {
+    for (int d = 0; d < 16 && cls; ++d) {
+        auto it = cls->methods.find(key);
+        if (it != cls->methods.end() && !it->second.code.empty()) return cls;
+        // Native MIDP methods (no Code) still count as defined.
+        if (it != cls->methods.end()) return cls;
+        if (cls->superClassName.empty()) break;
+        cls = findOrLoadClass(cls->superClassName, m_activeJar);
+    }
+    return nullptr;
+}
+
 // ----------------------------------------------------
 // Complete JVM Opcode Execution Loop
 // ----------------------------------------------------

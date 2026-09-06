@@ -26,13 +26,18 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
     m_jarPath = jarPath;
     m_mainClass = mainClass;
     m_soundEnabled = soundEnabled;
+    { std::lock_guard<std::mutex> lk(m_bootMutex); m_bootError.clear(); }
+
+    m_display->resize(width, height);
 
     if (!m_jarLoader->open(jarPath)) {
         std::cerr << "Failed to open JAR archive: " << jarPath << std::endl;
+        m_display->clear(0xFF0A0F1D);
+        m_display->drawString("Khong mo duoc JAR", m_display->getWidth() / 2,
+                              m_display->getHeight() / 2, 1 | 2, 0xFFF87171);
+        { std::lock_guard<std::mutex> lk(m_bootMutex); m_bootError = "Khong mo duoc JAR"; }
         return false;
     }
-
-    m_display->resize(width, height);
 
     // Reset JVM bytecode engine and bind active jar
     auto& jvm = JvmBytecodeEngine::getInstance();
@@ -88,6 +93,11 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
                 }
             }
         }
+    }
+
+    if (targetClass.empty()) {
+        std::lock_guard<std::mutex> lk(m_bootMutex);
+        m_bootError = "Khong tim thay MIDlet";
     }
 
     m_runnableRunning = false;
@@ -252,34 +262,64 @@ void JvmInterpreter::findAndBindCanvas() {
 
     if (m_canvasClass && m_canvasRef != 0) return;
 
-    // Scan all classes in JAR archive to locate Canvas / GameCanvas subclass
+    // Scan all classes in JAR archive to locate Canvas / GameCanvas subclass.
+    // Must skip abstract bases/interfaces (their paint has no Code and would
+    // render black forever) and prefer classes with a no-arg constructor.
+    static const std::string paintKey = "paint:(Ljavax/microedition/lcdui/Graphics;)V";
+    // paint may be inherited: walk superclass chain for real Code.
+    auto paintWithCode = [&](std::shared_ptr<ClassFile> c) -> bool {
+        for (int d = 0; d < 8 && c; ++d) {
+            auto pit = c->methods.find(paintKey);
+            if (pit != c->methods.end() && !pit->second.code.empty()) return true;
+            if (c->superClassName.empty()) break;
+            c = jvm.findOrLoadClass(c->superClassName, m_jarLoader.get());
+        }
+        return false;
+    };
     auto entries = m_jarLoader->listEntries();
+    std::shared_ptr<ClassFile> fallback;
+    std::string fallbackName;
     for (const auto& entry : entries) {
-        if (entry.size() > 6 && entry.substr(entry.size() - 6) == ".class") {
-            std::string className = entry.substr(0, entry.size() - 6);
-            auto cls = jvm.findOrLoadClass(className, m_jarLoader.get());
-            if (cls) {
-                // Check if class defines paint(Ljavax/microedition/lcdui/Graphics;)V
-                std::string paintKey = "paint:(Ljavax/microedition/lcdui/Graphics;)V";
-                if (cls->methods.find(paintKey) != cls->methods.end()) {
-                    m_canvasClass = cls;
-                    m_canvasRef = jvm.allocObject(className);
-                    jvm.executeMethod(m_canvasClass, "<init>", "()V", { JavaValue(m_canvasRef, true) }, m_display.get());
+        if (entry.size() <= 6 || entry.substr(entry.size() - 6) != ".class") continue;
+        std::string className = entry.substr(0, entry.size() - 6);
+        auto cls = jvm.findOrLoadClass(className, m_jarLoader.get());
+        if (!cls) continue;
+        if (!paintWithCode(cls)) continue;
+        if (cls->accessFlags & 0x0400) continue; // ACC_ABSTRACT
+        if (cls->accessFlags & 0x0200) continue; // ACC_INTERFACE
+        bool hasNoArgInit = cls->methods.find("<init>:()V") != cls->methods.end();
+        if (!hasNoArgInit) {
+            // Constructor needs args (e.g. Canvas(MIDlet)): only use if nothing better.
+            if (!fallback) { fallback = cls; fallbackName = className; }
+            continue;
+        }
+        m_canvasClass = cls;
+        m_canvasRef = jvm.allocObject(className);
+        jvm.executeMethod(m_canvasClass, "<init>", "()V", { JavaValue(m_canvasRef, true) }, m_display.get());
 
-                    // Call showNotify() if defined
-                    if (cls->methods.find("showNotify:()V") != cls->methods.end()) {
-                        jvm.executeMethod(cls, "showNotify", "()V", { JavaValue(m_canvasRef, true) }, m_display.get());
-                    }
+        // Call showNotify() if defined
+        if (cls->methods.find("showNotify:()V") != cls->methods.end()) {
+            jvm.executeMethod(cls, "showNotify", "()V", { JavaValue(m_canvasRef, true) }, m_display.get());
+        }
 
-                    // Check if class implements Runnable
-                    if (cls->methods.find("run:()V") != cls->methods.end()) {
-                        m_runnableClass = cls;
-                        m_runnableRef = m_canvasRef;
-                        startRunnableThread();
-                    }
-                    break;
-                }
-            }
+        // Check if class implements Runnable
+        if (cls->methods.find("run:()V") != cls->methods.end()) {
+            m_runnableClass = cls;
+            m_runnableRef = m_canvasRef;
+            startRunnableThread();
+        }
+        return;
+    }
+    if (fallback && !m_canvasClass) {
+        // Last resort: instantiate via no-arg even if not declared (may NPE inside,
+        // still better than black screen without any splash).
+        m_canvasClass = fallback;
+        m_canvasRef = jvm.allocObject(fallbackName);
+        jvm.executeMethod(m_canvasClass, "<init>", "()V", { JavaValue(m_canvasRef, true) }, m_display.get());
+        if (fallback->methods.find("run:()V") != fallback->methods.end()) {
+            m_runnableClass = fallback;
+            m_runnableRef = m_canvasRef;
+            startRunnableThread();
         }
     }
 }
@@ -321,26 +361,44 @@ void JvmInterpreter::executionLoop() {
             }
 
             // Execute real game bytecode paint(Graphics g) method
+            // (resolved through superclass chain: paint is often inherited)
             if (m_canvasClass && m_canvasRef != 0 && m_graphicsRef != 0) {
-                jvm.executeMethod(
-                    m_canvasClass,
-                    "paint",
-                    "(Ljavax/microedition/lcdui/Graphics;)V",
-                    { JavaValue(m_canvasRef, true), JavaValue(m_graphicsRef, true) },
-                    m_display.get()
-                );
+                auto paintCls = jvm.resolveMethodClass(
+                    m_canvasClass, "paint:(Ljavax/microedition/lcdui/Graphics;)V");
+                if (paintCls) {
+                    jvm.executeMethod(
+                        paintCls,
+                        "paint",
+                        "(Ljavax/microedition/lcdui/Graphics;)V",
+                        { JavaValue(m_canvasRef, true), JavaValue(m_graphicsRef, true) },
+                        m_display.get()
+                    );
+                } else {
+                    // Bound class lost its paint (stale bind): drop it so the
+                    // loading splash shows instead of a frozen black frame.
+                    m_canvasClass = nullptr;
+                    m_canvasRef = 0;
+                }
             } else {
-                // Retro LCD loading splash screen with spinner animation
+                // Retro LCD loading splash screen with spinner animation.
+                // A boot error (JAR/MIDlet) is shown in red instead of hanging black.
+                std::string bootErr;
+                { std::lock_guard<std::mutex> lk(m_bootMutex); bootErr = m_bootError; }
                 tickCount++;
                 int w = m_display->getWidth(), h = m_display->getHeight();
                 m_display->clear(0xFF0A0F1D);
-                
-                std::string loadingText = "Dang tai game Java";
-                int dots = (tickCount / 15) % 4;
-                for (int d = 0; d < dots; ++d) loadingText += ".";
-                
-                m_display->drawString(loadingText, w / 2, h / 2 - 10, 1 | 2, 0xFF38BDF8);
-                m_display->drawString("J2HienLoader", w / 2, h / 2 + 15, 1 | 2, 0xFF94A3B8);
+
+                if (!bootErr.empty()) {
+                    m_display->drawString(bootErr, w / 2, h / 2 - 10, 1 | 2, 0xFFF87171);
+                    m_display->drawString("Kiem tra file JAR", w / 2, h / 2 + 15, 1 | 2, 0xFF94A3B8);
+                } else {
+                    std::string loadingText = "Dang tai game Java";
+                    int dots = (tickCount / 15) % 4;
+                    for (int d = 0; d < dots; ++d) loadingText += ".";
+
+                    m_display->drawString(loadingText, w / 2, h / 2 - 10, 1 | 2, 0xFF38BDF8);
+                    m_display->drawString("J2HienLoader", w / 2, h / 2 + 15, 1 | 2, 0xFF94A3B8);
+                }
             }
         }
 

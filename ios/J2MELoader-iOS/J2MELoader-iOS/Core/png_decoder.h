@@ -18,7 +18,7 @@ public:
 
         size_t pos = 8;
         int width = 0, height = 0;
-        uint8_t bitDepth = 0, colorType = 0;
+        uint8_t bitDepth = 0, colorType = 0, interlace = 0;
         std::vector<uint8_t> idatData;
         std::vector<uint32_t> palette;
         std::vector<uint8_t> transPalette;
@@ -44,6 +44,8 @@ public:
                 height = ((uint32_t)chunkData[4] << 24) | ((uint32_t)chunkData[5] << 16) | ((uint32_t)chunkData[6] << 8) | chunkData[7];
                 bitDepth = chunkData[8];
                 colorType = chunkData[9];
+                interlace = chunkData[12];
+                if (width <= 0 || height <= 0 || width > 4096 || height > 4096) return false;
             } else if (std::strcmp(chunkType, "PLTE") == 0) {
                 size_t numColors = length / 3;
                 palette.resize(numColors);
@@ -82,7 +84,7 @@ public:
 
         outW = width;
         outH = height;
-        outPixels.resize(width * height, 0);
+        outPixels.assign((size_t)width * height, 0);
 
         auto paeth = [](int a, int b, int c) -> int {
             int p = a + b - c;
@@ -94,67 +96,128 @@ public:
             return c;
         };
 
-        std::vector<uint8_t> prevScanline(scanlineBytes, 0);
-        std::vector<uint8_t> currScanline(scanlineBytes, 0);
+        // Unfilter one row of given byte length from the stream.
+        std::vector<uint8_t> prevRow, curRow;
         size_t rawPos = 0;
-
-        for (int y = 0; y < height; ++y) {
-            if (rawPos >= rawData.size()) break;
+        auto unfilterRow = [&](size_t rowBytes, std::vector<uint8_t>& out) -> bool {
+            if (rawPos >= rawData.size()) return false;
             uint8_t filter = rawData[rawPos++];
-
-            for (size_t i = 0; i < scanlineBytes; ++i) {
-                if (rawPos >= rawData.size()) break;
+            if (rawPos + rowBytes > rawData.size()) return false;
+            out.assign(rowBytes, 0);
+            size_t bpp = std::max<size_t>(1, bytesPerPixel);
+            for (size_t i = 0; i < rowBytes; ++i) {
                 uint8_t x = rawData[rawPos++];
-                uint8_t a = (i >= bytesPerPixel) ? currScanline[i - bytesPerPixel] : 0;
-                uint8_t b = prevScanline[i];
-                uint8_t c = (i >= bytesPerPixel) ? prevScanline[i - bytesPerPixel] : 0;
-
+                uint8_t a = (i >= bpp) ? out[i - bpp] : 0;
+                uint8_t b = (i < prevRow.size()) ? prevRow[i] : 0;
+                uint8_t c = (i >= bpp && i - bpp < prevRow.size()) ? prevRow[i - bpp] : 0;
                 switch (filter) {
-                case 0: currScanline[i] = x; break;
-                case 1: currScanline[i] = x + a; break;
-                case 2: currScanline[i] = x + b; break;
-                case 3: currScanline[i] = x + ((a + b) >> 1); break;
-                case 4: currScanline[i] = x + paeth(a, b, c); break;
-                default: currScanline[i] = x; break;
+                case 0: out[i] = x; break;
+                case 1: out[i] = x + a; break;
+                case 2: out[i] = x + b; break;
+                case 3: out[i] = x + ((a + b) >> 1); break;
+                case 4: out[i] = x + paeth(a, b, c); break;
+                default: out[i] = x; break;
                 }
             }
+            prevRow = out;
+            return true;
+        };
 
-            for (int x = 0; x < width; ++x) {
-                uint32_t argb = 0;
-                if (colorType == 6) {
-                    size_t idx = x * 4;
-                    if (idx + 3 < currScanline.size()) {
-                        uint8_t r = currScanline[idx], g = currScanline[idx + 1], b = currScanline[idx + 2], a = currScanline[idx + 3];
-                        argb = (a << 24) | (r << 16) | (g << 8) | b;
-                    }
-                } else if (colorType == 2) {
-                    size_t idx = x * 3;
-                    if (idx + 2 < currScanline.size()) {
-                        uint8_t r = currScanline[idx], g = currScanline[idx + 1], b = currScanline[idx + 2];
-                        argb = 0xFF000000 | (r << 16) | (g << 8) | b;
-                    }
-                } else if (colorType == 3) {
-                    if ((size_t)x < currScanline.size()) {
-                        uint8_t colorIdx = currScanline[x];
-                        if (colorIdx < palette.size()) {
-                            argb = palette[colorIdx];
-                            if (colorIdx < transPalette.size()) {
-                                argb = (transPalette[colorIdx] << 24) | (argb & 0x00FFFFFF);
-                            }
+        // Sample grid: width*channels 8-bit samples per row (16-bit scaled down).
+        std::vector<std::vector<uint8_t>> grid(height);
+        auto unpackRow = [&](const std::vector<uint8_t>& row, int samples, std::vector<uint8_t>& out) {
+            out.assign(samples, 0);
+            if (bitDepth >= 8) {
+                int step = bitDepth / 8;
+                for (int s = 0; s < samples; ++s) {
+                    size_t o = (size_t)s * step;
+                    if (o >= row.size()) break;
+                    out[s] = (bitDepth == 16) ? row[o] : row[o]; // 16-bit: high byte
+                }
+            } else {
+                int mask = (1 << bitDepth) - 1;
+                int scale = 255 / mask;
+                for (int s = 0; s < samples; ++s) {
+                    size_t bit = (size_t)s * bitDepth;
+                    uint8_t v = (bit / 8 < row.size()) ? (uint8_t)((row[bit / 8] >> (8 - bitDepth - (bit % 8))) & mask) : 0;
+                    out[s] = (uint8_t)(v * scale);
+                }
+            }
+        };
+
+        bool rowsOk = true;
+        if (interlace == 0) {
+            for (int y = 0; y < height; ++y) {
+                std::vector<uint8_t> row;
+                if (!unfilterRow(scanlineBytes, row)) { rowsOk = false; break; }
+                unpackRow(row, width * channels, grid[y]);
+            }
+        } else if (interlace == 1) {
+            // Adam7: 7 sub-images scattered onto the grid.
+            for (int y = 0; y < height; ++y) grid[y].assign((size_t)width * channels, 0);
+            static const int PX[7] = {0, 4, 0, 2, 0, 1, 0};
+            static const int PY[7] = {0, 0, 4, 0, 2, 0, 1};
+            static const int DX[7] = {8, 8, 4, 4, 2, 2, 1};
+            static const int DY[7] = {8, 8, 8, 4, 4, 2, 2};
+            for (int pass = 0; pass < 7; ++pass) {
+                int pw = (width - PX[pass] + DX[pass] - 1) / DX[pass];
+                int ph = (height - PY[pass] + DY[pass] - 1) / DY[pass];
+                if (pw <= 0 || ph <= 0) continue;
+                size_t prowBytes = ((size_t)pw * channels * bitDepth + 7) / 8;
+                size_t saveBpp = bytesPerPixel;
+                bytesPerPixel = (channels * bitDepth + 7) / 8;
+                if (bytesPerPixel == 0) bytesPerPixel = 1;
+                prevRow.assign(prowBytes, 0);
+                for (int ry = 0; ry < ph; ++ry) {
+                    std::vector<uint8_t> row;
+                    if (!unfilterRow(prowBytes, row)) { rowsOk = false; break; }
+                    std::vector<uint8_t> samples;
+                    unpackRow(row, pw * channels, samples);
+                    int fy = PY[pass] + ry * DY[pass];
+                    if (fy < 0 || fy >= height) continue;
+                    for (int rx = 0; rx < pw; ++rx) {
+                        int fx = PX[pass] + rx * DX[pass];
+                        if (fx < 0 || fx >= width) continue;
+                        for (int c = 0; c < channels; ++c) {
+                            size_t si = (size_t)rx * channels + c;
+                            if (si < samples.size())
+                                grid[fy][(size_t)fx * channels + c] = samples[si];
                         }
                     }
-                } else {
-                    if ((size_t)x < currScanline.size()) {
-                        uint8_t gray = currScanline[x];
-                        argb = 0xFF000000 | (gray << 16) | (gray << 8) | gray;
-                    }
                 }
-                if ((size_t)(y * width + x) < outPixels.size()) {
-                    outPixels[y * width + x] = argb;
-                }
+                bytesPerPixel = saveBpp;
+                if (!rowsOk) break;
             }
+        } else {
+            return false;
+        }
+        if (!rowsOk) return false;
 
-            prevScanline = currScanline;
+        for (int y = 0; y < height; ++y) {
+            const std::vector<uint8_t>& s = grid[y];
+            for (int x = 0; x < width; ++x) {
+                uint32_t argb = 0;
+                size_t base = (size_t)x * channels;
+                if (colorType == 6 && base + 3 < s.size()) {
+                    argb = ((uint32_t)s[base + 3] << 24) | ((uint32_t)s[base] << 16) | ((uint32_t)s[base + 1] << 8) | s[base + 2];
+                } else if (colorType == 2 && base + 2 < s.size()) {
+                    argb = 0xFF000000 | ((uint32_t)s[base] << 16) | ((uint32_t)s[base + 1] << 8) | s[base + 2];
+                } else if (colorType == 3 && (size_t)x < s.size()) {
+                    uint8_t colorIdx = s[x];
+                    if (colorIdx < palette.size()) {
+                        argb = palette[colorIdx];
+                        if (colorIdx < transPalette.size())
+                            argb = ((uint32_t)transPalette[colorIdx] << 24) | (argb & 0x00FFFFFF);
+                    }
+                } else if (colorType == 4 && base + 1 < s.size()) {
+                    uint8_t g = s[base], a = s[base + 1];
+                    argb = ((uint32_t)a << 24) | ((uint32_t)g << 16) | ((uint32_t)g << 8) | g;
+                } else if ((size_t)x < s.size()) {
+                    uint8_t g = s[x];
+                    argb = 0xFF000000 | ((uint32_t)g << 16) | ((uint32_t)g << 8) | g;
+                }
+                outPixels[(size_t)y * width + x] = argb;
+            }
         }
 
         return true;
