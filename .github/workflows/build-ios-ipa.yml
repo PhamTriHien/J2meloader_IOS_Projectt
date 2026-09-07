@@ -31,12 +31,18 @@ jobs:
           chmod +x build_ipa.sh
           ./build_ipa.sh
 
-      - name: Upload IPA & Simulator Artifacts
+      - name: Upload IPA Artifact (file .ipa truc tiep, khong nen them)
         uses: actions/upload-artifact@v4
         with:
-          name: J2HienLoader-iOS-Artifacts
+          name: J2HienLoader-IPA
           path: |
             **/build/*.ipa
+
+      - name: Upload Simulator Artifact (Appetize.io)
+        uses: actions/upload-artifact@v4
+        with:
+          name: J2HienLoader-Simulator
+          path: |
             **/build/*.zip
 
       - name: Create GitHub Release
