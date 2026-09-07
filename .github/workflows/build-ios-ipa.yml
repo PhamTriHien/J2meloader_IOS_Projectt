@@ -80,15 +80,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit build moi nhat vao repo (dist/)
+      - name: Commit build moi nhat vao repo (dist/ chi .ipa goc)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         run: |
           mkdir -p dist
           find . -path "*/build/*.ipa" -exec cp -f {} dist/ \;
-          find . -path "*/build/*.zip" -exec cp -f {} dist/ \;
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f dist/
+          git add -f dist/*.ipa
           if git diff --cached --quiet; then
             echo "dist/ da moi nhat, khong can commit"
           else
