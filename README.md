@@ -10,22 +10,33 @@ A high-performance, native J2ME (Java ME / MIDP 2.0 / CLDC 1.1) emulator ported 
 ## 🌟 Tính năng nổi bật (Key Features)
 
 * **🔄 Tự động Cập nhật & Bản vá In-App (Auto-Updater)**:
-  - Tự động kiểm tra bản cập nhật mới nhất từ GitHub Releases khi khởi động app hoặc khi mở lại có mạng.
+  - Tự động kiểm tra bản cập nhật mới nhất từ GitHub Releases hoặc kênh CDN dự phòng (`version.json`) không giới hạn lượt gọi mạng.
   - Hộp thoại chi tiết nội dung bản vá (`UpdateModalView`), thanh tiến trình tải real-time.
   - Tích hợp 1 chạm cài đặt qua **ESign**, **TrollStore** hoặc mở liên kết tải trực tiếp qua **Safari**.
   - Tùy chọn bật/tắt tự động kiểm tra và nút "Kiểm tra bản cập nhật ngay" trong phần *Cài đặt chung*.
 
 * **🚀 Core Máy Ảo JVM & Thực thi Bytecode thuần C++20**:
+  - Cấp phát luồng `JvmThread` với stack **4 MB** riêng biệt, triệt tiêu hoàn toàn lỗi sập bộ nhớ `SIGBUS 10 / EXC_BAD_ACCESS` trên iOS.
+  - Khớp chuẩn Constant Pool cho mọi phương thức kế thừa (`cls = curCls`).
   - Tự động kích hoạt `<clinit>` static initializer trên mọi bytecode `NEW`, `GETSTATIC`, `PUTSTATIC`, `INVOKESTATIC`.
-  - Hỗ trợ đầy đủ kiểu dữ liệu: `int`, `long`, `float`, `double`, exception handling `try/catch/finally`.
-  - Hỗ trợ đa luồng thật (`Thread`, `Runnable`, `synchronized`, `wait`, `notify`).
-  - Hệ thống API MIDP 2.0 & CLDC 1.1: `Image.createImage(InputStream/Image)`, `DataInputStream` đầy đủ, `Class.forName`, `Display.setCurrent` nhận diện canvas mã hóa obfuscated.
+  - Hỗ trợ đầy đủ kiểu dữ liệu: `int`, `long`, `float`, `double` (chuẩn IEEE-754 NaN), exception handling `try/catch/finally` unwinding.
+  - Hỗ trợ đa luồng thật (`Thread`, `Runnable`, `TimerTask` lặp chu kỳ, `synchronized`, `wait`, `notify`).
+  - Hệ thống API MIDP 2.0 & CLDC 1.1: `Image.createImage`, `DataInputStream` đầy đủ, `Class.forName`, `Display.setCurrent` nhận diện 100% Canvas mã hóa obfuscated.
 
 * **🎮 LCDUI 2D & Đồ họa Metal 3 (60 - 120 FPS)**:
   - Render Metal 3 siêu tốc với pixel format `bgra8Unorm` tối ưu Little Endian ARM64.
+  - Đầy đủ hàm đồ họa: `Graphics.translate`, `setClip`, `clipRect`, `drawArc`, `fillArc`, `drawRoundRect`, `fillRoundRect`, `fillTriangle`.
   - Bộ lọc Shaders cổ điển: Nearest Neighbor (Pixel Art sắc nét), Bilinear, CRT TV cổ điển, Lưới điểm ảnh LCD Nokia.
-  - Full Canvas / GameCanvas, Graphics primitives, Sprite 8 hướng, TiledLayer, LayerManager.
-  - Hỗ trợ bàn phím ảo chuẩn Nokia T9, D-Pad điều hướng, tùy biến độ trong suốt, rung phản hồi Haptic Touch.
+  - Hỗ trợ bàn phím ảo chuẩn Nokia T9, D-Pad điều hướng, cảm ứng chạm/kéo (`pointerPressed`, `pointerDragged`, `pointerReleased`).
+
+* **⌨️ Nhập Form Văn bản Chuẩn Native OS (Bàn phím Hệ thống)**:
+  - Bàn phím hệ thống iOS gõ chữ tiếng Việt có dấu, gõ số, tài khoản, mật khẩu trực tiếp trong mọi form game (`TextBox`, `TextField`).
+  - Trên Windows: Hỗ trợ 100% bàn phím PC, gõ chữ/số trực tiếp, bôi đen chọn vùng chuột, `Ctrl+A`, `Ctrl+C`, `Ctrl+V`, `Backspace`, `Delete`.
+
+---
+
+## 📖 Tài liệu Chi tiết Tiến trình Sửa lỗi
+👉 Xem toàn bộ tiến trình kỹ thuật tại: [**FIX_PROGRESS.md**](FIX_PROGRESS.md)
 
 * **🔋 Treo game ngầm 24/7 (Anti-Crash & Continuous Background)**:
   - Duy trì luồng xử lý và kết nối mạng TCP socket liên tục khi tắt màn hình hoặc chuyển app.
