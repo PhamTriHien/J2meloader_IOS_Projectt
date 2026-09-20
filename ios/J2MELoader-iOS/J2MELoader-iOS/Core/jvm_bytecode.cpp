@@ -811,9 +811,26 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 size_t pos = s.find(target, fromIndex);
                 outResult = JavaValue(pos != std::string::npos ? (int32_t)pos : -1);
             } else {
-                char c = (char)args[1].asInt();
-                size_t pos = s.find(c, fromIndex);
-                outResult = JavaValue(pos != std::string::npos ? (int32_t)pos : -1);
+                uint32_t targetCp = (uint32_t)args[1].asInt();
+                int curCharIdx = 0;
+                int foundIdx = -1;
+                for (size_t i = 0; i < s.size();) {
+                    uint32_t cp = 0;
+                    uint8_t b0 = (uint8_t)s[i++];
+                    if (b0 < 0x80) cp = b0;
+                    else if ((b0 & 0xE0) == 0xC0 && i < s.size()) {
+                        cp = ((b0 & 0x1F) << 6) | ((uint8_t)s[i++] & 0x3F);
+                    } else if ((b0 & 0xF0) == 0xE0 && i + 1 < s.size()) {
+                        cp = ((b0 & 0x0F) << 12) | (((uint8_t)s[i] & 0x3F) << 6) | ((uint8_t)s[i + 1] & 0x3F);
+                        i += 2;
+                    } else cp = b0;
+                    if (curCharIdx >= fromIndex && cp == targetCp) {
+                        foundIdx = curCharIdx;
+                        break;
+                    }
+                    curCharIdx++;
+                }
+                outResult = JavaValue(foundIdx);
             }
             return true;
         }

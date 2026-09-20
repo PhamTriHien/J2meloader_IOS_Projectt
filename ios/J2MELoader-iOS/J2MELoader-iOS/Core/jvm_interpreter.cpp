@@ -541,7 +541,7 @@ void JvmInterpreter::executionLoop() {
                     canvasCls, "paint:(Ljavax/microedition/lcdui/Graphics;)V");
                 if (paintCls) {
                     jvm.executeMethod(
-                        paintCls,
+                        canvasCls,
                         "paint",
                         "(Ljavax/microedition/lcdui/Graphics;)V",
                         { JavaValue(canvasRef, true), JavaValue(m_graphicsRef, true) },
