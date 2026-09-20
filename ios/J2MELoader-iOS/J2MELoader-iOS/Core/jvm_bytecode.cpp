@@ -1647,12 +1647,16 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "skip" || methodName == "skipBytes") {
             JavaObject* obj = getObject(args[0].asRef());
+            JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int64_t n = args.size() >= 2 ? args[1].asLong() : 0;
-            if (obj && n > 0) {
+            int skipped = 0;
+            if (obj && arr && n > 0) {
                 int pos = obj->fields["pos"].asInt();
-                obj->fields["pos"] = JavaValue(pos + (int)n);
+                int maxSkip = (int)arr->byteData.size() - pos;
+                skipped = std::max(0, std::min((int)n, maxSkip));
+                obj->fields["pos"] = JavaValue(pos + skipped);
             }
-            outResult = JavaValue(n);
+            outResult = JavaValue((int32_t)skipped);
             return true;
         }
         if (methodName == "available") {
@@ -2169,9 +2173,25 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         // Comparisons
         case OP_LCMP: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(a > b ? 1 : (a < b ? -1 : 0))); break; }
         case OP_FCMPL:
-        case OP_FCMPG: { float b = frame.pop().asFloat(), a = frame.pop().asFloat(); frame.push(JavaValue(a > b ? 1 : (a < b ? -1 : 0))); break; }
+        case OP_FCMPG: {
+            float b = frame.pop().asFloat(), a = frame.pop().asFloat();
+            if (std::isnan(a) || std::isnan(b)) {
+                frame.push(JavaValue(op == OP_FCMPG ? 1 : -1));
+            } else {
+                frame.push(JavaValue(a > b ? 1 : (a < b ? -1 : 0)));
+            }
+            break;
+        }
         case OP_DCMPL:
-        case OP_DCMPG: { double b = frame.pop().asDouble(), a = frame.pop().asDouble(); frame.push(JavaValue(a > b ? 1 : (a < b ? -1 : 0))); break; }
+        case OP_DCMPG: {
+            double b = frame.pop().asDouble(), a = frame.pop().asDouble();
+            if (std::isnan(a) || std::isnan(b)) {
+                frame.push(JavaValue(op == OP_DCMPG ? 1 : -1));
+            } else {
+                frame.push(JavaValue(a > b ? 1 : (a < b ? -1 : 0)));
+            }
+            break;
+        }
 
         case OP_WIDE: {
             uint8_t wideOp = code[frame.pc++];
