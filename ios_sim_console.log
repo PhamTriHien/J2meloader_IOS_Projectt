@@ -1,0 +1,3 @@
+[JVM] Initializing MIDlet: main/GameMidlet
+[JVM] Calling startApp on MIDlet: main/GameMidlet
+com.playsoftware.j2meloader: 23733

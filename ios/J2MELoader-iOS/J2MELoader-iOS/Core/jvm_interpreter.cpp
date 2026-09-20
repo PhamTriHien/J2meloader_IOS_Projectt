@@ -278,7 +278,7 @@ void JvmInterpreter::setCurrentCanvas(uint32_t ref, std::shared_ptr<ClassFile> c
     if (showCls) {
         jvm.executeMethod(showCls, "showNotify", "()V", { JavaValue(ref, true) }, m_display.get());
     }
-    // If the canvas itself implements Runnable, start its game loop thread
+    // If the canvas itself implements Runnable or inherits run(), start its game loop thread
     auto runCls = jvm.resolveMethodClass(cls, "run:()V");
     if (runCls) {
         registerRunnable(ref, cls);
@@ -307,9 +307,13 @@ void JvmInterpreter::registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> c
             jvm.executeMethod(showCls, "showNotify", "()V", { JavaValue(ref, true) }, m_display.get());
         }
     }
-    JvmThread::spawnDetached([this, ref, cls]() {
+    auto targetRunCls = jvm.resolveMethodClass(cls, "run:()V");
+    if (!targetRunCls) targetRunCls = cls;
+    std::cout << "[JVM] Spawning thread for Runnable: " << targetRunCls->thisClassName << std::endl;
+    JvmThread::spawnDetached([this, ref, targetRunCls]() {
         auto& jvm = JvmBytecodeEngine::getInstance();
-        jvm.executeMethod(cls, "run", "()V", { JavaValue(ref, true) }, m_display.get());
+        jvm.executeMethod(targetRunCls, "run", "()V", { JavaValue(ref, true) }, m_display.get());
+        std::cout << "[JVM] Thread for Runnable: " << targetRunCls->thisClassName << " finished" << std::endl;
     });
 }
 

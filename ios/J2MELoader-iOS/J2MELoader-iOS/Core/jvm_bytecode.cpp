@@ -991,8 +991,10 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "setCurrent" && args.size() >= 2) {
             uint32_t nextRef = args[1].asRef();
+            std::cout << "[JVM] Display.setCurrent called with nextRef=" << nextRef << std::endl;
             JavaObject* canvasObj = getObject(nextRef);
             if (canvasObj && !canvasObj->className.empty()) {
+                std::cout << "[JVM] Display.setCurrent target className: " << canvasObj->className << std::endl;
                 auto cls = findOrLoadClass(canvasObj->className, m_activeJar);
                 // Only Canvas subclasses become the paint target. High-level
                 // screens (Form/List/TextBox/Alert) fall through to FullApis,
@@ -1911,6 +1913,7 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
     if (method.code.empty()) return JavaValue(0);
 
     cls = curCls; // Crucial: constant pool indexes in method bytecode belong to curCls!
+    std::cout << "[JVM] Executing " << cls->thisClassName << "." << methodName << desc << std::endl;
     StackFrame frame;
     frame.classRef = curCls;
     frame.method = &method;
