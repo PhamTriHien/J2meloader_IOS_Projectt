@@ -513,19 +513,13 @@ void JvmInterpreter::executionLoop() {
                         { JavaValue(canvasRef, true), JavaValue(m_graphicsRef, true) },
                         m_display.get()
                     );
-                    ++m_paintTick;
-                } else {
-                    // Bound class lost its paint (stale bind): drop it so the
-                    // loading splash shows instead of a frozen black frame.
-                    std::lock_guard<std::mutex> lk(m_stateMutex);
-                    if (m_canvasRef == canvasRef) {
-                        m_canvasClass = nullptr;
-                        m_canvasRef = 0;
-                    }
                 }
+                ++m_paintTick;
             } else {
-                // Clear screen black while initializing MIDlet / Canvas
-                m_display->clear(0xFF000000);
+                // Initial black clear only on the first few ticks
+                if (tickCount < 5) {
+                    m_display->clear(0xFF000000);
+                }
                 ++m_paintTick;
             }
         }

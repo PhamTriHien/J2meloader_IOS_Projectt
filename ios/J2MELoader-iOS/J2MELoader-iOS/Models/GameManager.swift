@@ -131,13 +131,15 @@ public class GameManager: ObservableObject {
             let version = meta["MIDlet-Version"] ?? "1.0.0"
             let midlet1 = meta["MIDlet-1"] ?? ""
             
-            // Parse main class: format is "Name, /icon.png, com.package.Main"
+            // Parse main class: format is "Name, /icon.png, com.package.Main" or "Name, com.package.Main"
             var mainClass = ""
             var iconPathInJar: String? = nil
             let parts = midlet1.components(separatedBy: ",")
             if parts.count >= 3 {
                 iconPathInJar = parts[1].trimmingCharacters(in: .whitespaces)
                 mainClass = parts[2].trimmingCharacters(in: .whitespaces)
+            } else if parts.count == 2 {
+                mainClass = parts[1].trimmingCharacters(in: .whitespaces)
             } else if parts.count == 1 {
                 mainClass = parts[0].trimmingCharacters(in: .whitespaces)
             }
