@@ -1869,6 +1869,7 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
     const MethodInfo& method = it->second;
     if (method.code.empty()) return JavaValue(0);
 
+    cls = curCls; // Crucial: constant pool indexes in method bytecode belong to curCls!
     StackFrame frame;
     frame.classRef = curCls;
     frame.method = &method;

@@ -411,7 +411,16 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="hashCode"){ outResult=JavaValue((int32_t)(args.empty()?0:(int)args[0].asRef())); return true; }
         if(methodName=="equals"&&args.size()>=2){ outResult=JavaValue(args[0].asRef()==args[1].asRef()?1:0); return true; }
         if(methodName=="toString"){ outResult=JavaValue(ENG().createString("Object"),true); return true; }
-        if(methodName=="getClass"){ outResult=JavaValue(ENG().allocObject("java/lang/Class"),true); return true; }
+        if(methodName=="getClass"){
+            uint32_t cRef = ENG().allocObject("java/lang/Class");
+            JavaObject* cObj = ENG().getObject(cRef);
+            if(cObj && !args.empty()){
+                JavaObject* srcObj = ENG().getObject(args[0].asRef());
+                if(srcObj) cObj->stringVal = srcObj->className;
+            }
+            outResult = JavaValue(cRef, true);
+            return true;
+        }
         if(methodName=="notify"||methodName=="notifyAll"||methodName=="wait"||methodName=="<init>") return true;
     }
     // ============ java/lang/System extended ============
@@ -662,9 +671,24 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if((methodName=="schedule"||methodName=="scheduleAtFixedRate")&&args.size()>=2){
             uint32_t task=args[1].asRef();
             JavaObject*to=ENG().getObject(task);
+            int64_t delayMs = args.size() >= 3 ? args[2].asLong() : 0;
+            int64_t periodMs = args.size() >= 4 ? args[3].asLong() : 0;
             if(to&&!to->className.empty()){
                 auto cls=ENG().findOrLoadClass(to->className, ENG().getJarLoader());
-                if(cls) JvmInterpreter::getInstance().registerRunnable(task, cls);
+                if(cls) {
+                    if (periodMs > 0) {
+                        JvmThread::spawnDetached([task, cls, delayMs, periodMs]() {
+                            if (delayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(std::min<int64_t>(delayMs, 5000)));
+                            auto& jvm = JvmBytecodeEngine::getInstance();
+                            while (!jvm.isCancelled()) {
+                                jvm.executeMethod(cls, "run", "()V", { JavaValue(task, true) });
+                                std::this_thread::sleep_for(std::chrono::milliseconds(std::max<int64_t>(periodMs, 10)));
+                            }
+                        });
+                    } else {
+                        JvmInterpreter::getInstance().registerRunnable(task, cls);
+                    }
+                }
             }
             return true;
         }
