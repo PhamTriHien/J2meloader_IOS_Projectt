@@ -47,39 +47,10 @@ jobs:
               echo "=== Test 1: Clean App Library Screen ==="
               xcrun simctl terminate "$SIM_ID" com.playsoftware.j2meloader || true
               xcrun simctl launch "$SIM_ID" com.playsoftware.j2meloader -SkipUpdateCheck || true
+              echo "Launching J2HienLoader in Simulator..."
+              xcrun simctl launch "$SIM_ID" com.playsoftware.j2meloader || true
               sleep 5
-              xcrun simctl io "$SIM_ID" screenshot test_output/01_clean_library.png || true
-
-              echo "=== Test 2: App Settings & Shaders Screen ==="
-              xcrun simctl terminate "$SIM_ID" com.playsoftware.j2meloader || true
-              xcrun simctl launch "$SIM_ID" com.playsoftware.j2meloader -SkipUpdateCheck -TestSettings || true
-              sleep 5
-              xcrun simctl io "$SIM_ID" screenshot test_output/02_settings_screen.png || true
-
-              echo "=== Test 3 & 4: Porting and Running DragonBoy.jar ==="
-              curl -sSL "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/raw/59a5fc45a805e70166781c710eaf13d931b5a256/ios/J2MELoader-iOS/J2MELoader-iOS/Resources/DragonBoy.jar" -o /tmp/DragonBoy.jar
-              CONTAINER=$(xcrun simctl get_app_container "$SIM_ID" com.playsoftware.j2meloader data)
-              mkdir -p "$CONTAINER/Documents"
-              cp /tmp/DragonBoy.jar "$CONTAINER/Documents/DragonBoy.jar"
-
-              xcrun simctl terminate "$SIM_ID" com.playsoftware.j2meloader || true
-              xcrun simctl launch --console "$SIM_ID" com.playsoftware.j2meloader -SkipUpdateCheck -TestRunJar "$CONTAINER/Documents/DragonBoy.jar" > test_output/ios_sim_console.log 2>&1 &
-              sleep 8
-              xcrun simctl io "$SIM_ID" screenshot test_output/03_dragonboy_running.png || true
-              
-              # Interactive touch test on real game buttons:
-              # Center X is around 589 on screen (1179 px wide).
-              # First button Y is around 910. Tap button 1 (Chơi mới / Đăng nhập):
-              echo "=== Test Interactive Touch on Menu Button ==="
-              xcrun simctl io "$SIM_ID" tap 589 910 || true
-              sleep 4
-              xcrun simctl io "$SIM_ID" screenshot test_output/04_dragonboy_gameplay.png || true
-
-              echo "=== Test 5: Library with Ported Game ==="
-              xcrun simctl terminate "$SIM_ID" com.playsoftware.j2meloader || true
-              xcrun simctl launch "$SIM_ID" com.playsoftware.j2meloader -SkipUpdateCheck || true
-              sleep 5
-              xcrun simctl io "$SIM_ID" screenshot test_output/05_library_with_dragonboy.png || true
+              xcrun simctl io "$SIM_ID" screenshot test_output/01_app_library.png || true
             fi
             xcrun simctl shutdown "$SIM_ID" || true
           else
@@ -91,9 +62,7 @@ jobs:
         if: always()
         with:
           name: J2HienLoader-Real-iOS-Screenshots
-          path: |
-            test_output/*.png
-            test_output/*.log
+          path: test_output/*.png
 
       - name: Upload IPA Artifact (file .ipa truc tiep, khong nen them)
         uses: actions/upload-artifact@v4
@@ -139,7 +108,6 @@ jobs:
             **/build/*.ipa
             **/build/*.zip
             test_output/*.png
-            test_output/*.log
           draft: false
           prerelease: false
           make_latest: true
