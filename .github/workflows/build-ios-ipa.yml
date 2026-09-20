@@ -64,9 +64,15 @@ jobs:
 
               xcrun simctl terminate "$SIM_ID" com.playsoftware.j2meloader || true
               xcrun simctl launch --console "$SIM_ID" com.playsoftware.j2meloader -SkipUpdateCheck -TestRunJar "$CONTAINER/Documents/DragonBoy.jar" > test_output/ios_sim_console.log 2>&1 &
-              sleep 12
-              xcrun simctl io "$SIM_ID" screenshot test_output/03_dragonboy_running.png || true
               sleep 8
+              xcrun simctl io "$SIM_ID" screenshot test_output/03_dragonboy_running.png || true
+              
+              # Interactive touch test on real game buttons:
+              # Center X is around 589 on screen (1179 px wide).
+              # First button Y is around 910. Tap button 1 (Chơi mới / Đăng nhập):
+              echo "=== Test Interactive Touch on Menu Button ==="
+              xcrun simctl io "$SIM_ID" tap 589 910 || true
+              sleep 4
               xcrun simctl io "$SIM_ID" screenshot test_output/04_dragonboy_gameplay.png || true
 
               echo "=== Test 5: Library with Ported Game ==="
