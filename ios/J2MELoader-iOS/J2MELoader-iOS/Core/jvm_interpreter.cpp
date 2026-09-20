@@ -84,7 +84,7 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
     // midletInitRoutine() so big JARs never freeze the UI thread here.
     {
         // Reap any leftover init thread under lock (same handoff as shutdown).
-        std::thread leftover;
+        JvmThread leftover;
         {
             std::lock_guard<std::mutex> lk(m_stateMutex);
             if (m_initThread.joinable()) leftover = std::move(m_initThread);
@@ -110,26 +110,22 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
     }
     ++m_generation;
 
-    // Start background emulation thread
-    m_workerThread = std::thread(&JvmInterpreter::executionLoop, this);
+    // Start background emulation thread with 4MB stack
+    m_workerThread = JvmThread(&JvmInterpreter::executionLoop, this);
     return true;
 }
 
 void JvmInterpreter::shutdown() {
     // Move threads out under lock so a concurrently starting worker can never
-    // race on the std::thread objects (assigning a joinable thread terminates).
-    auto takeThread = [this](std::thread& t) -> std::thread {
+    // race on the JvmThread objects (assigning a joinable thread terminates).
+    auto takeThread = [this](JvmThread& t) -> JvmThread {
         std::lock_guard<std::mutex> lk(m_stateMutex);
         if (t.joinable()) return std::move(t);
-        return std::thread();
+        return JvmThread();
     };
-    auto joinGuarded = [](std::thread& t) {
+    auto joinGuarded = [](JvmThread& t) {
         if (t.joinable()) {
-            if (std::this_thread::get_id() != t.get_id()) {
-                t.join();
-            } else {
-                t.detach();
-            }
+            t.join();
         }
     };
     if (m_running) {
@@ -151,15 +147,15 @@ void JvmInterpreter::shutdown() {
         // Cooperative stop: running bytecode sees cancel and returns promptly,
         // so threads can be joined (no detach onto a reset heap).
         JvmBytecodeEngine::getInstance().requestCancel();
-        std::thread initT = takeThread(m_initThread);
-        std::thread gameT = takeThread(m_gameThread);
-        std::thread workerT = takeThread(m_workerThread);
+        JvmThread initT = takeThread(m_initThread);
+        JvmThread gameT = takeThread(m_gameThread);
+        JvmThread workerT = takeThread(m_workerThread);
         joinGuarded(initT);
         joinGuarded(gameT);
         joinGuarded(workerT);
     } else {
         // Session never started: still reap a stray init thread if present.
-        std::thread initT = takeThread(m_initThread);
+        JvmThread initT = takeThread(m_initThread);
         joinGuarded(initT);
     }
     m_jarLoader->close();
@@ -297,10 +293,10 @@ void JvmInterpreter::registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> c
         m_runnableRef = ref;
         m_runnableClass = cls;
     }
-    std::thread([this, ref, cls]() {
+    JvmThread::spawnDetached([this, ref, cls]() {
         auto& jvm = JvmBytecodeEngine::getInstance();
         jvm.executeMethod(cls, "run", "()V", { JavaValue(ref, true) }, m_display.get());
-    }).detach();
+    });
 }
 
 void JvmInterpreter::startRunnableThread() {
@@ -479,7 +475,7 @@ void JvmInterpreter::executionLoop() {
     {
         std::lock_guard<std::mutex> lk(m_stateMutex);
         if (!m_running.load()) return;
-        m_initThread = std::thread(&JvmInterpreter::midletInitRoutine, this, gen);
+        m_initThread = JvmThread(&JvmInterpreter::midletInitRoutine, this, gen);
     }
 
     findAndBindCanvas();

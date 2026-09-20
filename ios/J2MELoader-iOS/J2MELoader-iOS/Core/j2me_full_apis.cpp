@@ -429,12 +429,23 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="parseBoolean"||methodName=="valueOf"){ std::string s=args.empty()?"":ENG().getString(args[0].asRef()); outResult=JavaValue(toLowerStr(s)=="true"?1:0); if(methodName=="valueOf"){ uint32_t r=ENG().allocObject("java/lang/Boolean"); JavaObject*o=ENG().getObject(r); if(o)o->fields["value"]=outResult; outResult=JavaValue(r,true);} return true; }
         if(methodName=="toString"){ std::string s=(args.size()>=1&&args[0].asInt()!=0)?"true":"false"; if(!args.empty()&&args[0].type==JavaValue::OBJ_REF){ JavaObject*o=ENG().getObject(args[0].asRef()); if(o) s=(o->fields["value"].asInt()?"true":"false"); } outResult=JavaValue(ENG().createString(s),true); return true; }
     }
-    if(className=="java/lang/Byte"||className=="java/lang/Short"||className=="java/lang/Character"){
+    if(className=="java/lang/Byte"||className=="java/lang/Short"){
         if(methodName=="<init>") return true;
         if(methodName=="parseByte"||methodName=="parseShort"){ std::string s=args.empty()?"":ENG().getString(args[0].asRef()); try{outResult=JavaValue((int32_t)std::stoi(s));}catch(...){outResult=JavaValue(0);} return true; }
         if(methodName=="toString"&&args.size()>=1){ outResult=JavaValue(ENG().createString(std::to_string(args[0].asInt())),true); return true; }
-        if(methodName=="charValue"||methodName=="byteValue"||methodName=="shortValue"||methodName=="intValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?o->fields["value"].asInt():0); return true; }
+        if(methodName=="byteValue"||methodName=="shortValue"||methodName=="intValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?o->fields["value"].asInt():0); return true; }
+    }
+    if(className=="java/lang/Character"){
+        if(methodName=="<init>") return true;
+        if(methodName=="isDigit"&&!args.empty()){ int ch=args[0].asInt(); outResult=JavaValue(std::isdigit(ch)?1:0); return true; }
+        if(methodName=="isWhitespace"&&!args.empty()){ int ch=args[0].asInt(); outResult=JavaValue(std::isspace(ch)?1:0); return true; }
+        if(methodName=="isUpperCase"&&!args.empty()){ int ch=args[0].asInt(); outResult=JavaValue(std::isupper(ch)?1:0); return true; }
+        if(methodName=="isLowerCase"&&!args.empty()){ int ch=args[0].asInt(); outResult=JavaValue(std::islower(ch)?1:0); return true; }
+        if(methodName=="toUpperCase"&&!args.empty()){ int ch=args[0].asInt(); outResult=JavaValue((int32_t)std::toupper(ch)); return true; }
+        if(methodName=="toLowerCase"&&!args.empty()){ int ch=args[0].asInt(); outResult=JavaValue((int32_t)std::tolower(ch)); return true; }
         if(methodName=="digit"){ int ch=args.size()>=1?args[0].asInt():0, r=args.size()>=2?args[1].asInt():10; int v=-1; if(ch>='0'&&ch<='9')v=ch-'0'; else if(ch>='a'&&ch<='z')v=ch-'a'+10; else if(ch>='A'&&ch<='Z')v=ch-'A'+10; if(v>=r)v=-1; outResult=JavaValue(v); return true; }
+        if(methodName=="charValue"&&!args.empty()){ JavaObject*o=ENG().getObject(args[0].asRef()); outResult=JavaValue(o?o->fields["value"].asInt():0); return true; }
+        if(methodName=="toString"&&args.size()>=1){ char c=(char)args[0].asInt(); outResult=JavaValue(ENG().createString(std::string(1, c)), true); return true; }
     }
     if(className=="java/lang/Long"){
         if(methodName=="<init>") return true;
@@ -442,13 +453,45 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="toString"){ int64_t v=args.empty()?0:args[0].asLong(); outResult=JavaValue(ENG().createString(std::to_string(v)),true); return true; }
         if(methodName=="longValue"||methodName=="intValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=o?o->fields["value"]:JavaValue((int64_t)0); return true; }
     }
-    if(className=="java/lang/Float"||className=="java/lang/Double"){
+    if(className=="java/lang/Float"){
         if(methodName=="<init>") return true;
-        if(methodName=="parseFloat"||methodName=="parseDouble"){ std::string s=args.empty()?"":ENG().getString(args[0].asRef()); try{double d=std::stod(s); if(methodName=="parseFloat") outResult=JavaValue((float)d); else outResult=JavaValue(d);}catch(...){outResult=JavaValue(0.0);} return true; }
-        if(methodName=="toString"){ double d=args.empty()?0:args[0].asDouble(); outResult=JavaValue(ENG().createString(std::to_string(d)),true); return true; }
-        if(methodName=="floatValue"||methodName=="doubleValue"||methodName=="intValue"||methodName=="longValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); JavaValue v=o?o->fields["value"]:JavaValue(0.0); if(methodName=="floatValue")outResult=JavaValue(v.asFloat()); else if(methodName=="doubleValue")outResult=JavaValue(v.asDouble()); else if(methodName=="longValue")outResult=JavaValue(v.asLong()); else outResult=JavaValue(v.asInt()); return true; }
-        if(methodName=="isNaN"){ outResult=JavaValue(std::isnan(args.empty()?0:args[0].asDouble())?1:0); return true; }
-        if(methodName=="isInfinite"){ outResult=JavaValue(std::isinf(args.empty()?0:args[0].asDouble())?1:0); return true; }
+        if(methodName=="parseFloat"&&!args.empty()){ std::string s=ENG().getString(args[0].asRef()); try{outResult=JavaValue((float)std::stof(s));}catch(...){outResult=JavaValue(0.0f);} return true; }
+        if(methodName=="floatToIntBits"||methodName=="floatToRawIntBits"){
+            float f = args.empty() ? 0.0f : args[0].asFloat();
+            uint32_t u = 0; std::memcpy(&u, &f, 4);
+            outResult = JavaValue((int32_t)u);
+            return true;
+        }
+        if(methodName=="intBitsToFloat"){
+            int32_t i = args.empty() ? 0 : args[0].asInt();
+            float f = 0.0f; std::memcpy(&f, &i, 4);
+            outResult = JavaValue(f);
+            return true;
+        }
+        if(methodName=="toString"){ float f=args.empty()?0.0f:args[0].asFloat(); outResult=JavaValue(ENG().createString(std::to_string(f)),true); return true; }
+        if(methodName=="floatValue"||methodName=="intValue"||methodName=="longValue"||methodName=="doubleValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); JavaValue v=o?o->fields["value"]:JavaValue(0.0f); if(methodName=="intValue") outResult=JavaValue(v.asInt()); else if(methodName=="longValue") outResult=JavaValue(v.asLong()); else if(methodName=="doubleValue") outResult=JavaValue((double)v.asFloat()); else outResult=JavaValue(v.asFloat()); return true; }
+        if(methodName=="isNaN"){ outResult=JavaValue(std::isnan(args.empty()?0.0f:args[0].asFloat())?1:0); return true; }
+        if(methodName=="isInfinite"){ outResult=JavaValue(std::isinf(args.empty()?0.0f:args[0].asFloat())?1:0); return true; }
+    }
+    if(className=="java/lang/Double"){
+        if(methodName=="<init>") return true;
+        if(methodName=="parseDouble"&&!args.empty()){ std::string s=ENG().getString(args[0].asRef()); try{outResult=JavaValue(std::stod(s));}catch(...){outResult=JavaValue(0.0);} return true; }
+        if(methodName=="doubleToLongBits"||methodName=="doubleToRawLongBits"){
+            double d = args.empty() ? 0.0 : args[0].asDouble();
+            uint64_t u = 0; std::memcpy(&u, &d, 8);
+            outResult = JavaValue((int64_t)u);
+            return true;
+        }
+        if(methodName=="longBitsToDouble"){
+            int64_t l = args.empty() ? 0 : args[0].asLong();
+            double d = 0.0; std::memcpy(&d, &l, 8);
+            outResult = JavaValue(d);
+            return true;
+        }
+        if(methodName=="toString"){ double d=args.empty()?0.0:args[0].asDouble(); outResult=JavaValue(ENG().createString(std::to_string(d)),true); return true; }
+        if(methodName=="doubleValue"||methodName=="floatValue"||methodName=="intValue"||methodName=="longValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); JavaValue v=o?o->fields["value"]:JavaValue(0.0); if(methodName=="intValue") outResult=JavaValue(v.asInt()); else if(methodName=="longValue") outResult=JavaValue(v.asLong()); else if(methodName=="floatValue") outResult=JavaValue(v.asFloat()); else outResult=JavaValue(v.asDouble()); return true; }
+        if(methodName=="isNaN"){ outResult=JavaValue(std::isnan(args.empty()?0.0:args[0].asDouble())?1:0); return true; }
+        if(methodName=="isInfinite"){ outResult=JavaValue(std::isinf(args.empty()?0.0:args[0].asDouble())?1:0); return true; }
     }
     // ============ java/lang/String extended (core handles basics) ============
     if(className=="java/lang/String"){
@@ -676,8 +719,33 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             if(methodName=="<init>"){ g_baos[self]={}; return true; }
             if(methodName=="writeInt"&&args.size()>=2){ int32_t v=args[1].asInt(); auto&b=g_baos[self]; b.push_back((v>>24)&0xFF); b.push_back((v>>16)&0xFF); b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
             if(methodName=="writeShort"&&args.size()>=2){ int v=args[1].asInt(); auto&b=g_baos[self]; b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
-            if((methodName=="writeByte"||methodName=="write")&&args.size()==2){ g_baos[self].push_back((uint8_t)args[1].asInt()); return true; }
+            if(methodName=="writeChar"&&args.size()>=2){ int v=args[1].asInt(); auto&b=g_baos[self]; b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
+            if(methodName=="writeBoolean"&&args.size()>=2){ g_baos[self].push_back((uint8_t)(args[1].asInt() ? 1 : 0)); return true; }
+            if(methodName=="writeByte"&&args.size()>=2){ g_baos[self].push_back((uint8_t)args[1].asInt()); return true; }
+            if(methodName=="writeLong"&&args.size()>=2){
+                int64_t v=args[1].asLong(); auto&b=g_baos[self];
+                for(int i=56;i>=0;i-=8) b.push_back((uint8_t)((v>>i)&0xFF));
+                return true;
+            }
+            if(methodName=="writeFloat"&&args.size()>=2){
+                float f=args[1].asFloat(); uint32_t u=0; std::memcpy(&u,&f,4); auto&b=g_baos[self];
+                b.push_back((u>>24)&0xFF); b.push_back((u>>16)&0xFF); b.push_back((u>>8)&0xFF); b.push_back(u&0xFF);
+                return true;
+            }
+            if(methodName=="writeDouble"&&args.size()>=2){
+                double d=args[1].asDouble(); uint64_t u=0; std::memcpy(&u,&d,8); auto&b=g_baos[self];
+                for(int i=56;i>=0;i-=8) b.push_back((uint8_t)((u>>i)&0xFF));
+                return true;
+            }
             if(methodName=="writeUTF"&&args.size()>=2){ std::string s=ENG().getString(args[1].asRef()); auto&b=g_baos[self]; uint16_t l=(uint16_t)s.size(); b.push_back((l>>8)&0xFF); b.push_back(l&0xFF); for(char c:s)b.push_back(c); return true; }
+            if(methodName=="writeChars"&&args.size()>=2){ std::string s=ENG().getString(args[1].asRef()); auto&b=g_baos[self]; for(char c:s){ b.push_back(0); b.push_back((uint8_t)c); } return true; }
+            if(methodName=="writeBytes"&&args.size()>=2){ std::string s=ENG().getString(args[1].asRef()); auto&b=g_baos[self]; for(char c:s) b.push_back((uint8_t)c); return true; }
+            if(methodName=="write"&&args.size()>=2){
+                if(args.size()==2&&args[1].type!=JavaValue::OBJ_REF){ g_baos[self].push_back((uint8_t)args[1].asInt()); }
+                else if(args.size()>=4){ JavaArray*a=ENG().getArray(args[1].asRef()); int off=args[2].asInt(),len=args[3].asInt(); if(a) for(int i=0;i<len&&off+i<(int)a->byteData.size();i++) g_baos[self].push_back(a->byteData[off+i]); }
+                else if(args.size()>=2){ JavaArray*a=ENG().getArray(args[1].asRef()); if(a&&!a->byteData.empty()) g_baos[self].insert(g_baos[self].end(),a->byteData.begin(),a->byteData.end()); }
+                return true;
+            }
             if(methodName=="flush"||methodName=="close") return true;
             if(methodName=="size"){ auto it=g_baos.find(self); outResult=JavaValue(it==g_baos.end()?0:(int32_t)it->second.size()); return true; }
             if(methodName=="toByteArray"){ auto it=g_baos.find(self); int n=it==g_baos.end()?0:(int)it->second.size(); uint32_t r=ENG().allocArray(8,n); JavaArray*a=ENG().getArray(r); if(a&&it!=g_baos.end())a->byteData=it->second; outResult=JavaValue(r,true); return true; }
@@ -1270,7 +1338,29 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             if(methodName=="getNativePixelFormat"){ outResult=JavaValue(0x8888); return true; }
             if(methodName=="drawImage"&&args.size()>=5){ NativeImage*ni=imgOf(args[1].asRef()); const uint32_t*px=imgPx(args[1].asRef()); if(ni&&px) tgt->drawRegion(px,ni->width,ni->height,0,0,ni->width,ni->height,0,args[2].asInt(),args[3].asInt(),args[4].asInt()); return true; }
             if(methodName=="drawTriangle"&&args.size()>=8){ tgt->drawLine(args[1].asInt(),args[2].asInt(),args[3].asInt(),args[4].asInt(),tgt->getColor()); tgt->drawLine(args[3].asInt(),args[4].asInt(),args[5].asInt(),args[6].asInt(),tgt->getColor()); tgt->drawLine(args[5].asInt(),args[6].asInt(),args[1].asInt(),args[2].asInt(),tgt->getColor()); return true; }
-            if(methodName=="fillTriangle"&&args.size()>=8){ int x0=args[1].asInt(),y0=args[2].asInt(),x1=args[3].asInt(),y1=args[4].asInt(),x2=args[5].asInt(),y2=args[6].asInt(); for(int y=std::min({y0,y1,y2});y<=std::max({y0,y1,y2});y++) tgt->drawLine(std::min({x0,x1,x2}),y,std::max({x0,x1,x2}),y,tgt->getColor()); return true; }
+            if(methodName=="fillTriangle"&&args.size()>=8){
+                int x0=args[1].asInt(),y0=args[2].asInt();
+                int x1=args[3].asInt(),y1=args[4].asInt();
+                int x2=args[5].asInt(),y2=args[6].asInt();
+                if (y0 > y1) { std::swap(x0, x1); std::swap(y0, y1); }
+                if (y0 > y2) { std::swap(x0, x2); std::swap(y0, y2); }
+                if (y1 > y2) { std::swap(x1, x2); std::swap(y1, y2); }
+                int totalH = y2 - y0;
+                if (totalH > 0) {
+                    for (int y = y0; y <= y2; ++y) {
+                        bool secondHalf = y > y1 || y1 == y0;
+                        int segmentH = secondHalf ? (y2 - y1) : (y1 - y0);
+                        if (segmentH == 0) continue;
+                        float alpha = (float)(y - y0) / (float)totalH;
+                        float beta = secondHalf ? (float)(y - y1) / (float)segmentH : (float)(y - y0) / (float)segmentH;
+                        int ax = x0 + (int)std::round((x2 - x0) * alpha);
+                        int bx = secondHalf ? (x1 + (int)std::round((x2 - x1) * beta)) : (x0 + (int)std::round((x1 - x0) * beta));
+                        if (ax > bx) std::swap(ax, bx);
+                        tgt->drawLine(ax, y, bx, y, tgt->getColor());
+                    }
+                }
+                return true;
+            }
             if((methodName=="drawPolygon"||methodName=="fillPolygon")&&args.size()>=7){ JavaArray*xa=ENG().getArray(args[1].asRef()); JavaArray*ya=ENG().getArray(args[3].asRef()); int n=args[5].asInt(); if(xa&&ya){ for(int i=0;i<n;i++){ int x0=i<(int)xa->intData.size()?xa->intData[(args[2].asInt()+i)]:0; int y0=i<(int)ya->intData.size()?ya->intData[(args[4].asInt()+i)]:0; int x1=(i+1<n)?(xa->intData[args[2].asInt()+i+1]):xa->intData[args[2].asInt()]; int y1=(i+1<n)?(ya->intData[args[4].asInt()+i+1]):ya->intData[args[4].asInt()]; tgt->drawLine(x0,y0,x1,y1,args[6].asInt()|(0xFF000000)); } } return true; }
             if(methodName=="drawPixels"&&args.size()>=10){ JavaArray*pa=ENG().getArray(args[1].asRef()); int x=args[5].asInt(),y=args[6].asInt(),w=args[7].asInt(),h=args[8].asInt(); if(pa&&!pa->intData.empty()&&tgt){ tgt->drawRGB(pa->intData.data(),args[3].asInt(),args[4].asInt(),x,y,w,h,true);} return true; }
             if(methodName=="getPixels"&&args.size()>=9){ JavaArray*pa=ENG().getArray(args[1].asRef()); int x=args[4].asInt(),yy=args[5].asInt(),w=args[6].asInt(),h=args[7].asInt(); if(pa&&tgt){ if((int)pa->intData.size()<w*h) pa->intData.resize(w*h,0); for(int r=0;r<h;r++)for(int c=0;c<w;c++){ pa->intData[r*w+c]=0xFF000000; } } return true; }

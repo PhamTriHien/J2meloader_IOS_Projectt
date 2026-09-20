@@ -5,6 +5,7 @@
 #include "lcdui_display.h"
 #include "rms_storage.h"
 #include "jvm_bytecode.h"
+#include "jvm_thread.h"
 #include <string>
 #include <memory>
 #include <thread>
@@ -84,9 +85,9 @@ private:
 
     std::unique_ptr<JarLoader> m_jarLoader;
     std::unique_ptr<LcduiDisplay> m_display;
-    std::thread m_workerThread;
-    std::thread m_gameThread;
-    std::thread m_initThread;
+    JvmThread m_workerThread;
+    JvmThread m_gameThread;
+    JvmThread m_initThread;
     // Guards m_targetClass/m_midlet*/m_canvas*/m_runnable* across the worker,
     // init and game threads. Never hold while calling into the engine.
     std::mutex m_stateMutex;

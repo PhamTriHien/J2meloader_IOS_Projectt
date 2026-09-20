@@ -424,6 +424,12 @@ public:
     void clearCancel() { m_cancel.store(false); }
     bool isCancelled() const { return m_cancel.load(); }
 
+    // Exception propagation across JVM call frames
+    void setPendingException(uint32_t exRef) { m_pendingException.store(exRef); }
+    uint32_t getPendingException() const { return m_pendingException.load(); }
+    void clearPendingException() { m_pendingException.store(0); }
+    bool hasPendingException() const { return m_pendingException.load() != 0; }
+
 private:
     JvmBytecodeEngine();
     mutable std::recursive_mutex m_mutex;
@@ -435,6 +441,7 @@ private:
     JarLoader* m_activeJar = nullptr;
     uint32_t m_nextRef = 1;
     std::atomic<bool> m_cancel{false};
+    std::atomic<uint32_t> m_pendingException{0};
     std::map<uint32_t, std::shared_ptr<LcduiDisplay>> m_offscreens;
     std::map<uint32_t, uint32_t> m_graphicsTarget;
 

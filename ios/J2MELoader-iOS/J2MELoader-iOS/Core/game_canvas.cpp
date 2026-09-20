@@ -128,17 +128,14 @@ bool Sprite::collidesWith(const Sprite& other, bool pixelLevel) const {
 }
 
 void Sprite::paint(LcduiDisplay* display) {
-    if (!m_visible || m_sequence.empty()) return;
+    if (!m_visible || m_sequence.empty() || m_imagePixels.empty() || !display) return;
     int frame = m_sequence[m_currentFrameIndex];
+    int framesPerRow = m_imageWidth / m_frameWidth;
+    if (framesPerRow <= 0) framesPerRow = 1;
+    int fx = (frame % framesPerRow) * m_frameWidth;
+    int fy = (frame / framesPerRow) * m_frameHeight;
 
-    for (int r = 0; r < m_height; ++r) {
-        for (int c = 0; c < m_width; ++c) {
-            uint32_t pixel = getPixel(frame, c, r, m_transform);
-            if (((pixel >> 24) & 0xFF) > 0) {
-                display->drawRGB((const int32_t*)&pixel, 0, 1, m_x + c, m_y + r, 1, 1, true);
-            }
-        }
-    }
+    display->drawRegion(m_imagePixels.data(), m_imageWidth, m_imageHeight, fx, fy, m_frameWidth, m_frameHeight, m_transform, m_x, m_y, 0 | 16);
 }
 
 TiledLayer::TiledLayer(int columns, int rows, const std::vector<uint32_t>& tileImage, int imgW, int imgH, int tileW, int tileH)
@@ -192,8 +189,9 @@ int TiledLayer::getAnimatedTile(int animatedTileIndex) const {
 }
 
 void TiledLayer::paint(LcduiDisplay* display) {
-    if (!m_visible) return;
+    if (!m_visible || m_tileImage.empty() || m_tileWidth <= 0 || m_tileHeight <= 0 || !display) return;
     int tilesPerRow = m_imgWidth / m_tileWidth;
+    if (tilesPerRow <= 0) return;
 
     for (int r = 0; r < m_rows; ++r) {
         for (int c = 0; c < m_cols; ++c) {
@@ -201,7 +199,7 @@ void TiledLayer::paint(LcduiDisplay* display) {
             if (tile < 0) { // Animated tile
                 tile = getAnimatedTile(tile);
             }
-            if (tile == 0) continue; // 0 is transparent / empty
+            if (tile <= 0) continue; // 0 is transparent / empty
 
             int tileIdx = tile - 1;
             int tx = (tileIdx % tilesPerRow) * m_tileWidth;
@@ -210,10 +208,7 @@ void TiledLayer::paint(LcduiDisplay* display) {
             int destX = m_x + c * m_tileWidth;
             int destY = m_y + r * m_tileHeight;
 
-            for (int tr = 0; tr < m_tileHeight; ++tr) {
-                int srcOffset = (ty + tr) * m_imgWidth + tx;
-                display->drawRGB((const int32_t*)&m_tileImage[srcOffset], 0, m_imgWidth, destX, destY + tr, m_tileWidth, 1, true);
-            }
+            display->drawRegion(m_tileImage.data(), m_imgWidth, m_imgHeight, tx, ty, m_tileWidth, m_tileHeight, 0, destX, destY, 0 | 16);
         }
     }
 }
