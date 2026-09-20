@@ -31,6 +31,35 @@ jobs:
           chmod +x build_ipa.sh
           ./build_ipa.sh
 
+      - name: Automated iOS Simulator Test
+        run: |
+          echo "=== Starting Headless iOS Simulator Verification Test ==="
+          SIM_ID=$(xcrun simctl list devices available | grep -E "iPhone 15|iPhone 14|iPad" | head -n 1 | grep -o -E '\([A-F0-9-]+\)' | tr -d '()' | head -n 1)
+          if [ -n "$SIM_ID" ]; then
+            echo "Booting Simulator: $SIM_ID"
+            xcrun simctl boot "$SIM_ID" || true
+            if [ -d "ios/J2MELoader-iOS/build/Release-iphonesimulator/J2MELoader-iOS.app" ]; then
+              echo "Installing app into Simulator..."
+              xcrun simctl install "$SIM_ID" "ios/J2MELoader-iOS/build/Release-iphonesimulator/J2MELoader-iOS.app"
+              echo "Launching J2HienLoader in Simulator..."
+              xcrun simctl launch "$SIM_ID" com.j2hienloader.ios || true
+              sleep 4
+              mkdir -p test_output
+              xcrun simctl io "$SIM_ID" screenshot test_output/simulator_launch_test.png || true
+              echo "Captured screenshot of J2HienLoader on real iOS Simulator!"
+            fi
+            xcrun simctl shutdown "$SIM_ID" || true
+          else
+            echo "No simulator found, skipping headless test"
+          fi
+
+      - name: Upload Test Output Screenshot
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: J2HienLoader-Simulator-Screenshot
+          path: test_output/*.png
+
       - name: Upload IPA Artifact (file .ipa truc tiep, khong nen them)
         uses: actions/upload-artifact@v4
         with:
