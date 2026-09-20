@@ -39,16 +39,17 @@ jobs:
           if [ -n "$SIM_ID" ]; then
             echo "Booting Simulator: $SIM_ID"
             xcrun simctl boot "$SIM_ID" || true
+            xcrun simctl bootstatus "$SIM_ID" -b || true
             if [ -d "ios/J2MELoader-iOS/build/Release-iphonesimulator/J2MELoader-iOS.app" ]; then
               echo "Installing app into Simulator..."
               xcrun simctl install "$SIM_ID" "ios/J2MELoader-iOS/build/Release-iphonesimulator/J2MELoader-iOS.app"
               echo "Launching J2HienLoader in Simulator..."
               xcrun simctl launch "$SIM_ID" com.j2hienloader.ios || true
-              sleep 5
-              xcrun simctl io "$SIM_ID" screenshot test_output/01_library_with_dragonboy.png || true
+              sleep 8
+              xcrun simctl io "$SIM_ID" screenshot test_output/01_app_library.png || true
               echo "Captured screenshot 1: Library with DragonBoy bundled"
-              sleep 3
-              xcrun simctl io "$SIM_ID" screenshot test_output/02_game_running.png || true
+              sleep 4
+              xcrun simctl io "$SIM_ID" screenshot test_output/02_app_running.png || true
               echo "Captured screenshot 2: Real iOS App Execution"
             fi
             xcrun simctl shutdown "$SIM_ID" || true
