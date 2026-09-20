@@ -475,9 +475,12 @@ void JvmInterpreter::midletInitRoutine(unsigned long gen) {
     }
     // <init>() then startApp(). May block on network for online games — the
     // paint loop below keeps running the splash meanwhile.
+    std::cout << "[JVM] Initializing MIDlet: " << target << std::endl;
     jvm.executeMethod(cls, "<init>", "()V", { JavaValue(ref, true) }, m_display.get());
     if (gen != m_generation.load() || !m_running.load()) return;
+    std::cout << "[JVM] Calling startApp on MIDlet: " << target << std::endl;
     jvm.executeMethod(cls, "startApp", "()V", { JavaValue(ref, true) }, m_display.get());
+    std::cout << "[JVM] startApp finished for MIDlet: " << target << std::endl;
 }
 
 void JvmInterpreter::executionLoop() {

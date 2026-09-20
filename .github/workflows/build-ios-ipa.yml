@@ -63,8 +63,8 @@ jobs:
               cp /tmp/DragonBoy.jar "$CONTAINER/Documents/DragonBoy.jar"
 
               xcrun simctl terminate "$SIM_ID" com.playsoftware.j2meloader || true
-              xcrun simctl launch "$SIM_ID" com.playsoftware.j2meloader -SkipUpdateCheck -TestRunJar "$CONTAINER/Documents/DragonBoy.jar" || true
-              sleep 8
+              xcrun simctl launch --console "$SIM_ID" com.playsoftware.j2meloader -SkipUpdateCheck -TestRunJar "$CONTAINER/Documents/DragonBoy.jar" > test_output/ios_sim_console.log 2>&1 &
+              sleep 12
               xcrun simctl io "$SIM_ID" screenshot test_output/03_dragonboy_running.png || true
               sleep 8
               xcrun simctl io "$SIM_ID" screenshot test_output/04_dragonboy_gameplay.png || true
@@ -85,7 +85,9 @@ jobs:
         if: always()
         with:
           name: J2HienLoader-Real-iOS-Screenshots
-          path: test_output/*.png
+          path: |
+            test_output/*.png
+            test_output/*.log
 
       - name: Upload IPA Artifact (file .ipa truc tiep, khong nen them)
         uses: actions/upload-artifact@v4
@@ -131,6 +133,7 @@ jobs:
             **/build/*.ipa
             **/build/*.zip
             test_output/*.png
+            test_output/*.log
           draft: false
           prerelease: false
           make_latest: true
