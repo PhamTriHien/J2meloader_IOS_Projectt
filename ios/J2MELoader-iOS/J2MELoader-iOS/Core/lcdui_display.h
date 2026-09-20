@@ -32,10 +32,10 @@ public:
     void setClip(int x, int y, int w, int h);
     void clipRect(int x, int y, int w, int h);
     ClipRect getClip() const { return m_clip; }
-    int getClipX() const { return m_clip.x - m_transX; }
-    int getClipY() const { return m_clip.y - m_transY; }
-    int getClipWidth() const { return m_clip.width; }
-    int getClipHeight() const { return m_clip.height; }
+    int getClipX() const { return m_origClipX; }
+    int getClipY() const { return m_origClipY; }
+    int getClipWidth() const { return m_origClipW; }
+    int getClipHeight() const { return m_origClipH; }
     void resetClip();
 
     void drawLine(int x1, int y1, int x2, int y2, uint32_t color);
@@ -62,6 +62,10 @@ private:
     int m_height;
     int m_transX = 0;
     int m_transY = 0;
+    int m_origClipX = 0;
+    int m_origClipY = 0;
+    int m_origClipW = 240;
+    int m_origClipH = 320;
     uint32_t m_currentColor = 0xFF000000;
     std::vector<uint32_t> m_buffer;
     ClipRect m_clip;

@@ -224,14 +224,33 @@ NativeImage* JvmBytecodeEngine::getNativeImage(uint32_t ref) {
 
 uint32_t JvmBytecodeEngine::loadNativeImageFromBytes(const uint8_t* data, size_t size) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (!data || size == 0) return allocateNativeImage(16, 16, false);
+
+    // Auto-detect & decrypt obfuscated PNG files used by Teamobi / DragonBoy / Avatar / NinjaSchool:
+    // Signature starts with 'cRBC' (0x63, 0x52, 0x42, 0x43) encrypted with key: [-22, 2, 12, 4, 5, 2, -10]
+    std::vector<uint8_t> decryptedBuf;
+    const uint8_t* decData = data;
+    size_t decSize = size;
+    static const int8_t kTeamobiKey[] = { -22, 2, 12, 4, 5, 2, -10 };
+    if (size >= 8 && data[0] == 0x63 && data[1] == 0x52 && data[2] == 0x42 && data[3] == 0x43) {
+        decryptedBuf.resize(size);
+        for (size_t i = 0; i < size; ++i) {
+            uint8_t b = data[i];
+            uint8_t k = (uint8_t)kTeamobiKey[i % 7];
+            decryptedBuf[i] = b ^ k;
+        }
+        decData = decryptedBuf.data();
+        decSize = decryptedBuf.size();
+    }
+
     int w = 0, h = 0;
     std::vector<uint32_t> pixels;
-    if (!PngDecoder::decode(data, size, w, h, pixels)) {
+    if (!PngDecoder::decode(decData, decSize, w, h, pixels)) {
         // Fallback: UIImage decodes JPEG/GIF/BMP and odd PNGs game artists used.
-        if (native_decode_image && size > 0 && size <= (8 << 20)) {
+        if (native_decode_image && decSize > 0 && decSize <= (8 << 20)) {
             uint8_t* rgba = nullptr;
             int dw = 0, dh = 0;
-            if (native_decode_image(data, (int)size, &rgba, &dw, &dh) && rgba && dw > 0 && dh > 0) {
+            if (native_decode_image(decData, (int)decSize, &rgba, &dw, &dh) && rgba && dw > 0 && dh > 0) {
                 uint32_t ref = allocObject("javax/microedition/lcdui/Image");
                 NativeImage img;
                 img.width = dw;
@@ -655,7 +674,19 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                     int len = args.size() >= 4 ? args[3].asInt() : (arr ? (int)arr->charData.size() : 0);
                     if (arr && off >= 0 && off + len <= (int)arr->charData.size()) {
                         std::string s = "";
-                        for (int i = 0; i < len; ++i) s += (char)(arr->charData[off + i] & 0xFF);
+                        for (int i = 0; i < len; ++i) {
+                            uint16_t ch = arr->charData[off + i];
+                            if (ch < 0x80) {
+                                s += (char)ch;
+                            } else if (ch < 0x800) {
+                                s += (char)(0xC0 | (ch >> 6));
+                                s += (char)(0x80 | (ch & 0x3F));
+                            } else {
+                                s += (char)(0xE0 | (ch >> 12));
+                                s += (char)(0x80 | ((ch >> 6) & 0x3F));
+                                s += (char)(0x80 | (ch & 0x3F));
+                            }
+                        }
                         obj->stringVal = std::move(s);
                     }
                 } else if (args.size() >= 2 && desc.find("([B") != std::string::npos) {
@@ -705,13 +736,39 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "length") {
             std::string s = getString(args[0].asRef());
-            outResult = JavaValue((int32_t)s.length());
+            int charCount = 0;
+            for (size_t i = 0; i < s.size();) {
+                uint8_t b0 = (uint8_t)s[i++];
+                if ((b0 & 0xE0) == 0xC0 && i < s.size()) i += 1;
+                else if ((b0 & 0xF0) == 0xE0 && i + 1 < s.size()) i += 2;
+                charCount++;
+            }
+            outResult = JavaValue((int32_t)charCount);
             return true;
         }
         if (methodName == "charAt" && args.size() >= 2) {
             std::string s = getString(args[0].asRef());
-            int idx = args[1].asInt();
-            outResult = JavaValue((idx >= 0 && idx < (int)s.length()) ? (int32_t)(uint8_t)s[idx] : 0);
+            int targetIdx = args[1].asInt();
+            if (targetIdx < 0) { outResult = JavaValue(0); return true; }
+            int curCharIdx = 0;
+            uint32_t foundCp = 0;
+            for (size_t i = 0; i < s.size();) {
+                uint32_t cp = 0;
+                uint8_t b0 = (uint8_t)s[i++];
+                if (b0 < 0x80) cp = b0;
+                else if ((b0 & 0xE0) == 0xC0 && i < s.size()) {
+                    cp = ((b0 & 0x1F) << 6) | ((uint8_t)s[i++] & 0x3F);
+                } else if ((b0 & 0xF0) == 0xE0 && i + 1 < s.size()) {
+                    cp = ((b0 & 0x0F) << 12) | (((uint8_t)s[i] & 0x3F) << 6) | ((uint8_t)s[i + 1] & 0x3F);
+                    i += 2;
+                } else cp = b0;
+                if (curCharIdx == targetIdx) {
+                    foundCp = cp;
+                    break;
+                }
+                curCharIdx++;
+            }
+            outResult = JavaValue((int32_t)foundCp);
             return true;
         }
         if (methodName == "substring" && args.size() >= 2) {

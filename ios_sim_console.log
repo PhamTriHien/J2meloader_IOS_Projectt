@@ -1,3 +1,372 @@
 [JVM] Initializing MIDlet: main/GameMidlet
+[JVM] Running <clinit> for main/GameMidlet
+[JVM] Running <clinit> for main/d
+[JVM] Finished <clinit> for main/d
+[JVM] Running <clinit> for a/f/m
+[JVM] Finished <clinit> for a/f/m
+[JVM] Running <clinit> for a/e/a/e
+[JVM] Finished <clinit> for a/e/a/e
+[JVM] Finished <clinit> for main/GameMidlet
 [JVM] Calling startApp on MIDlet: main/GameMidlet
-com.playsoftware.j2meloader: 23733
+[JVM] Running <clinit> for a/e/b/g
+[JVM] Finished <clinit> for a/e/b/g
+[JVM] Running <clinit> for main/b
+[JVM] Running <clinit> for b/aV
+[JVM] Finished <clinit> for b/aV
+[JVM] Running <clinit> for a/d/c
+[JVM] Finished <clinit> for a/d/c
+[JVM] Running <clinit> for a/a/b/ao
+[JVM] Finished <clinit> for a/a/b/ao
+[JVM] Running <clinit> for b/cm
+[JVM] Finished <clinit> for b/cm
+[JVM] Running <clinit> for b/aZ
+[JVM] Finished <clinit> for b/aZ
+[JVM] Running <clinit> for a/b/e
+[JVM] Finished <clinit> for a/b/e
+[JVM] Running <clinit> for a/e/c/c
+[JVM] Finished <clinit> for a/e/c/c
+[JVM] Running <clinit> for a/g/i
+[JVM] Finished <clinit> for a/g/i
+[JVM] Finished <clinit> for main/b
+[JVM] Running <clinit> for b/cl
+[JVM] Finished <clinit> for b/cl
+[JVM] Running <clinit> for a/e/b/h
+[JVM] Finished <clinit> for a/e/b/h
+[JVM] Running <clinit> for a/f/n
+[JVM] Finished <clinit> for a/f/n
+[JVM] Running <clinit> for b/ck
+[JVM] Running <clinit> for a/e/c/d
+[JVM] Finished <clinit> for a/e/c/d
+[JVM] Running <clinit> for b/cu
+[JVM] Finished <clinit> for b/cu
+[JVM] Running <clinit> for a/e/a/d
+[JVM] Finished <clinit> for a/e/a/d
+[JVM] Running <clinit> for b/cq
+[JVM] Running <clinit> for b/ad
+[JVM] Finished <clinit> for b/ad
+[JVM] Running <clinit> for a/f/o
+[JVM] Finished <clinit> for a/f/o
+[JVM] Finished <clinit> for b/cq
+[JVM] Running <clinit> for b/aY
+[JVM] Finished <clinit> for b/aY
+[JVM] Finished <clinit> for b/ck
+[JVM] Running <clinit> for b/co
+[JVM] Finished <clinit> for b/co
+[JVM] Running <clinit> for b/aN
+[JVM] Running <clinit> for b/v
+[JVM] Finished <clinit> for b/v
+[JVM] Running <clinit> for b/cn
+[JVM] Running <clinit> for b/bD
+[JVM] Running <clinit> for b/ci
+[JVM] Finished <clinit> for b/ci
+[JVM] Finished <clinit> for b/bD
+[JVM] Finished <clinit> for b/aN
+[JVM] Running <clinit> for b/bj
+[JVM] Running <clinit> for b/cb
+[JVM] Finished <clinit> for b/cb
+[JVM] Running <clinit> for b/aH
+[JVM] Finished <clinit> for b/aH
+[JVM] Finished <clinit> for b/cn
+[JVM] Finished <clinit> for b/bj
+[JVM] Running <clinit> for b/aX
+[JVM] Running <clinit> for b/D
+[JVM] Finished <clinit> for b/D
+[JVM] Finished <clinit> for b/aX
+[JVM] Running <clinit> for b/bi
+[JVM] Running <clinit> for b/bx
+[JVM] Finished <clinit> for b/bx
+[JVM] Running <clinit> for a/b/d
+[JVM] Finished <clinit> for a/b/d
+[JVM] Running <clinit> for a/b/a
+[JVM] Finished <clinit> for a/b/a
+[JVM] Running <clinit> for a/a/b/b
+[JVM] Running <clinit> for a/a/a/a
+[JVM] Finished <clinit> for a/a/a/a
+[JVM] Finished <clinit> for a/a/b/b
+[JVM] Running <clinit> for a/f/h
+[JVM] Finished <clinit> for a/f/h
+[JVM] Running <clinit> for a/a/b/af
+[JVM] Finished <clinit> for a/a/b/af
+[JVM] Running <clinit> for a/a/c/a
+[JVM] Finished <clinit> for a/a/c/a
+[JVM] Running <clinit> for a/c/a
+[JVM] Finished <clinit> for a/c/a
+[JVM] Running <clinit> for a/a/b/ag
+[JVM] Running <clinit> for a/a/c/b
+[JVM] Finished <clinit> for a/a/c/b
+[JVM] Finished <clinit> for a/a/b/ag
+[JVM] Running <clinit> for a/a/b/ah
+[JVM] Finished <clinit> for a/a/b/ah
+[JVM] Running <clinit> for a/g/b
+[JVM] Finished <clinit> for a/g/b
+[JVM] Running <clinit> for a/g/c
+[JVM] Finished <clinit> for a/g/c
+[JVM] Running <clinit> for a/g/a
+[JVM] Finished <clinit> for a/g/a
+[JVM] Running <clinit> for b/m
+[JVM] Finished <clinit> for b/m
+[JVM] Running <clinit> for a/g/d
+[JVM] Finished <clinit> for a/g/d
+[JVM] Running <clinit> for a/a/b/c
+[JVM] Finished <clinit> for a/a/b/c
+[JVM] Running <clinit> for a/a/b/d
+[JVM] Finished <clinit> for a/a/b/d
+[JVM] Running <clinit> for a/a/b/e
+[JVM] Finished <clinit> for a/a/b/e
+[JVM] Running <clinit> for a/a/b/f
+[JVM] Finished <clinit> for a/a/b/f
+[JVM] Running <clinit> for a/a/b/g
+[JVM] Finished <clinit> for a/a/b/g
+[JVM] Running <clinit> for a/a/b/h
+[JVM] Finished <clinit> for a/a/b/h
+[JVM] Running <clinit> for a/a/b/k
+[JVM] Finished <clinit> for a/a/b/k
+[JVM] Running <clinit> for a/a/b/l
+[JVM] Finished <clinit> for a/a/b/l
+[JVM] Running <clinit> for a/a/b/P
+[JVM] Finished <clinit> for a/a/b/P
+[JVM] Running <clinit> for a/a/b/Q
+[JVM] Finished <clinit> for a/a/b/Q
+[JVM] Running <clinit> for a/a/b/R
+[JVM] Finished <clinit> for a/a/b/R
+[JVM] Running <clinit> for a/a/b/S
+[JVM] Finished <clinit> for a/a/b/S
+[JVM] Running <clinit> for a/a/b/T
+[JVM] Finished <clinit> for a/a/b/T
+[JVM] Running <clinit> for a/f/d
+[JVM] Finished <clinit> for a/f/d
+[JVM] Running <clinit> for a/a/b/U
+[JVM] Finished <clinit> for a/a/b/U
+[JVM] Running <clinit> for a/a/b/V
+[JVM] Finished <clinit> for a/a/b/V
+[JVM] Running <clinit> for a/a/b/W
+[JVM] Finished <clinit> for a/a/b/W
+[JVM] Running <clinit> for a/a/b/X
+[JVM] Finished <clinit> for a/a/b/X
+[JVM] Running <clinit> for a/a/b/Y
+[JVM] Finished <clinit> for a/a/b/Y
+[JVM] Running <clinit> for a/a/b/Z
+[JVM] Finished <clinit> for a/a/b/Z
+[JVM] Running <clinit> for a/a/b/aa
+[JVM] Finished <clinit> for a/a/b/aa
+[JVM] Running <clinit> for a/a/b/z
+[JVM] Finished <clinit> for a/a/b/z
+[JVM] Running <clinit> for a/a/b/A
+[JVM] Finished <clinit> for a/a/b/A
+[JVM] Running <clinit> for a/a/b/B
+[JVM] Finished <clinit> for a/a/b/B
+[JVM] Running <clinit> for a/a/b/C
+[JVM] Finished <clinit> for a/a/b/C
+[JVM] Running <clinit> for a/a/b/D
+[JVM] Finished <clinit> for a/a/b/D
+[JVM] Running <clinit> for a/a/b/E
+[JVM] Finished <clinit> for a/a/b/E
+[JVM] Running <clinit> for a/a/b/F
+[JVM] Finished <clinit> for a/a/b/F
+[JVM] Running <clinit> for a/a/b/u
+[JVM] Finished <clinit> for a/a/b/u
+[JVM] Running <clinit> for a/a/b/v
+[JVM] Finished <clinit> for a/a/b/v
+[JVM] Running <clinit> for a/a/b/w
+[JVM] Finished <clinit> for a/a/b/w
+[JVM] Running <clinit> for a/a/b/x
+[JVM] Finished <clinit> for a/a/b/x
+[JVM] Running <clinit> for a/a/b/y
+[JVM] Finished <clinit> for a/a/b/y
+[JVM] Running <clinit> for a/a/b/G
+[JVM] Finished <clinit> for a/a/b/G
+[JVM] Running <clinit> for a/a/b/H
+[JVM] Finished <clinit> for a/a/b/H
+[JVM] Running <clinit> for a/a/b/I
+[JVM] Finished <clinit> for a/a/b/I
+[JVM] Running <clinit> for a/a/b/J
+[JVM] Finished <clinit> for a/a/b/J
+[JVM] Running <clinit> for a/a/b/K
+[JVM] Finished <clinit> for a/a/b/K
+[JVM] Running <clinit> for a/a/b/a
+[JVM] Finished <clinit> for a/a/b/a
+[JVM] Running <clinit> for a/a/b/m
+[JVM] Finished <clinit> for a/a/b/m
+[JVM] Running <clinit> for a/a/b/n
+[JVM] Finished <clinit> for a/a/b/n
+[JVM] Running <clinit> for a/e/b/b
+[JVM] Finished <clinit> for a/e/b/b
+[JVM] Running <clinit> for a/a/b/i
+[JVM] Finished <clinit> for a/a/b/i
+[JVM] Running <clinit> for a/a/b/j
+[JVM] Finished <clinit> for a/a/b/j
+[JVM] Running <clinit> for a/a/b/N
+[JVM] Finished <clinit> for a/a/b/N
+[JVM] Running <clinit> for a/a/b/O
+[JVM] Finished <clinit> for a/a/b/O
+[JVM] Running <clinit> for a/a/b/L
+[JVM] Finished <clinit> for a/a/b/L
+[JVM] Running <clinit> for a/a/b/M
+[JVM] Finished <clinit> for a/a/b/M
+[JVM] Running <clinit> for a/a/b/ab
+[JVM] Finished <clinit> for a/a/b/ab
+[JVM] Running <clinit> for a/a/b/aj
+[JVM] Finished <clinit> for a/a/b/aj
+[JVM] Running <clinit> for a/a/b/ad
+[JVM] Finished <clinit> for a/a/b/ad
+[JVM] Running <clinit> for a/a/b/ak
+[JVM] Finished <clinit> for a/a/b/ak
+[JVM] Running <clinit> for a/a/b/al
+[JVM] Finished <clinit> for a/a/b/al
+[JVM] Running <clinit> for a/a/b/am
+[JVM] Finished <clinit> for a/a/b/am
+[JVM] Running <clinit> for a/a/b/an
+[JVM] Finished <clinit> for a/a/b/an
+[JVM] Running <clinit> for a/a/b/r
+[JVM] Finished <clinit> for a/a/b/r
+[JVM] Running <clinit> for a/a/b/t
+[JVM] Finished <clinit> for a/a/b/t
+[JVM] Running <clinit> for a/a/b/s
+[JVM] Finished <clinit> for a/a/b/s
+[JVM] Running <clinit> for a/e/c/b
+[JVM] Finished <clinit> for a/e/c/b
+[JVM] Running <clinit> for a/a/b/ai
+[JVM] Finished <clinit> for a/a/b/ai
+[JVM] Running <clinit> for a/a/b/ae
+[JVM] Finished <clinit> for a/a/b/ae
+[JVM] Running <clinit> for b/V
+[JVM] Running <clinit> for b/by
+[JVM] Finished <clinit> for b/by
+[JVM] Running <clinit> for b/aj
+[JVM] Finished <clinit> for b/aj
+[JVM] Running <clinit> for b/ag
+[JVM] Finished <clinit> for b/ag
+[JVM] Running <clinit> for main/c
+[JVM] Finished <clinit> for main/c
+[JVM] Running <clinit> for b/T
+[JVM] Finished <clinit> for b/T
+[JVM] Finished <clinit> for b/V
+[JVM] Running <clinit> for b/bw
+[JVM] Finished <clinit> for b/bw
+[JVM] Running <clinit> for b/bQ
+[JVM] Finished <clinit> for b/bQ
+[JVM] Running <clinit> for b/bp
+[JVM] Finished <clinit> for b/bp
+[JVM] Running <clinit> for b/o
+[JVM] Finished <clinit> for b/o
+[JVM] Running <clinit> for b/bV
+[JVM] Finished <clinit> for b/bV
+[JVM] Running <clinit> for b/bE
+[JVM] Finished <clinit> for b/bE
+[JVM] Running <clinit> for b/B
+[JVM] Finished <clinit> for b/B
+[JVM] Running <clinit> for b/aL
+[JVM] Finished <clinit> for b/aL
+[JVM] Finished <clinit> for b/bi
+[JVM] Spawning thread for Runnable: b/aV
+[JVM] Running <clinit> for b/bG
+[JVM] Running <clinit> for b/bB
+[JVM] Finished <clinit> for b/bB
+[JVM] Finished <clinit> for b/bG
+[JVM] Running <clinit> for b/x
+[JVM] Finished <clinit> for b/x
+[JVM] Running <clinit> for b/bS
+[JVM] Running <clinit> for b/ah
+[JVM] Finished <clinit> for b/ah
+[JVM] Running <clinit> for b/A
+[JVM] Finished <clinit> for b/A
+[JVM] Finished <clinit> for b/bS
+[JVM] Running <clinit> for b/n
+[JVM] Running <clinit> for b/G
+[JVM] Finished <clinit> for b/G
+[JVM] Finished <clinit> for b/n
+[JVM] Running <clinit> for b/W
+[JVM] Finished <clinit> for b/W
+[JVM] Running <clinit> for b/E
+[JVM] Finished <clinit> for b/E
+[JVM] Display.setCurrent called with nextRef=45
+[JVM] Display.setCurrent target className: main/b
+[JVM] Spawning thread for Runnable: b/aV
+[JVM] startApp finished for MIDlet: main/GameMidlet
+[JVM] Running <clinit> for a/a/b/o
+[JVM] Finished <clinit> for a/a/b/o
+[JVM] Running <clinit> for a/a/b/p
+[JVM] Finished <clinit> for a/a/b/p
+[JVM] Running <clinit> for a/a/b/q
+[JVM] Finished <clinit> for a/a/b/q
+[JVM] Running <clinit> for b/bR
+[JVM] Finished <clinit> for b/bR
+[JVM] Running <clinit> for a/d/b
+[JVM] Finished <clinit> for a/d/b
+[JVM] Running <clinit> for b/bH
+[JVM] Finished <clinit> for b/bH
+[JVM] Spawning thread for Runnable: b/bH
+[JVM] Running <clinit> for b/bc
+[JVM] Finished <clinit> for b/bc
+[JVM] Spawning thread for Runnable: b/bc
+[JVM] Thread for Runnable: b/bc finished
+[JVM] Running <clinit> for b/cp
+[JVM] Finished <clinit> for b/cp
+[JVM] Spawning thread for Runnable: b/bB
+[JVM] Running <clinit> for b/aP
+[JVM] Finished <clinit> for b/aP
+[JVM] Spawning thread for Runnable: b/aP
+[JVM] Running <clinit> for b/aO
+[JVM] Finished <clinit> for b/aO
+[JVM] Running <clinit> for b/bF
+[JVM] Finished <clinit> for b/bF
+[JVM] Thread for Runnable: b/bH finished
+[JVM] Thread for Runnable: b/aP finished
+[JVM] Thread for Runnable: b/bB finished
+[JVM] Running <clinit> for b/bT
+[JVM] Finished <clinit> for b/bT
+[JVM] Running <clinit> for b/L
+[JVM] Finished <clinit> for b/L
+[JVM] Running <clinit> for b/bZ
+[JVM] Finished <clinit> for b/bZ
+[JVM] Running <clinit> for b/s
+[JVM] Finished <clinit> for b/s
+[JVM] Running <clinit> for b/i
+[JVM] Finished <clinit> for b/i
+[JVM] Running <clinit> for b/F
+[JVM] Finished <clinit> for b/F
+[JVM] Running <clinit> for b/cr
+[JVM] Finished <clinit> for b/cr
+[JVM] Running <clinit> for main/a
+[JVM] Finished <clinit> for main/a
+[JVM] Spawning thread for Runnable: b/bH
+[JVM] Spawning thread for Runnable: b/bc
+[JVM] Thread for Runnable: b/bc finished
+[JVM] Spawning thread for Runnable: b/bB
+[JVM] Spawning thread for Runnable: b/aP
+[JVM] Thread for Runnable: b/bH finished
+[JVM] Thread for Runnable: b/aP finished
+[JVM] Thread for Runnable: b/bB finished
+[JVM] Spawning thread for Runnable: b/bH
+[JVM] Spawning thread for Runnable: b/bc
+[JVM] Thread for Runnable: b/bc finished
+[JVM] Spawning thread for Runnable: b/bB
+[JVM] Spawning thread for Runnable: b/aP
+[JVM] Thread for Runnable: b/bH finished
+[JVM] Thread for Runnable: b/aP finished
+[JVM] Thread for Runnable: b/bB finished
+[JVM] Spawning thread for Runnable: b/bH
+[JVM] Spawning thread for Runnable: b/bc
+[JVM] Thread for Runnable: b/bc finished
+[JVM] Spawning thread for Runnable: b/bB
+[JVM] Spawning thread for Runnable: b/aP
+[JVM] Thread for Runnable: b/bH finished
+[JVM] Thread for Runnable: b/aP finished
+[JVM] Thread for Runnable: b/bB finished
+[JVM] Spawning thread for Runnable: b/bH
+[JVM] Spawning thread for Runnable: b/bc
+[JVM] Thread for Runnable: b/bc finished
+[JVM] Spawning thread for Runnable: b/bB
+[JVM] Spawning thread for Runnable: b/aP
+[JVM] Thread for Runnable: b/bH finished
+[JVM] Thread for Runnable: b/aP finished
+[JVM] Thread for Runnable: b/bB finished
+[JVM] Spawning thread for Runnable: b/bH
+[JVM] Spawning thread for Runnable: b/bc
+[JVM] Thread for Runnable: b/bc finished
+[JVM] Spawning thread for Runnable: b/bB
+[JVM] Spawning thread for Runnable: b/aP
+[JVM] Thread for Runnable: b/aP finished
+[JVM] Thread for Runnable: b/bH finished
+[JVM] Thread for Runnable: b/bB finished
+com.playsoftware.j2meloader: 8831

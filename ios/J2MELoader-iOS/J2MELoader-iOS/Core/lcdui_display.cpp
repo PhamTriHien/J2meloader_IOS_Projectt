@@ -139,6 +139,10 @@ void LcduiDisplay::clear(uint32_t color) {
 
 void LcduiDisplay::resetClip() {
     m_clip = { 0, 0, m_width, m_height };
+    m_origClipX = 0;
+    m_origClipY = 0;
+    m_origClipW = m_width;
+    m_origClipH = m_height;
 }
 
 void LcduiDisplay::setClip(int x, int y, int w, int h) {
@@ -152,6 +156,10 @@ void LcduiDisplay::setClip(int x, int y, int w, int h) {
     m_clip.y = y1;
     m_clip.width = std::max(0, x2 - x1);
     m_clip.height = std::max(0, y2 - y1);
+    m_origClipX = x;
+    m_origClipY = y;
+    m_origClipW = w;
+    m_origClipH = h;
 }
 
 void LcduiDisplay::clipRect(int x, int y, int w, int h) {
@@ -165,6 +173,10 @@ void LcduiDisplay::clipRect(int x, int y, int w, int h) {
     m_clip.y = y1;
     m_clip.width = std::max(0, x2 - x1);
     m_clip.height = std::max(0, y2 - y1);
+    m_origClipX = x1 - m_transX;
+    m_origClipY = y1 - m_transY;
+    m_origClipW = m_clip.width;
+    m_origClipH = m_clip.height;
 }
 
 void LcduiDisplay::drawLine(int x1, int y1, int x2, int y2, uint32_t color) {
