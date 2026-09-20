@@ -391,10 +391,8 @@ void JvmInterpreter::findAndBindCanvas() {
 }
 
 void JvmInterpreter::drawBootSplash(const std::string& line1) {
-    int w = m_display->getWidth(), h = m_display->getHeight();
-    m_display->clear(0xFF0A0F1D);
-    m_display->drawString(line1, w / 2, h / 2 - 10, 1 | 2, 0xFF38BDF8);
-    m_display->drawString("J2HienLoader", w / 2, h / 2 + 15, 1 | 2, 0xFF94A3B8);
+    (void)line1;
+    m_display->clear(0xFF000000);
 }
 
 void JvmInterpreter::midletInitRoutine(unsigned long gen) {
@@ -531,25 +529,8 @@ void JvmInterpreter::executionLoop() {
                     }
                 }
             } else {
-                // Retro LCD loading splash screen with spinner animation.
-                // A boot error (JAR/MIDlet) is shown in red instead of hanging black.
-                std::string bootErr;
-                { std::lock_guard<std::mutex> lk(m_bootMutex); bootErr = m_bootError; }
-                tickCount++;
-                int w = m_display->getWidth(), h = m_display->getHeight();
-                m_display->clear(0xFF0A0F1D);
-
-                if (!bootErr.empty()) {
-                    m_display->drawString(bootErr, w / 2, h / 2 - 10, 1 | 2, 0xFFF87171);
-                    m_display->drawString("Kiem tra file JAR", w / 2, h / 2 + 15, 1 | 2, 0xFF94A3B8);
-                } else {
-                    std::string loadingText = "Dang tai game Java";
-                    int dots = (tickCount / 15) % 4;
-                    for (int d = 0; d < dots; ++d) loadingText += ".";
-
-                    m_display->drawString(loadingText, w / 2, h / 2 - 10, 1 | 2, 0xFF38BDF8);
-                    m_display->drawString("J2HienLoader", w / 2, h / 2 + 15, 1 | 2, 0xFF94A3B8);
-                }
+                // Clear screen black while initializing MIDlet / Canvas
+                m_display->clear(0xFF000000);
                 ++m_paintTick;
             }
         }
