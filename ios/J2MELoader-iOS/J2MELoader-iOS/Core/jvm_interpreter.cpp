@@ -266,23 +266,22 @@ void JvmInterpreter::processEvents() {
 }
 
 void JvmInterpreter::setCurrentCanvas(uint32_t ref, std::shared_ptr<ClassFile> cls) {
+    if (!cls || ref == 0) return;
     {
         std::lock_guard<std::mutex> lk(m_stateMutex);
         m_canvasRef = ref;
         m_canvasClass = cls;
     }
-    if (cls && ref != 0) {
-        auto& jvm = JvmBytecodeEngine::getInstance();
-        // J2ME spec: showNotify() MUST be called when canvas is made current
-        std::string showKey = "showNotify:()V";
-        if (cls->methods.find(showKey) != cls->methods.end()) {
-            jvm.executeMethod(cls, "showNotify", "()V", { JavaValue(ref, true) }, m_display.get());
-        }
-        // If the canvas itself implements Runnable, start its game loop thread
-        std::string runKey = "run:()V";
-        if (cls->methods.find(runKey) != cls->methods.end()) {
-            registerRunnable(ref, cls);
-        }
+    auto& jvm = JvmBytecodeEngine::getInstance();
+    // J2ME spec: showNotify() MUST be called when canvas is made current
+    auto showCls = jvm.resolveMethodClass(cls, "showNotify:()V");
+    if (showCls) {
+        jvm.executeMethod(showCls, "showNotify", "()V", { JavaValue(ref, true) }, m_display.get());
+    }
+    // If the canvas itself implements Runnable, start its game loop thread
+    auto runCls = jvm.resolveMethodClass(cls, "run:()V");
+    if (runCls) {
+        registerRunnable(ref, cls);
     }
 }
 
@@ -476,9 +475,6 @@ void JvmInterpreter::executionLoop() {
         m_initThread = JvmThread(&JvmInterpreter::midletInitRoutine, this, gen);
     }
 
-    findAndBindCanvas();
-    startRunnableThread();
-
     int tickCount = 0;
     while (m_running) {
         if (!m_paused) {
@@ -489,9 +485,8 @@ void JvmInterpreter::executionLoop() {
                 std::lock_guard<std::mutex> lk(m_stateMutex);
                 haveCanvas = (m_canvasClass && m_canvasRef != 0);
             }
-            if (!haveCanvas) {
+            if (!haveCanvas && tickCount > 60) {
                 findAndBindCanvas();
-                startRunnableThread();
             }
 
             if (!m_graphicsRef) {

@@ -986,7 +986,14 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 auto c = cls;
                 for (int d = 0; c && d < 16; ++d) {
                     if (c->thisClassName == "javax/microedition/lcdui/Canvas" ||
-                        c->thisClassName.find("Canvas") != std::string::npos) {
+                        c->thisClassName == "javax/microedition/lcdui/game/GameCanvas" ||
+                        c->thisClassName == "javax/microedition/lcdui/FullCanvas" ||
+                        c->thisClassName.find("Canvas") != std::string::npos ||
+                        c->superClassName == "javax/microedition/lcdui/Canvas" ||
+                        c->superClassName == "javax/microedition/lcdui/game/GameCanvas" ||
+                        c->superClassName == "javax/microedition/lcdui/FullCanvas" ||
+                        c->superClassName.find("Canvas") != std::string::npos ||
+                        c->methods.find("paint:(Ljavax/microedition/lcdui/Graphics;)V") != c->methods.end()) {
                         isCanvas = true;
                         break;
                     }
