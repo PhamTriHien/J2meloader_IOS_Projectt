@@ -24,7 +24,7 @@ struct InputEvent {
     enum Type { Key, Touch } type;
     int32_t codeOrX;
     int32_t extraOrY;
-    bool isDownOrAction;
+    int32_t isDownOrAction;
 };
 
 class JvmInterpreter {

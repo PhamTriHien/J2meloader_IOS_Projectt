@@ -222,7 +222,7 @@ void JvmInterpreter::postTouchEvent(int32_t x, int32_t y, int32_t action) {
     ev.type = InputEvent::Touch;
     ev.codeOrX = x;
     ev.extraOrY = y;
-    ev.isDownOrAction = (action == 0 || action == 1);
+    ev.isDownOrAction = action;
     m_eventQueue.push(ev);
 }
 
@@ -240,7 +240,7 @@ void JvmInterpreter::processEvents() {
             }
 
             // High-level Form/List softkey -> CommandListener
-            FullApis::onKey(ev.codeOrX, ev.isDownOrAction, m_display.get());
+            FullApis::onKey(ev.codeOrX, ev.isDownOrAction != 0, m_display.get());
             // Snapshot canvas under lock; execute outside it (engine calls back
             // into setCurrentCanvas which takes the same mutex).
             std::shared_ptr<ClassFile> canvasCls;
@@ -248,7 +248,7 @@ void JvmInterpreter::processEvents() {
             { std::lock_guard<std::mutex> slk(m_stateMutex); canvasCls = m_canvasClass; canvasRef = m_canvasRef; }
             // Dispatch directly to active MIDP Canvas bytecode
             if (canvasCls && canvasRef != 0) {
-                std::string method = ev.isDownOrAction ? "keyPressed" : "keyReleased";
+                std::string method = (ev.isDownOrAction != 0) ? "keyPressed" : "keyReleased";
                 jvm.executeMethod(canvasCls, method, "(I)V", { JavaValue(canvasRef, true), JavaValue(ev.codeOrX) }, m_display.get());
             }
         }
@@ -258,7 +258,7 @@ void JvmInterpreter::processEvents() {
             { std::lock_guard<std::mutex> slk(m_stateMutex); canvasCls = m_canvasClass; canvasRef = m_canvasRef; }
             // Dispatch directly to active MIDP Canvas touch bytecode
             if (canvasCls && canvasRef != 0) {
-                std::string method = ev.isDownOrAction ? "pointerPressed" : "pointerReleased";
+                std::string method = (ev.isDownOrAction == 0) ? "pointerPressed" : ((ev.isDownOrAction == 1) ? "pointerDragged" : "pointerReleased");
                 jvm.executeMethod(canvasCls, method, "(II)V", { JavaValue(canvasRef, true), JavaValue(ev.codeOrX), JavaValue(ev.extraOrY) }, m_display.get());
             }
         }
