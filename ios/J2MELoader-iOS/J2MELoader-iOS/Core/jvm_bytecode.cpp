@@ -487,11 +487,16 @@ static std::string getFieldKey(std::shared_ptr<ClassFile> cls, uint16_t fIdx) {
 static std::string getFieldName(std::shared_ptr<ClassFile> cls, uint16_t fIdx) {
     if (!cls || fIdx >= cls->constantPool.size()) return "";
     const auto& cp = cls->constantPool[fIdx];
+    std::string cname = "";
+    if (cp.classIndex < cls->constantPool.size() && cls->constantPool[cp.classIndex].nameIndex < cls->constantPool.size()) {
+        cname = cls->constantPool[cls->constantPool[cp.classIndex].nameIndex].strVal;
+    }
+    std::string fname = "";
     if (cp.nameAndTypeIndex < cls->constantPool.size()) {
         const auto& nat = cls->constantPool[cp.nameAndTypeIndex];
-        if (nat.nameIndex < cls->constantPool.size()) return cls->constantPool[nat.nameIndex].strVal;
+        if (nat.nameIndex < cls->constantPool.size()) fname = cls->constantPool[nat.nameIndex].strVal;
     }
-    return "";
+    return cname.empty() ? fname : (cname + ":" + fname);
 }
 
 void JvmBytecodeEngine::ensureClinit(std::shared_ptr<ClassFile> cls, LcduiDisplay* display) {
@@ -2291,11 +2296,16 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_GETFIELD: {
             uint16_t fIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
             frame.pc += 2;
-            std::string fName = getFieldName(cls, fIdx);
+            std::string fKey = getFieldName(cls, fIdx);
+            std::string shortName = fKey;
+            size_t colon = fKey.find(':');
+            if (colon != std::string::npos) shortName = fKey.substr(colon + 1);
+
             uint32_t objRef = frame.pop().asRef();
             JavaObject* obj = getObject(objRef);
             if (obj) {
-                auto fit = obj->fields.find(fName);
+                auto fit = obj->fields.find(fKey);
+                if (fit == obj->fields.end()) fit = obj->fields.find(shortName);
                 frame.push(fit != obj->fields.end() ? fit->second : JavaValue(0));
             } else {
                 frame.push(JavaValue(0));
@@ -2305,12 +2315,17 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_PUTFIELD: {
             uint16_t fIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
             frame.pc += 2;
-            std::string fName = getFieldName(cls, fIdx);
+            std::string fKey = getFieldName(cls, fIdx);
+            std::string shortName = fKey;
+            size_t colon = fKey.find(':');
+            if (colon != std::string::npos) shortName = fKey.substr(colon + 1);
+
             JavaValue val = frame.pop();
             uint32_t objRef = frame.pop().asRef();
             JavaObject* obj = getObject(objRef);
             if (obj) {
-                obj->fields[fName] = val;
+                obj->fields[fKey] = val;
+                if (!shortName.empty() && shortName != fKey) obj->fields[shortName] = val;
             }
             break;
         }
