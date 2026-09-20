@@ -64,9 +64,9 @@ jobs:
 
               xcrun simctl terminate "$SIM_ID" com.playsoftware.j2meloader || true
               xcrun simctl launch "$SIM_ID" com.playsoftware.j2meloader -SkipUpdateCheck -TestRunJar "$CONTAINER/Documents/DragonBoy.jar" || true
-              sleep 6
+              sleep 8
               xcrun simctl io "$SIM_ID" screenshot test_output/03_dragonboy_running.png || true
-              sleep 6
+              sleep 8
               xcrun simctl io "$SIM_ID" screenshot test_output/04_dragonboy_gameplay.png || true
 
               echo "=== Test 5: Library with Ported Game ==="

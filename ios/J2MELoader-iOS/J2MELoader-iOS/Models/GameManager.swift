@@ -54,11 +54,12 @@ public class GameManager: ObservableObject {
             let jarPath = CommandLine.arguments[idx + 1]
             let url = URL(fileURLWithPath: jarPath)
             if FileManager.default.fileExists(atPath: url.path) {
-                importJar(from: url)
-                if let game = self.games.first {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                        self.launchGame(game)
-                    }
+                importJar(from: url, autoLaunch: true)
+            }
+        } else if CommandLine.arguments.contains("-TestRunGame") {
+            if let first = self.games.first {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.launchGame(first)
                 }
             }
         }
@@ -86,7 +87,7 @@ public class GameManager: ObservableObject {
         return dict
     }
 
-    public func importJar(from sourceURL: URL) {
+    public func importJar(from sourceURL: URL, autoLaunch: Bool = false) {
         let isSecured = sourceURL.startAccessingSecurityScopedResource()
         defer {
             if isSecured { sourceURL.stopAccessingSecurityScopedResource() }
@@ -183,6 +184,9 @@ public class GameManager: ObservableObject {
             DispatchQueue.main.async {
                 self.games.insert(newItem, at: 0)
                 self.saveGames()
+                if autoLaunch {
+                    self.launchGame(newItem)
+                }
             }
         } catch {
             DispatchQueue.main.async {
