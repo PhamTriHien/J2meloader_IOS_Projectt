@@ -503,12 +503,36 @@ class J2MELoaderApp(tk.Tk):
         self.keys_held.discard(key)
 
     def on_key_down(self, event):
-        key_map = {"Up": "UP", "Down": "DOWN", "Left": "LEFT", "Right": "RIGHT", "Return": "FIRE", "space": "FIRE", "F1": "LSK", "F2": "RSK", "z": "LSK", "x": "RSK"}
+        key_map = {
+            "Up": "UP", "w": "UP", "W": "UP", "KP_Up": "UP", "KP_8": "UP",
+            "Down": "DOWN", "s": "DOWN", "S": "DOWN", "KP_Down": "DOWN", "KP_2": "DOWN",
+            "Left": "LEFT", "a": "LEFT", "A": "LEFT", "KP_Left": "LEFT", "KP_4": "LEFT",
+            "Right": "RIGHT", "d": "RIGHT", "D": "RIGHT", "KP_Right": "RIGHT", "KP_6": "RIGHT",
+            "Return": "FIRE", "space": "FIRE", "KP_Enter": "FIRE", "KP_5": "FIRE", "KP_Begin": "FIRE",
+            "F1": "LSK", "q": "LSK", "Q": "LSK",
+            "F2": "RSK", "e": "RSK", "E": "RSK", "Escape": "RSK",
+            "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "0": "0",
+            "KP_1": "1", "KP_2": "2", "KP_3": "3", "KP_4": "4", "KP_5": "5", "KP_6": "6", "KP_7": "7", "KP_8": "8", "KP_9": "9", "KP_0": "0",
+            "asterisk": "*", "KP_Multiply": "*", "numbersign": "#", "KP_Divide": "#",
+            "BackSpace": "CLR", "Delete": "CLR"
+        }
         k = key_map.get(event.keysym, event.char)
         if k: self.press_key(k.upper())
 
     def on_key_up(self, event):
-        key_map = {"Up": "UP", "Down": "DOWN", "Left": "LEFT", "Right": "RIGHT", "Return": "FIRE", "space": "FIRE", "F1": "LSK", "F2": "RSK", "z": "LSK", "x": "RSK"}
+        key_map = {
+            "Up": "UP", "w": "UP", "W": "UP", "KP_Up": "UP", "KP_8": "UP",
+            "Down": "DOWN", "s": "DOWN", "S": "DOWN", "KP_Down": "DOWN", "KP_2": "DOWN",
+            "Left": "LEFT", "a": "LEFT", "A": "LEFT", "KP_Left": "LEFT", "KP_4": "LEFT",
+            "Right": "RIGHT", "d": "RIGHT", "D": "RIGHT", "KP_Right": "RIGHT", "KP_6": "RIGHT",
+            "Return": "FIRE", "space": "FIRE", "KP_Enter": "FIRE", "KP_5": "FIRE", "KP_Begin": "FIRE",
+            "F1": "LSK", "q": "LSK", "Q": "LSK",
+            "F2": "RSK", "e": "RSK", "E": "RSK", "Escape": "RSK",
+            "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9", "0": "0",
+            "KP_1": "1", "KP_2": "2", "KP_3": "3", "KP_4": "4", "KP_5": "5", "KP_6": "6", "KP_7": "7", "KP_8": "8", "KP_9": "9", "KP_0": "0",
+            "asterisk": "*", "KP_Multiply": "*", "numbersign": "#", "KP_Divide": "#",
+            "BackSpace": "CLR", "Delete": "CLR"
+        }
         k = key_map.get(event.keysym, event.char)
         if k: self.release_key(k.upper())
 
