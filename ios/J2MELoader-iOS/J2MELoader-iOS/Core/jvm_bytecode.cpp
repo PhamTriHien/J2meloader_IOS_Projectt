@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <functional>
 #if !defined(_WIN32) && !defined(_WIN64)
@@ -18,6 +19,11 @@
 extern "C" bool native_text_measure(const char *utf8, int px, int *outW, int *outH) __attribute__((weak));
 extern "C" bool native_decode_image(const uint8_t *data, int len, uint8_t **out_rgba, int *outW, int *outH) __attribute__((weak));
 extern "C" void native_free(void *p) __attribute__((weak));
+
+static std::string toLowerStr(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return std::tolower(c); });
+    return s;
+}
 
 // Big-Endian Stream Helper
 class ByteStream {
@@ -977,7 +983,8 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 // which renders them and tracks CommandListener. Binding them
                 // here would paint black and kill their commands.
                 bool isCanvas = false;
-                for (auto c = cls, d = 0; c && d < 16; ++d) {
+                auto c = cls;
+                for (int d = 0; c && d < 16; ++d) {
                     if (c->thisClassName == "javax/microedition/lcdui/Canvas" ||
                         c->thisClassName.find("Canvas") != std::string::npos) {
                         isCanvas = true;

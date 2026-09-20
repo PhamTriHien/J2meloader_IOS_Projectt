@@ -1,5 +1,6 @@
 #import "NativeExtBridge.h"
 #import <UIKit/UIKit.h>
+#include <unistd.h>
 #if __has_include(<CoreBluetooth/CoreBluetooth.h>)
 #import <CoreBluetooth/CoreBluetooth.h>
 #endif

@@ -116,6 +116,7 @@
 		BB0000282C88000100000001 /* rms_storage.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = rms_storage.h; sourceTree = "<group>"; };
 		BB0000172C88000100000001 /* jvm_interpreter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = jvm_interpreter.cpp; sourceTree = "<group>"; };
 		BB0000292C88000100000001 /* jvm_interpreter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = jvm_interpreter.h; sourceTree = "<group>"; };
+		BB0000292C88000100000099 /* jvm_thread.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = jvm_thread.h; sourceTree = "<group>"; };
 		BB0000182C88000100000002 /* jvm_bytecode.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = jvm_bytecode.cpp; sourceTree = "<group>"; };
 		BB00002A2C88000100000002 /* jvm_bytecode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = jvm_bytecode.h; sourceTree = "<group>"; };
 		BB00001C2C88000100000001 /* j2me_full_apis.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = j2me_full_apis.cpp; sourceTree = "<group>"; };
@@ -264,6 +265,7 @@
 				BB0000152C88000100000002 /* micro3d_engine.cpp */,
 				BB0000282C88000100000001 /* rms_storage.h */,
 				BB0000162C88000100000001 /* rms_storage.cpp */,
+				BB0000292C88000100000099 /* jvm_thread.h */,
 				BB0000292C88000100000001 /* jvm_interpreter.h */,
 				BB0000172C88000100000001 /* jvm_interpreter.cpp */,
 				BB00001C2C88000100000001 /* j2me_full_apis.cpp */,
