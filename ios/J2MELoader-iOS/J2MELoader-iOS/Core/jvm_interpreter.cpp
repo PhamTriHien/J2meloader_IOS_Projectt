@@ -550,6 +550,7 @@ void JvmInterpreter::executionLoop() {
                     m_display->drawString(loadingText, w / 2, h / 2 - 10, 1 | 2, 0xFF38BDF8);
                     m_display->drawString("J2HienLoader", w / 2, h / 2 + 15, 1 | 2, 0xFF94A3B8);
                 }
+                ++m_paintTick;
             }
         }
 

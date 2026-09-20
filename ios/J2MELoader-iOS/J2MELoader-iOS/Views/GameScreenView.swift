@@ -286,8 +286,8 @@ public struct GameScreenView: View {
             let tick = J2MEBridge.getPaintTick()
             if tick == lastPaintTick {
                 frozenChecks += 1
-                if frozenChecks >= 3 {
-                    bootDiag = "Game treo (không vẽ) — thử game khác"
+                if frozenChecks >= 10 {
+                    bootDiag = "Game phản hồi chậm hoặc đang kết nối mạng…"
                 }
             } else {
                 frozenChecks = 0
