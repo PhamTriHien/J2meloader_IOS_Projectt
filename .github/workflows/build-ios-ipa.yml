@@ -44,10 +44,10 @@ jobs:
               echo "Installing app into Simulator..."
               xcrun simctl install "$SIM_ID" "ios/J2MELoader-iOS/build/Release-iphonesimulator/J2MELoader-iOS.app"
               echo "Launching J2HienLoader in Simulator..."
-              xcrun simctl launch "$SIM_ID" com.j2hienloader.ios || true
+              xcrun simctl launch "$SIM_ID" com.playsoftware.j2meloader || true
               sleep 8
               xcrun simctl io "$SIM_ID" screenshot test_output/01_app_library.png || true
-              echo "Captured screenshot 1: Library with DragonBoy bundled"
+              echo "Captured screenshot 1: Clean App Library"
               sleep 4
               xcrun simctl io "$SIM_ID" screenshot test_output/02_app_running.png || true
               echo "Captured screenshot 2: Real iOS App Execution"

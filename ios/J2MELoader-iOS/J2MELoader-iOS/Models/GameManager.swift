@@ -47,16 +47,6 @@ public class GameManager: ObservableObject {
         } else {
             self.games = []
         }
-
-        // Auto-import bundled sample games (e.g. DragonBoy.jar) on first launch
-        if let bundleUrls = Bundle.main.urls(forResourcesWithExtension: "jar", subdirectory: nil) {
-            for jarUrl in bundleUrls {
-                let fname = jarUrl.lastPathComponent
-                if !self.games.contains(where: { $0.jarFileName == fname || $0.jarFileName == jarUrl.deletingPathExtension().lastPathComponent + ".jar" }) {
-                    importJar(from: jarUrl)
-                }
-            }
-        }
     }
     
     public func saveGames() {
