@@ -16,3 +16,4 @@ freej2me_system/
 J2MELoader_Desktop_App.py
 dist/
 *.spec
+test_screenshots/
