@@ -1,0 +1,14 @@
+{
+  "id": 392390279,
+  "tag_name": "v1.8.3-j2hienloader",
+  "name": "J2HienLoader iOS v1.8.3 - Bản chính thức Tiếng Việt & Sửa lỗi Form Text & Tối ưu JVM 100%",
+  "body": "## J2HienLoader cho iOS (v1.8.3)\n- Khắc phục lỗi sập bộ nhớ Stack 4MB trên iOS.\n- Bàn phím hệ thống iOS gõ chữ trực tiếp trong form game.\n- Sửa lỗi hiển thị font chữ 8x8 (đầy đủ ký tự hoa/thường).\n- Treo game ngầm 24/7 ổn định.",
+  "published_at": "2026-09-20T10:10:27Z",
+  "assets": [
+    {
+      "name": "J2HienLoader.ipa",
+      "browser_download_url": "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/download/v1.8.3-j2hienloader/J2HienLoader.ipa",
+      "size": 1187681
+    }
+  ]
+}

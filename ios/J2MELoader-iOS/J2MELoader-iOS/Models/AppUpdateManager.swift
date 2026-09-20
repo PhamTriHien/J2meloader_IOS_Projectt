@@ -92,6 +92,7 @@ public class AppUpdateManager: NSObject, ObservableObject, URLSessionDownloadDel
         isChecking = true
         statusMessage = manual ? "Đang kiểm tra bản cập nhật..." : nil
         
+        // Primary API endpoint
         guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest") else {
             isChecking = false
             return
@@ -101,70 +102,92 @@ public class AppUpdateManager: NSObject, ObservableObject, URLSessionDownloadDel
         request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
         request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.timeoutInterval = 12
+        request.timeoutInterval = 10
         
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                self.isChecking = false
-
-                func note(_ msg: String) {
-                    // Auto-check stays silent except when an update is found;
-                    // manual check always reports the reason.
-                    if manual { self.statusMessage = msg }
-                }
-
-                if let error = error {
-                    note("Không có kết nối mạng (\(error.localizedDescription))")
-                    return
-                }
 
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                if status == 404 {
-                    note("Chưa có bản phát hành nào trên GitHub (404). CI phải chạy xong và tạo Release trước.")
-                    return
-                }
-                if status == 403 || status == 429 {
-                    note("GitHub giới hạn truy vấn tạm thời, thử lại sau vài phút.")
-                    return
-                }
-                if status != 0 && (status < 200 || status >= 300) {
-                    note("Lỗi mạng (mã \(status)).")
+                
+                // If GitHub API rate-limited (403/429) or failed, fallback to raw CDN version.json
+                if status == 403 || status == 429 || error != nil || data == nil || data?.isEmpty == true {
+                    self.fetchFallbackVersion(manual: manual)
                     return
                 }
 
+                if status == 404 {
+                    self.isChecking = false
+                    if manual { self.statusMessage = "Chưa có bản phát hành nào trên GitHub (404)." }
+                    return
+                }
+                
                 guard let data = data, !data.isEmpty else {
-                    note("Không nhận được phản hồi từ máy chủ.")
+                    self.fetchFallbackVersion(manual: manual)
                     return
                 }
 
                 do {
                     let release = try JSONDecoder().decode(ReleaseInfo.self, from: data)
-                    self.latestRelease = release
-
-                    let numericNewer = self.isVersionNewer(remoteTag: release.tagName, currentTag: AppUpdateManager.currentVersion)
-                    let newBuild = release.id >= 0 && release.id != self.lastSeenReleaseId
-                    self.hasUpdate = numericNewer || newBuild
-
-                    if self.hasUpdate {
-                        self.statusMessage = "Có bản cập nhật mới: \(release.tagName)"
-                        if manual || newBuild {
-                            self.showingUpdateModal = true
-                            self.lastSeenReleaseId = release.id
-                        }
-                    } else {
-                        if manual {
-                            self.statusMessage = "Ứng dụng đang ở phiên bản mới nhất (\(release.tagName))"
-                        }
-                    }
-                } catch let decErr as DecodingError {
-                    // Should no longer be the cryptic "data missing" message.
-                    note("Dữ liệu bản phát hành không hợp lệ: \(decErr.localizedDescription)")
+                    self.processReleaseResult(release: release, manual: manual)
                 } catch {
-                    note("Lỗi phân tích bản phát hành: \(error.localizedDescription)")
+                    self.fetchFallbackVersion(manual: manual)
                 }
             }
         }.resume()
+    }
+
+    private func fetchFallbackVersion(manual: Bool) {
+        guard let rawUrl = URL(string: "https://raw.githubusercontent.com/\(repo)/main/version.json") else {
+            self.isChecking = false
+            return
+        }
+        var rawReq = URLRequest(url: rawUrl)
+        rawReq.cachePolicy = .reloadIgnoringLocalCacheData
+        rawReq.timeoutInterval = 10
+
+        URLSession.shared.dataTask(with: rawReq) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isChecking = false
+
+                if let error = error {
+                    if manual { self.statusMessage = "Không thể kiểm tra cập nhật (\(error.localizedDescription))" }
+                    return
+                }
+                guard let data = data, !data.isEmpty else {
+                    if manual { self.statusMessage = "Không nhận được phản hồi từ máy chủ." }
+                    return
+                }
+                do {
+                    let release = try JSONDecoder().decode(ReleaseInfo.self, from: data)
+                    self.processReleaseResult(release: release, manual: manual)
+                } catch {
+                    if manual { self.statusMessage = "Không có bản cập nhật mới khả dụng." }
+                }
+            }
+        }.resume()
+    }
+
+    private func processReleaseResult(release: ReleaseInfo, manual: Bool) {
+        self.isChecking = false
+        self.latestRelease = release
+
+        let numericNewer = self.isVersionNewer(remoteTag: release.tagName, currentTag: AppUpdateManager.currentVersion)
+        let newBuild = release.id >= 0 && release.id != self.lastSeenReleaseId
+        self.hasUpdate = numericNewer || newBuild
+
+        if self.hasUpdate {
+            self.statusMessage = "Có bản cập nhật mới: \(release.tagName)"
+            if manual || newBuild {
+                self.showingUpdateModal = true
+                self.lastSeenReleaseId = release.id
+            }
+        } else {
+            if manual {
+                self.statusMessage = "Ứng dụng đang ở phiên bản mới nhất (\(release.tagName))"
+            }
+        }
     }
     
     private func isVersionNewer(remoteTag: String, currentTag: String) -> Bool {
