@@ -518,7 +518,26 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="endsWith"&&args.size()>=2){ std::string p=ENG().getString(args[1].asRef()); outResult=JavaValue(s0.size()>=p.size()&&s0.compare(s0.size()-p.size(),p.size(),p)==0?1:0); return true; }
         if(methodName=="compareTo"&&args.size()>=2){ std::string o=ENG().getString(args[1].asRef()); outResult=JavaValue((int32_t)s0.compare(o)); return true; }
         if(methodName=="compareToIgnoreCase"&&args.size()>=2){ std::string o=ENG().getString(args[1].asRef()); outResult=JavaValue((int32_t)toLowerStr(s0).compare(toLowerStr(o))); return true; }
-        if(methodName=="hashCode"){ int h=0; for(char c:s0)h=31*h+c; outResult=JavaValue(h); return true; }
+        if(methodName=="hashCode"){
+            int32_t h = 0;
+            for (size_t i = 0; i < s0.size();) {
+                uint32_t cp = 0;
+                uint8_t b0 = (uint8_t)s0[i++];
+                if (b0 < 0x80) {
+                    cp = b0;
+                } else if ((b0 & 0xE0) == 0xC0 && i < s0.size()) {
+                    cp = ((b0 & 0x1F) << 6) | ((uint8_t)s0[i++] & 0x3F);
+                } else if ((b0 & 0xF0) == 0xE0 && i + 1 < s0.size()) {
+                    cp = ((b0 & 0x0F) << 12) | (((uint8_t)s0[i] & 0x3F) << 6) | ((uint8_t)s0[i + 1] & 0x3F);
+                    i += 2;
+                } else {
+                    cp = b0;
+                }
+                h = 31 * h + (int32_t)cp;
+            }
+            outResult = JavaValue(h);
+            return true;
+        }
         if(methodName=="replace"&&args.size()>=3){ char a=(char)args[1].asInt(),b=(char)args[2].asInt(); std::string s=s0; std::replace(s.begin(),s.end(),a,b); outResult=JavaValue(ENG().createString(s),true); return true; }
         if(methodName=="toCharArray"){ uint32_t r=ENG().allocArray(5,(int)s0.size()); JavaArray*a=ENG().getArray(r); if(a)for(size_t i=0;i<s0.size();i++)a->charData[i]=(uint16_t)(uint8_t)s0[i]; outResult=JavaValue(r,true); return true; }
         if(methodName=="getChars"&&args.size()>=5){ JavaArray*a=ENG().getArray(args[4].asRef()); int sb=args[1].asInt(),eb=args[2].asInt(),db=args[3].asInt(); if(a)for(int i=sb;i<eb&&i<(int)s0.size()&&db+i-sb<(int)a->charData.size();i++)a->charData[db+i-sb]=(uint16_t)(uint8_t)s0[i]; return true; }

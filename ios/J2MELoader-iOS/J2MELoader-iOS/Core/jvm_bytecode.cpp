@@ -2586,18 +2586,20 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             std::vector<JavaValue> callArgs(paramCount);
             for (int a = paramCount - 1; a >= 0; --a) callArgs[a] = frame.pop();
 
+            // If this is a virtual call on an object instance, resolve actual object's class
+            std::string actualClass = targetClass;
+            if (op != OP_INVOKESTATIC && !callArgs.empty() && callArgs[0].asRef() != 0) {
+                JavaObject* thisObj = getObject(callArgs[0].asRef());
+                if (thisObj && !thisObj->className.empty()) {
+                    actualClass = thisObj->className;
+                }
+            }
+
             JavaValue retVal;
-            if (dispatchNativeMethod(targetClass, targetMethod, targetDesc, callArgs, retVal, display)) {
+            if (dispatchNativeMethod(actualClass, targetMethod, targetDesc, callArgs, retVal, display) ||
+                (actualClass != targetClass && dispatchNativeMethod(targetClass, targetMethod, targetDesc, callArgs, retVal, display))) {
                 if (targetDesc.find(")V") == std::string::npos) frame.push(retVal);
             } else {
-                // If this is a virtual call on an object instance, use actual object's class if available
-                std::string actualClass = targetClass;
-                if (op != OP_INVOKESTATIC && !callArgs.empty() && callArgs[0].asRef() != 0) {
-                    JavaObject* thisObj = getObject(callArgs[0].asRef());
-                    if (thisObj && !thisObj->className.empty()) {
-                        actualClass = thisObj->className;
-                    }
-                }
                 auto targetCls = findOrLoadClass(actualClass, m_activeJar);
                 if (!targetCls && actualClass != targetClass) {
                     targetCls = findOrLoadClass(targetClass, m_activeJar);
