@@ -329,6 +329,69 @@ bool native_can_send_text(void) {
 #endif
 }
 
+bool native_prompt_text_input(const char *title, const char *initialText, char *outBuffer, int maxLen) {
+    if (!outBuffer || maxLen <= 0) return false;
+    __block bool done = false;
+    __block bool confirmed = false;
+    __block NSString *resultStr = nil;
+    
+    NSString *nsTitle = title ? [NSString stringWithUTF8String:title] : @"Nhập văn bản";
+    NSString *nsInitial = initialText ? [NSString stringWithUTF8String:initialText] : @"";
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIViewController *rootVC = nil;
+        UIWindow *window = nil;
+        for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+                    if (w.isKeyWindow) { window = w; break; }
+                }
+            }
+        }
+        rootVC = window ? window.rootViewController : nil;
+        while (rootVC.presentedViewController) {
+            rootVC = rootVC.presentedViewController;
+        }
+        
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:nsTitle
+                                                                       message:@"Nhập nội dung bằng bàn phím hệ thống:"
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+            textField.text = nsInitial;
+            textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+        }];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Xong" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            UITextField *tf = alert.textFields.firstObject;
+            resultStr = tf ? tf.text : @"";
+            confirmed = true;
+            done = true;
+        }]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Hủy" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+            confirmed = false;
+            done = true;
+        }]];
+        
+        if (rootVC) {
+            [rootVC presentViewController:alert animated:YES completion:nil];
+        } else {
+            done = true;
+        }
+    });
+    
+    int waits = 0;
+    while (!done && waits < 600) {
+        usleep(100000); // 100ms
+        waits++;
+    }
+    
+    if (confirmed && resultStr) {
+        strncpy(outBuffer, resultStr.UTF8String, maxLen - 1);
+        outBuffer[maxLen - 1] = '\0';
+        return true;
+    }
+    return false;
+}
+
 bool native_camera_snapshot(uint8_t **outPNG, int *outLen) {
     if (outPNG) *outPNG = NULL;
     if (outLen) *outLen = 0;

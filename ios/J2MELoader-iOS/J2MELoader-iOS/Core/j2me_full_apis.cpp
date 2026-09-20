@@ -53,6 +53,7 @@ void native_calendar_request(void) __attribute__((weak));
 bool native_contact_get(int index, char *name, int nameCap, char *phone, int phoneCap) __attribute__((weak));
 bool native_http_send(const char *url, const char *method, const uint8_t *body, int bodyLen, uint8_t **outData, int *outLen, int *outCode, char *outType, int typeCap) __attribute__((weak));
 bool native_can_send_text(void) __attribute__((weak));
+bool native_prompt_text_input(const char *title, const char *initialText, char *outBuffer, int maxLen) __attribute__((weak));
 void native_vibrate(int ms) __attribute__((weak));
 bool native_camera_snapshot(uint8_t **outPNG, int *outLen) __attribute__((weak));
 void native_background_keepalive_start(void) __attribute__((weak));
@@ -340,35 +341,34 @@ void FullApis::onKey(int keyCode, bool isDown, LcduiDisplay* display){
     }
 }
 
-// Render high-level screen (Form/List/TextBox/Alert) onto framebuffer so user sees something
+// Render high-level screen (Form/List/TextBox/Alert) onto framebuffer so user sees clear text
 static void renderScreen(uint32_t ref, LcduiDisplay* display){
     if(!display) return;
     auto it=g_screens.find(ref);
-    std::string title = (it!=g_screens.end()? it->second.title : "J2ME");
+    std::string title = (it!=g_screens.end()? it->second.title : "Nhập văn bản");
     std::string text = (it!=g_screens.end()? it->second.text : "");
     std::vector<std::string> items = (it!=g_screens.end()? it->second.items : std::vector<std::string>());
     int sel = (it!=g_screens.end()? it->second.selected : 0);
     int w=display->getWidth(), h=display->getHeight();
-    display->clear(0xFF0B1220);
-    display->fillRect(0,0,w,22,0xFF1E293B);
-    display->drawString(title.empty()?"J2ME":title.substr(0,24), w/2, 11, 1|2, 0xFF38BDF8);
-    int y=32;
+    display->clear(0xFFF8F9FA); // Clean modern background
+    display->fillRect(0,0,w,28,0xFF0078D7); // Modern header bar
+    display->drawString(title.empty()?"Nhập văn bản":title.substr(0,28), w/2, 14, 1|2, 0xFFFFFFFF);
+    int y=38;
     if(!text.empty()){
-        // simple word wrap by 30 chars
-        size_t pos=0;
-        while(pos<text.size() && y<h-20){
-            std::string chunk=text.substr(pos,30);
-            display->drawString(chunk, 8, y, 4|16, 0xFFE2E8F0);
-            pos+=30; y+=12;
-        }
-        y+=6;
+        // Draw modern text card
+        int boxH = 36;
+        display->fillRect(8, y, w - 16, boxH, 0xFFFFFFFF);
+        display->drawRect(8, y, w - 16, boxH, 0xFF0078D7);
+        display->drawString(text, 14, y + boxH / 2, 4|2, 0xFF111827);
+        y += boxH + 12;
     }
     for(size_t i=0;i<items.size() && y<h-10;i++){
-        uint32_t bg = ((int)i==sel)? 0xFF2563EB : 0xFF0F172A;
-        uint32_t fg = ((int)i==sel)? 0xFFFFFFFF : 0xFFCBD5E1;
-        display->fillRect(4,y,w-8,14,bg);
-        display->drawString(std::string(((int)i==sel)?"> ":"  ")+items[i].substr(0,28), 8, y+7, 4|2, fg);
-        y+=16;
+        uint32_t bg = ((int)i==sel)? 0xFF0078D7 : 0xFFFFFFFF;
+        uint32_t fg = ((int)i==sel)? 0xFFFFFFFF : 0xFF1F2937;
+        display->fillRect(8,y,w-16,20,bg);
+        display->drawRect(8,y,w-16,20,0xFFE5E7EB);
+        display->drawString(std::string(((int)i==sel)?"> ":"  ")+items[i].substr(0,28), 14, y+10, 4|2, fg);
+        y+=24;
     }
 }
 
@@ -846,6 +846,15 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             uint32_t nxt=args[1].asRef(); JavaObject*o=ENG().getObject(nxt);
             g_currentScreen=nxt;
             if(display && o&&(o->className=="javax/microedition/lcdui/Form"||o->className=="javax/microedition/lcdui/List"||o->className=="javax/microedition/lcdui/TextBox"||o->className=="javax/microedition/lcdui/Alert")){
+                if (o->className == "javax/microedition/lcdui/TextBox") {
+                    if (hasNative((const void*)native_prompt_text_input)) {
+                        char buf[512] = {0};
+                        auto &sd = ensureScreen(nxt);
+                        if (native_prompt_text_input(sd.title.c_str(), sd.text.c_str(), buf, sizeof(buf))) {
+                            sd.text = buf;
+                        }
+                    }
+                }
                 renderScreen(nxt, display);
                 return true;
             }

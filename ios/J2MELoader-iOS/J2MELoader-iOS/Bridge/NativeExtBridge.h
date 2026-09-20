@@ -47,6 +47,9 @@ bool native_contact_get(int index, char *name, int nameCap, char *phone, int pho
 // Messaging (WMA): iOS requires user UI, only capability check.
 bool native_can_send_text(void);
 
+// Native System Keyboard Input Dialog (Bàn phím hệ thống iOS cho Form/TextBox/TextField)
+bool native_prompt_text_input(const char *title, const char *initialText, char *outBuffer, int maxLen);
+
 // Camera snapshot (MMAPI capture://video + AMMS): PNG bytes, true on success.
 bool native_camera_snapshot(uint8_t **outPNG, int *outLen);
 
