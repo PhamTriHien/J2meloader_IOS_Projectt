@@ -53,6 +53,7 @@ class IOSTestEmulatorApp(tk.Tk):
         self.current_game_path = None
         self.current_game_title = "Chưa chọn Game"
         self.game_proc = None
+        self.game_hwnd = None
         self.fps_val = 60
         self.speed_multiplier = 1
         self.shader_mode = "Nearest"
@@ -115,10 +116,11 @@ class IOSTestEmulatorApp(tk.Tk):
         self.lbl_fps_badge.pack(side=tk.RIGHT, padx=12)
 
         # Game Canvas Screen Area
-        self.canvas_frame = tk.Frame(self.phone_bezel, bg=COLOR_SCREEN_BG, height=320, width=240)
+        self.canvas_frame = tk.Frame(self.phone_bezel, bg=COLOR_SCREEN_BG, height=360, width=270)
         self.canvas_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=6)
+        self.canvas_frame.bind("<Configure>", self.on_canvas_resize)
 
-        self.game_display = tk.Label(self.canvas_frame, bg=COLOR_SCREEN_BG, text="Chưa khởi động Game\nBấm [Chọn Game (.JAR)] để chạy", font=("Segoe UI", 10), fg=COLOR_TEXT_MUTED)
+        self.game_display = tk.Label(self.canvas_frame, bg=COLOR_SCREEN_BG, text="Đang nạp màn hình máy ảo iOS...\nVui lòng chờ trong giây lát", font=("Segoe UI", 10), fg=COLOR_TEXT_MUTED)
         self.game_display.pack(fill=tk.BOTH, expand=True)
 
         # Virtual iOS Keypad (mimics VirtualKeypadView.swift)
@@ -220,6 +222,16 @@ class IOSTestEmulatorApp(tk.Tk):
         self.log(f"Đã nạp file game: {jar_path}")
         self.restart_current_game()
 
+    def on_canvas_resize(self, event):
+        if self.game_hwnd:
+            try:
+                import win32gui
+                w = max(100, event.width)
+                h = max(100, event.height)
+                win32gui.MoveWindow(self.game_hwnd, 0, 0, w, h, True)
+            except Exception:
+                pass
+
     def restart_current_game(self):
         if not self.current_game_path or not os.path.exists(self.current_game_path):
             messagebox.showwarning("Cảnh báo", "Vui lòng chọn file game .jar trước!")
@@ -227,6 +239,8 @@ class IOSTestEmulatorApp(tk.Tk):
 
         self.stop_current_game()
         self.log("Đang khởi tạo môi trường máy ảo iOS...")
+        self.game_display.config(text="Đang nạp màn hình máy ảo iOS...\nVui lòng chờ trong giây lát")
+        self.game_display.pack(fill=tk.BOTH, expand=True)
 
         def _run():
             try:
@@ -240,7 +254,11 @@ class IOSTestEmulatorApp(tk.Tk):
                 ]
                 self.game_proc = subprocess.Popen(cmd, cwd=os.path.dirname(FREEJ2ME_JAR), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
                 self.is_running = True
-                self.log("Game đã chạy thành công trong môi trường máy ảo!")
+                self.log("Lõi máy ảo Java đã khởi động! Đang kết nối đồ họa vào khung iPhone...")
+                
+                # Start window embedding monitor
+                threading.Thread(target=self._embed_game_window, daemon=True).start()
+
                 for line in self.game_proc.stdout:
                     if line.strip():
                         self.log(line.strip())
@@ -248,6 +266,41 @@ class IOSTestEmulatorApp(tk.Tk):
                 self.log(f"Lỗi khởi chạy: {e}")
 
         threading.Thread(target=_run, daemon=True).start()
+
+    def _embed_game_window(self):
+        time.sleep(1.0)
+        import win32gui, win32con
+        for _ in range(40):
+            if not self.is_running: return
+            hwnd = None
+            def enum_cb(h, extra):
+                nonlocal hwnd
+                t = win32gui.GetWindowText(h)
+                if "FreeJ2ME" in t or (self.current_game_title and self.current_game_title[:6] in t):
+                    hwnd = h
+            win32gui.EnumWindows(enum_cb, None)
+            if hwnd:
+                self.game_hwnd = hwnd
+                try:
+                    parent_id = self.canvas_frame.winfo_id()
+                    
+                    # Strip window decorations
+                    style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
+                    style &= ~(win32con.WS_CAPTION | win32con.WS_THICKFRAME | win32con.WS_MINIMIZEBOX | win32con.WS_MAXIMIZEBOX | win32con.WS_SYSMENU)
+                    style |= win32con.WS_CHILD
+                    win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
+                    win32gui.SetParent(hwnd, parent_id)
+                    
+                    # Hide text label and size game window
+                    self.game_display.pack_forget()
+                    w = max(240, self.canvas_frame.winfo_width())
+                    h = max(320, self.canvas_frame.winfo_height())
+                    win32gui.MoveWindow(hwnd, 0, 0, w, h, True)
+                    self.log(f"Đã nhúng trực tiếp màn hình đồ họa game vào khung iPhone iOS thành công!")
+                except Exception as e:
+                    self.log(f"Lỗi nhúng cửa sổ: {e}")
+                break
+            time.sleep(0.3)
 
     def stop_current_game(self):
         if self.game_proc:
@@ -257,7 +310,10 @@ class IOSTestEmulatorApp(tk.Tk):
             except Exception:
                 pass
             self.game_proc = None
+            self.game_hwnd = None
             self.is_running = False
+            self.game_display.config(text="Game đã dừng.\nBấm [▶ Khởi Chạy Lại] để tiếp tục")
+            self.game_display.pack(fill=tk.BOTH, expand=True)
 
     def send_key_press(self, vk):
         self.log(f"Gửi sự kiện phím VK_{vk}")
