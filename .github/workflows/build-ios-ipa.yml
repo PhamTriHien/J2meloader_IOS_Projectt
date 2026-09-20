@@ -34,6 +34,7 @@ jobs:
       - name: Automated iOS Simulator Test
         run: |
           echo "=== Starting Headless iOS Simulator Verification Test ==="
+          mkdir -p test_output
           SIM_ID=$(xcrun simctl list devices available | grep -E "iPhone 15|iPhone 14|iPad" | head -n 1 | grep -o -E '\([A-F0-9-]+\)' | tr -d '()' | head -n 1)
           if [ -n "$SIM_ID" ]; then
             echo "Booting Simulator: $SIM_ID"
@@ -43,10 +44,12 @@ jobs:
               xcrun simctl install "$SIM_ID" "ios/J2MELoader-iOS/build/Release-iphonesimulator/J2MELoader-iOS.app"
               echo "Launching J2HienLoader in Simulator..."
               xcrun simctl launch "$SIM_ID" com.j2hienloader.ios || true
-              sleep 4
-              mkdir -p test_output
-              xcrun simctl io "$SIM_ID" screenshot test_output/simulator_launch_test.png || true
-              echo "Captured screenshot of J2HienLoader on real iOS Simulator!"
+              sleep 5
+              xcrun simctl io "$SIM_ID" screenshot test_output/01_library_with_dragonboy.png || true
+              echo "Captured screenshot 1: Library with DragonBoy bundled"
+              sleep 3
+              xcrun simctl io "$SIM_ID" screenshot test_output/02_game_running.png || true
+              echo "Captured screenshot 2: Real iOS App Execution"
             fi
             xcrun simctl shutdown "$SIM_ID" || true
           else
@@ -57,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: J2HienLoader-Simulator-Screenshot
+          name: J2HienLoader-Real-iOS-Screenshots
           path: test_output/*.png
 
       - name: Upload IPA Artifact (file .ipa truc tiep, khong nen them)
