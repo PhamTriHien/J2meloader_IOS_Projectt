@@ -31,83 +31,24 @@ jobs:
           chmod +x build_ipa.sh
           ./build_ipa.sh
 
-      - name: Automated iOS Simulator Test
-        run: |
-          echo "=== Starting Headless iOS Simulator Verification Test ==="
-          mkdir -p test_output
-          SIM_ID=$(xcrun simctl list devices available | grep -E "iPhone 15|iPhone 14|iPad" | head -n 1 | grep -o -E '\([A-F0-9-]+\)' | tr -d '()' | head -n 1)
-          if [ -n "$SIM_ID" ]; then
-            echo "Booting Simulator: $SIM_ID"
-            xcrun simctl boot "$SIM_ID" || true
-            xcrun simctl bootstatus "$SIM_ID" -b || true
-            if [ -d "ios/J2MELoader-iOS/build/Release-iphonesimulator/J2MELoader-iOS.app" ]; then
-              echo "Installing app into Simulator..."
-              xcrun simctl install "$SIM_ID" "ios/J2MELoader-iOS/build/Release-iphonesimulator/J2MELoader-iOS.app"
-
-              echo "=== Test 1: Clean App Library Screen ==="
-              xcrun simctl terminate "$SIM_ID" com.playsoftware.j2meloader || true
-              xcrun simctl launch "$SIM_ID" com.playsoftware.j2meloader -SkipUpdateCheck || true
-              echo "Launching J2HienLoader in Simulator..."
-              xcrun simctl launch "$SIM_ID" com.playsoftware.j2meloader || true
-              sleep 5
-              xcrun simctl io "$SIM_ID" screenshot test_output/01_app_library.png || true
-            fi
-            xcrun simctl shutdown "$SIM_ID" || true
-          else
-            echo "No simulator found, skipping headless test"
-          fi
-
-      - name: Upload Test Output Screenshot
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: J2HienLoader-Real-iOS-Screenshots
-          path: test_output/*.png
-
-      - name: Upload IPA Artifact (file .ipa truc tiep, khong nen them)
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: J2HienLoader-IPA
           path: |
             **/build/*.ipa
 
-      - name: Upload Simulator Artifact (Appetize.io)
-        uses: actions/upload-artifact@v4
-        with:
-          name: J2HienLoader-Simulator
-          path: |
-            **/build/*.zip
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
           tag_name: v1.8.3-j2hienloader
-          name: "J2HienLoader iOS v1.8.3 - Bản chính thức Tiếng Việt & Sửa lỗi Form Text & Tối ưu JVM 100%"
+          name: "J2HienLoader iOS v1.8.3 - Bản chính thức IPA"
           body: |
-            ## J2HienLoader cho iOS & iPadOS (Bản phát hành chính thức v1.8.3)
-            
-            ### ✨ Các cải tiến & tính năng nổi bật mới nhất:
-            - **Khắc phục triệt để lỗi sập bộ nhớ Stack trên iOS (SIGBUS 10 / EXC_BAD_ACCESS)**:
-              - Nâng cấp luồng `JvmThread` với stack **4 MB** độc lập, an toàn tuyệt đối khi JVM đệ quy sâu.
-            - **Bàn phím Hệ thống Gốc (Native iOS Keyboard)**:
-              - Gõ chữ tiếng Việt có dấu, gõ số, tài khoản, mật khẩu trực tiếp trong mọi form game (`TextBox`, `TextField`).
-              - Loại bỏ hoàn toàn cơ chế chọn từng chữ T9 lỗi thời.
-            - **Hoàn thiện đồ họa LCDUI 2D & GameCanvas sát gốc 99%**:
-              - Hỗ trợ đầy đủ `Graphics.translate`, `setClip`, `clipRect`, `drawArc`, `fillArc`, `drawRoundRect`, `fillRoundRect`, `fillTriangle`.
-              - Blit Sprite và TiledLayer tốc độ cao 60 FPS.
-            - **Mở rộng toàn diện tập lệnh Bytecode & API CLDC 1.1 / MIDP 2.0**:
-              - Bổ sung `DUP2_X1`, `DUP2_X2`, `LDC Class`, chuyển đổi bit Float/Double, ngoại lệ `athrow` unwinding.
-            - **Treo game ngầm 24/7 (Anti-Crash & Anti-Disconnect)**:
-              - Tự động duy trì socket mạng và luồng nhịp khi tắt màn hình hoặc chuyển sang ứng dụng khác.
-            
-            ### 📲 Hướng dẫn cài đặt:
-            1. **Cài lên iPhone/iPad thật**: Tải `J2HienLoader.ipa` cài qua **TrollStore**, **Sideloadly**, **AltStore**, **Esign**, **Scarlet**, hoặc **Feather**.
-            2. **Chạy thử trên Trình duyệt Web (Appetize.io)**: Tải file `J2HienLoader-Simulator-iPad.zip` và upload lên **Appetize.io**.
+            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.3)
+            Ứng dụng giả lập J2ME chuẩn cho hệ điều hành iOS/iPadOS, nạp và chạy file .jar trực tiếp.
           files: |
             **/build/*.ipa
-            **/build/*.zip
-            test_output/*.png
           draft: false
           prerelease: false
           make_latest: true
