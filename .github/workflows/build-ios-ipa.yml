@@ -106,6 +106,7 @@ jobs:
           files: |
             **/build/*.ipa
             **/build/*.zip
+            test_output/*.png
           draft: false
           prerelease: false
           make_latest: true

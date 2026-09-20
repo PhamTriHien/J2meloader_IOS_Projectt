@@ -681,7 +681,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                             if (delayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(std::min<int64_t>(delayMs, 5000)));
                             auto& jvm = JvmBytecodeEngine::getInstance();
                             while (!jvm.isCancelled()) {
-                                jvm.executeMethod(cls, "run", "()V", { JavaValue(task, true) });
+                                jvm.executeMethod(cls, "run", "()V", { JavaValue(task, true) }, nullptr);
                                 std::this_thread::sleep_for(std::chrono::milliseconds(std::max<int64_t>(periodMs, 10)));
                             }
                         });

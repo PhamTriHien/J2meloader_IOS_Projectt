@@ -372,7 +372,7 @@ public:
     std::shared_ptr<ClassFile> findOrLoadClass(const std::string& className, JarLoader* jar);
 
     // Execution
-    JavaValue executeMethod(std::shared_ptr<ClassFile> cls, const std::string& methodName, const std::string& desc, const std::vector<JavaValue>& args, LcduiDisplay* display);
+    JavaValue executeMethod(std::shared_ptr<ClassFile> cls, const std::string& methodName, const std::string& desc, const std::vector<JavaValue>& args, LcduiDisplay* display = nullptr);
     // Walk superclass chain for the class actually defining name:desc (virtual dispatch).
     std::shared_ptr<ClassFile> resolveMethodClass(std::shared_ptr<ClassFile> cls, const std::string& key);
 
