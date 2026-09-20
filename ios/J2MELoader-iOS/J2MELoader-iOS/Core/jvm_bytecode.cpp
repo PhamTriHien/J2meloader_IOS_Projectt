@@ -1414,50 +1414,49 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             }
             return true;
         }
+        auto ensureSocketBuffer = [&](JavaObject* obj, int needed) {
+            if (!obj) return;
+            auto sfi = obj->fields.find("sockFd");
+            if (sfi == obj->fields.end() || sfi->second.asInt() < 0) return;
+            JavaArray* ba = getArray(obj->fields["buf"].asRef());
+            int pp = obj->fields["pos"].asInt();
+            int avail = ba ? ((int)ba->byteData.size() - pp) : 0;
+            if (avail >= needed) return;
+
+#if !defined(_WIN32) && !defined(_WIN64)
+            int fd = sfi->second.asInt();
+            while (avail < needed) {
+                fd_set rs; FD_ZERO(&rs); FD_SET(fd, &rs);
+                struct timeval tv{1, 500000}; // wait up to 1.5s
+                int r = select(fd + 1, &rs, nullptr, nullptr, &tv);
+                if (r <= 0 || !FD_ISSET(fd, &rs)) break;
+                uint8_t tmp[4096];
+                ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
+                if (n <= 0) break;
+
+                if (!ba || pp >= (int)ba->byteData.size()) {
+                    uint32_t na = allocArray(8, (int)n);
+                    JavaArray* naa = getArray(na);
+                    if (naa) naa->byteData.assign(tmp, tmp + n);
+                    obj->fields["buf"] = JavaValue(na, true);
+                    obj->fields["pos"] = JavaValue(0);
+                    ba = naa;
+                    pp = 0;
+                    avail = (int)n;
+                } else {
+                    ba->byteData.insert(ba->byteData.end(), tmp, tmp + n);
+                    avail = (int)ba->byteData.size() - pp;
+                }
+            }
+#endif
+        };
+
         if (methodName == "read") {
             JavaObject* obj = getObject(args[0].asRef());
             if (!obj) { outResult = JavaValue(-1); return true; }
-            // Socket-backed: refill from live TCP when buffer exhausted
-            {
-                auto sfi = obj->fields.find("sockFd");
-                if (sfi != obj->fields.end() && sfi->second.asInt() >= 0) {
-                    JavaArray* ba = getArray(obj->fields["buf"].asRef());
-                    int pp = obj->fields["pos"].asInt();
-                    bool empty = !ba || pp < 0 || pp >= (int)ba->byteData.size();
-                    if (empty) {
-#if !defined(_WIN32) && !defined(_WIN64)
-                        int fd = sfi->second.asInt();
-                        // MIDP blocking read: wait up to ~8s like real phones,
-                        // reconnect once on orderly close (online games drop idle sockets)
-                        for (int attempt = 0; attempt < 2; ++attempt) {
-                            bool gotClose = false;
-                            for (int w = 0; w < 40; ++w) {
-                                fd_set rs; FD_ZERO(&rs); FD_SET(fd, &rs);
-                                struct timeval tv{0, 200000};
-                                int r = select(fd+1, &rs, nullptr, nullptr, &tv);
-                                if (r > 0 && FD_ISSET(fd, &rs)) {
-                                    uint8_t tmp[4096]; ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
-                                    if (n > 0) {
-                                        uint32_t na = allocArray(8, (int)n);
-                                        JavaArray* naa = getArray(na);
-                                        if (naa) naa->byteData.assign(tmp, tmp + n);
-                                        obj->fields["buf"] = JavaValue(na, true);
-                                        obj->fields["pos"] = JavaValue(0);
-                                    } else if (n == 0) {
-                                        gotClose = true;
-                                    }
-                                    break;
-                                }
-                            }
-                            if (!gotClose) break;
-                            int nfd = FullApis::reconnectSocket(args[0].asRef());
-                            if (nfd < 0) break;
-                            fd = nfd;
-                        }
-#endif
-                    }
-                }
-            }
+            int need = (args.size() >= 4) ? args[3].asInt() : ((args.size() == 2 && getArray(args[1].asRef())) ? (int)getArray(args[1].asRef())->byteData.size() : 1);
+            ensureSocketBuffer(obj, std::max(1, need));
+
             JavaArray* arr = getArray(obj->fields["buf"].asRef());
             int pos = obj->fields["pos"].asInt();
             if (arr && pos >= 0 && pos < (int)arr->byteData.size()) {
@@ -1494,6 +1493,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "readByte" || methodName == "readUnsignedByte") {
             JavaObject* obj = getObject(args[0].asRef());
+            ensureSocketBuffer(obj, 1);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
             if (arr && pos >= 0 && pos < (int)arr->byteData.size()) {
@@ -1507,6 +1507,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "readBoolean") {
             JavaObject* obj = getObject(args[0].asRef());
+            ensureSocketBuffer(obj, 1);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
             if (arr && pos >= 0 && pos < (int)arr->byteData.size()) {
@@ -1520,6 +1521,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "readShort" || methodName == "readUnsignedShort") {
             JavaObject* obj = getObject(args[0].asRef());
+            ensureSocketBuffer(obj, 2);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
             if (arr && pos + 1 < (int)arr->byteData.size()) {
@@ -1533,6 +1535,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "readChar") {
             JavaObject* obj = getObject(args[0].asRef());
+            ensureSocketBuffer(obj, 2);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
             if (arr && pos + 1 < (int)arr->byteData.size()) {
@@ -1546,6 +1549,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "readFloat") {
             JavaObject* obj = getObject(args[0].asRef());
+            ensureSocketBuffer(obj, 4);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
             if (arr && pos + 3 < (int)arr->byteData.size()) {
@@ -1564,6 +1568,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "readDouble") {
             JavaObject* obj = getObject(args[0].asRef());
+            ensureSocketBuffer(obj, 8);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
             if (arr && pos + 7 < (int)arr->byteData.size()) {
@@ -1580,6 +1585,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "readInt") {
             JavaObject* obj = getObject(args[0].asRef());
+            ensureSocketBuffer(obj, 4);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
             if (arr && pos + 3 < (int)arr->byteData.size()) {
@@ -1596,6 +1602,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "readLong") {
             JavaObject* obj = getObject(args[0].asRef());
+            ensureSocketBuffer(obj, 8);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
             if (arr && pos + 7 < (int)arr->byteData.size()) {
@@ -1610,13 +1617,16 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "readUTF") {
             JavaObject* obj = getObject(args[0].asRef());
+            ensureSocketBuffer(obj, 2);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
             if (arr && pos + 1 < (int)arr->byteData.size()) {
                 uint16_t len = ((uint16_t)arr->byteData[pos] << 8) | arr->byteData[pos + 1];
                 pos += 2;
+                ensureSocketBuffer(obj, len);
+                arr = getArray(obj->fields["buf"].asRef());
                 std::string s = "";
-                if (pos + len <= (int)arr->byteData.size()) {
+                if (arr && pos + len <= (int)arr->byteData.size()) {
                     s = std::string((char*)(arr->byteData.data() + pos), len);
                     pos += len;
                 }
@@ -1629,11 +1639,12 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "readFully" && args.size() >= 2) {
             JavaObject* obj = getObject(args[0].asRef());
-            JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
-            int pos = obj ? obj->fields["pos"].asInt() : 0;
             JavaArray* dst = getArray(args[1].asRef());
             int off = args.size() >= 4 ? args[2].asInt() : 0;
             int len = args.size() >= 4 ? args[3].asInt() : (dst ? (int)dst->byteData.size() : 0);
+            ensureSocketBuffer(obj, len);
+            JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
+            int pos = obj ? obj->fields["pos"].asInt() : 0;
             if (arr && dst) {
                 int count = std::min(len, (int)arr->byteData.size() - pos);
                 for (int i = 0; i < count; ++i) {
