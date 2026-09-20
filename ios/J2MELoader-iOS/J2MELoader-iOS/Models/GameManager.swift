@@ -47,6 +47,21 @@ public class GameManager: ObservableObject {
         } else {
             self.games = []
         }
+
+        // Automated Acceptance Testing Hook
+        if let idx = CommandLine.arguments.firstIndex(of: "-TestRunJar"),
+           idx + 1 < CommandLine.arguments.count {
+            let jarPath = CommandLine.arguments[idx + 1]
+            let url = URL(fileURLWithPath: jarPath)
+            if FileManager.default.fileExists(atPath: url.path) {
+                importJar(from: url)
+                if let game = self.games.first {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        self.launchGame(game)
+                    }
+                }
+            }
+        }
     }
     
     public func saveGames() {

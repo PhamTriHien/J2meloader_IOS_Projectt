@@ -42,7 +42,9 @@ struct J2MELoaderApp: App {
     
     private func handleAppBecameActive() {
         endBackgroundTask()
-        AppUpdateManager.shared.checkForUpdates(manual: false)
+        if !CommandLine.arguments.contains("-SkipUpdateCheck") {
+            AppUpdateManager.shared.checkForUpdates(manual: false)
+        }
     }
     
     private func endBackgroundTask() {

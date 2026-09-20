@@ -271,7 +271,12 @@ public struct LibraryView: View {
                 UpdateModalView()
             }
             .onAppear {
-                updateManager.checkForUpdates(manual: false)
+                if !CommandLine.arguments.contains("-SkipUpdateCheck") {
+                    updateManager.checkForUpdates(manual: false)
+                }
+                if CommandLine.arguments.contains("-TestSettings") {
+                    activeSheet = .generalSettings
+                }
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
