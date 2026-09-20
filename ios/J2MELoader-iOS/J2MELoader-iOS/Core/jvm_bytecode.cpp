@@ -105,6 +105,7 @@ uint32_t JvmBytecodeEngine::graphicsForImage(uint32_t imgRef) {
     auto it = m_offscreens.find(imgRef);
     if (it == m_offscreens.end()) {
         auto disp = std::make_shared<LcduiDisplay>(ni->width, ni->height);
+        disp->clear(0x00000000); // Transparent initial background for offscreen buffer
         if (!ni->pixels.empty()) {
             disp->drawRGB((const int32_t*)ni->pixels.data(), 0, ni->width,
                           0, 0, ni->width, ni->height, true);
@@ -261,10 +262,11 @@ uint32_t JvmBytecodeEngine::loadNativeImageFromJar(const std::string& path) {
     if (!m_activeJar) return allocateNativeImage(16, 16, false);
 
     std::string entryName = path;
+    std::string origEntry = entryName;
     if (!entryName.empty() && entryName[0] == '/') entryName.erase(0, 1);
 
     std::vector<uint8_t> bytes;
-    if (m_activeJar->extractEntry(entryName, bytes)) {
+    if (m_activeJar->extractEntry(entryName, bytes) || (origEntry != entryName && m_activeJar->extractEntry(origEntry, bytes))) {
         return loadNativeImageFromBytes(bytes.data(), bytes.size());
     }
     // Case-insensitive / normalized entry fallback
@@ -1363,9 +1365,13 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         if (methodName == "getResourceAsStream") {
             std::string path = args.size() >= 2 ? getString(args[1].asRef()) : "";
             if (m_activeJar && !path.empty()) {
+                std::string origPath = path;
                 if (path[0] == '/') path.erase(0, 1);
                 std::vector<uint8_t> bytes;
                 bool ok = m_activeJar->extractEntry(path, bytes);
+                if (!ok && path != origPath) {
+                    ok = m_activeJar->extractEntry(origPath, bytes);
+                }
                 if (!ok) {
                     auto entries = m_activeJar->listEntries();
                     for (const auto& ent : entries) {

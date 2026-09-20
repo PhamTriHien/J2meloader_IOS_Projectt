@@ -81,13 +81,17 @@ private:
                 m_buffer[idx] = color;
             } else if (alpha > 0) {
                 uint32_t dst = m_buffer[idx];
-                uint32_t invAlpha = 255 - alpha;
-                
-                uint32_t r = (((color >> 16) & 0xFF) * alpha + ((dst >> 16) & 0xFF) * invAlpha) >> 8;
-                uint32_t g = (((color >> 8) & 0xFF) * alpha + ((dst >> 8) & 0xFF) * invAlpha) >> 8;
-                uint32_t b = ((color & 0xFF) * alpha + (dst & 0xFF) * invAlpha) >> 8;
-                
-                m_buffer[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                uint32_t dstAlpha = (dst >> 24) & 0xFF;
+                if (dstAlpha == 0) {
+                    m_buffer[idx] = color;
+                } else {
+                    uint32_t invAlpha = 255 - alpha;
+                    uint32_t r = (((color >> 16) & 0xFF) * alpha + ((dst >> 16) & 0xFF) * invAlpha) >> 8;
+                    uint32_t g = (((color >> 8) & 0xFF) * alpha + ((dst >> 8) & 0xFF) * invAlpha) >> 8;
+                    uint32_t b = ((color & 0xFF) * alpha + (dst & 0xFF) * invAlpha) >> 8;
+                    uint32_t outAlpha = std::min<uint32_t>(255, alpha + ((dstAlpha * invAlpha) >> 8));
+                    m_buffer[idx] = (outAlpha << 24) | (r << 16) | (g << 8) | b;
+                }
             }
         }
     }
