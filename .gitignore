@@ -9,9 +9,10 @@ build/
 *.ipa
 .DS_Store
 *.xcuserstate
-xcuserdata/
+userdata/
 DerivedData/
 desktop_runner/
 freej2me_system/
 J2MELoader_Desktop_App.py
 dist/
+*.spec
