@@ -269,6 +269,15 @@ uint32_t JvmBytecodeEngine::loadNativeImageFromJar(const std::string& path) {
     if (m_activeJar->extractEntry(entryName, bytes) || (origEntry != entryName && m_activeJar->extractEntry(origEntry, bytes))) {
         return loadNativeImageFromBytes(bytes.data(), bytes.size());
     }
+    // Prefix fallback: many Vietnamese J2ME games (Teamobi/DragonBoy/Avatar/NinjaSchool)
+    // store images inside density folders like 'x1/', 'x2/', 'res/' but request '/myfont/...' or '/bg/...'
+    static const char* kPrefixes[] = { "x1/", "x2/", "res/", "data/" };
+    for (const char* pfx : kPrefixes) {
+        std::string pfxPath = std::string(pfx) + entryName;
+        if (m_activeJar->extractEntry(pfxPath, bytes)) {
+            return loadNativeImageFromBytes(bytes.data(), bytes.size());
+        }
+    }
     // Case-insensitive / normalized entry fallback
     auto entries = m_activeJar->listEntries();
     for (const auto& ent : entries) {
@@ -1371,6 +1380,16 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 bool ok = m_activeJar->extractEntry(path, bytes);
                 if (!ok && path != origPath) {
                     ok = m_activeJar->extractEntry(origPath, bytes);
+                }
+                if (!ok) {
+                    static const char* kPrefixes[] = { "x1/", "x2/", "res/", "data/" };
+                    for (const char* pfx : kPrefixes) {
+                        std::string pfxPath = std::string(pfx) + path;
+                        if (m_activeJar->extractEntry(pfxPath, bytes)) {
+                            ok = true;
+                            break;
+                        }
+                    }
                 }
                 if (!ok) {
                     auto entries = m_activeJar->listEntries();
