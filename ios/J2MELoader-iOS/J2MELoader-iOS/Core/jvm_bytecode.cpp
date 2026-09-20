@@ -211,7 +211,7 @@ uint32_t JvmBytecodeEngine::allocateNativeImage(int w, int h, bool isMutable) {
     img.width = w > 0 ? w : 16;
     img.height = h > 0 ? h : 16;
     img.isMutable = isMutable;
-    img.pixels.resize(img.width * img.height, 0xFF000000);
+    img.pixels.resize(img.width * img.height, 0x00000000); // Fully transparent default
     m_nativeImages[ref] = std::move(img);
     return ref;
 }
@@ -297,7 +297,11 @@ uint32_t JvmBytecodeEngine::loadNativeImageFromJar(const std::string& path) {
             return loadNativeImageFromBytes(bytes.data(), bytes.size());
         }
     }
-    // Case-insensitive / normalized entry fallback
+    // Basename fallback (e.g. game requests "/gamelogo.png" or "/mainImage/..." while in JAR it is "x1/gamelogo.png"):
+    std::string baseName = entryName;
+    size_t lastSlash = baseName.find_last_of('/');
+    if (lastSlash != std::string::npos) baseName = baseName.substr(lastSlash + 1);
+
     auto entries = m_activeJar->listEntries();
     for (const auto& ent : entries) {
         std::string ce = ent;
@@ -305,6 +309,19 @@ uint32_t JvmBytecodeEngine::loadNativeImageFromJar(const std::string& path) {
         if (ce == entryName || toLowerStr(ce) == toLowerStr(entryName)) {
             if (m_activeJar->extractEntry(ent, bytes)) {
                 return loadNativeImageFromBytes(bytes.data(), bytes.size());
+            }
+        }
+    }
+    // Second pass matching by basename:
+    if (!baseName.empty()) {
+        for (const auto& ent : entries) {
+            std::string ce = ent;
+            size_t s = ce.find_last_of('/');
+            std::string eb = (s != std::string::npos) ? ce.substr(s + 1) : ce;
+            if (eb == baseName || toLowerStr(eb) == toLowerStr(baseName)) {
+                if (m_activeJar->extractEntry(ent, bytes)) {
+                    return loadNativeImageFromBytes(bytes.data(), bytes.size());
+                }
             }
         }
     }
