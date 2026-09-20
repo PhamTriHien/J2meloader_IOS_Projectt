@@ -502,6 +502,7 @@ static std::string getFieldName(std::shared_ptr<ClassFile> cls, uint16_t fIdx) {
 void JvmBytecodeEngine::ensureClinit(std::shared_ptr<ClassFile> cls, LcduiDisplay* display) {
     if (!cls || cls->clinitDone) return;
     cls->clinitDone = true;
+    std::cout << "[JVM] Running <clinit> for " << cls->thisClassName << std::endl;
     if (!cls->superClassName.empty() && cls->superClassName != "java/lang/Object") {
         auto superCls = findOrLoadClass(cls->superClassName, m_activeJar);
         if (superCls && superCls != cls) {
@@ -512,6 +513,7 @@ void JvmBytecodeEngine::ensureClinit(std::shared_ptr<ClassFile> cls, LcduiDispla
     if (clinitIt != cls->methods.end()) {
         executeMethod(cls, "<clinit>", "()V", {}, display);
     }
+    std::cout << "[JVM] Finished <clinit> for " << cls->thisClassName << std::endl;
 }
 
 bool JvmBytecodeEngine::isInstanceOf(const std::string& className, const std::string& targetType) {
@@ -2629,12 +2631,15 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             std::vector<JavaValue> callArgs(paramCount);
             for (int a = paramCount - 1; a >= 0; --a) callArgs[a] = frame.pop();
 
-            // If this is a virtual call on an object instance, resolve actual object's class
+            // If this is a virtual call on an object instance, resolve actual object's class.
+            // NOTE: OP_INVOKESPECIAL (super.<init>, super.method, private method) MUST use targetClass, NOT actualClass!
             std::string actualClass = targetClass;
-            if (op != OP_INVOKESTATIC && !callArgs.empty() && callArgs[0].asRef() != 0) {
-                JavaObject* thisObj = getObject(callArgs[0].asRef());
-                if (thisObj && !thisObj->className.empty()) {
-                    actualClass = thisObj->className;
+            if (op == OP_INVOKEVIRTUAL || op == OP_INVOKEINTERFACE) {
+                if (!callArgs.empty() && callArgs[0].asRef() != 0) {
+                    JavaObject* thisObj = getObject(callArgs[0].asRef());
+                    if (thisObj && !thisObj->className.empty()) {
+                        actualClass = thisObj->className;
+                    }
                 }
             }
 
