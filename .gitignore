@@ -17,3 +17,4 @@ J2MELoader_Desktop_App.py
 dist/
 *.spec
 test_screenshots/
+ios_simulator_room/
