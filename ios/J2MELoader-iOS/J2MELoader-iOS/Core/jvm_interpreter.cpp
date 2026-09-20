@@ -287,10 +287,25 @@ void JvmInterpreter::setCurrentCanvas(uint32_t ref, std::shared_ptr<ClassFile> c
 
 void JvmInterpreter::registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> cls) {
     if (!cls || ref == 0) return;
+    auto& jvm = JvmBytecodeEngine::getInstance();
+    bool isCanvas = false;
     {
         std::lock_guard<std::mutex> lk(m_stateMutex);
         m_runnableRef = ref;
         m_runnableClass = cls;
+        if (!m_canvasClass || m_canvasRef == 0) {
+            if (jvm.resolveMethodClass(cls, "paint:(Ljavax/microedition/lcdui/Graphics;)V")) {
+                m_canvasClass = cls;
+                m_canvasRef = ref;
+                isCanvas = true;
+            }
+        }
+    }
+    if (isCanvas) {
+        auto showCls = jvm.resolveMethodClass(cls, "showNotify:()V");
+        if (showCls) {
+            jvm.executeMethod(showCls, "showNotify", "()V", { JavaValue(ref, true) }, m_display.get());
+        }
     }
     JvmThread::spawnDetached([this, ref, cls]() {
         auto& jvm = JvmBytecodeEngine::getInstance();
@@ -318,6 +333,17 @@ void JvmInterpreter::findAndBindCanvas() {
     {
         std::lock_guard<std::mutex> lk(m_stateMutex);
         if (m_canvasClass && m_canvasRef != 0) return;
+        if (m_runnableClass && m_runnableRef != 0) {
+            if (jvm.resolveMethodClass(m_runnableClass, "paint:(Ljavax/microedition/lcdui/Graphics;)V")) {
+                m_canvasClass = m_runnableClass;
+                m_canvasRef = m_runnableRef;
+                auto showCls = jvm.resolveMethodClass(m_runnableClass, "showNotify:()V");
+                if (showCls) {
+                    jvm.executeMethod(showCls, "showNotify", "()V", { JavaValue(m_runnableRef, true) }, m_display.get());
+                }
+                return;
+            }
+        }
     }
 
     // Scan all classes in JAR archive to locate Canvas / GameCanvas subclass.
@@ -479,13 +505,14 @@ void JvmInterpreter::executionLoop() {
     while (m_running) {
         if (!m_paused) {
             processEvents();
+            tickCount++;
 
             bool haveCanvas = false;
             {
                 std::lock_guard<std::mutex> lk(m_stateMutex);
                 haveCanvas = (m_canvasClass && m_canvasRef != 0);
             }
-            if (!haveCanvas && tickCount > 60) {
+            if (!haveCanvas && tickCount > 10) {
                 findAndBindCanvas();
             }
 
@@ -516,8 +543,9 @@ void JvmInterpreter::executionLoop() {
                 }
                 ++m_paintTick;
             } else {
-                // Initial black clear only on the first few ticks
-                if (tickCount < 5) {
+                FullApis::renderCurrentScreen(m_display.get());
+                // Initial black clear only on the first few ticks if no high-level screen
+                if (FullApis::currentScreen() == 0 && tickCount < 5) {
                     m_display->clear(0xFF000000);
                 }
                 ++m_paintTick;

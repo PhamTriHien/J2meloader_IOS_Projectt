@@ -372,6 +372,12 @@ static void renderScreen(uint32_t ref, LcduiDisplay* display){
     }
 }
 
+void FullApis::renderCurrentScreen(LcduiDisplay* display){
+    if(g_currentScreen!=0 && display){
+        renderScreen(g_currentScreen, display);
+    }
+}
+
 static NativeImage* imgOf(uint32_t ref){ return ENG().getNativeImage(ref); }
 // Read image pixels through the offscreen display when the game drew on it
 // via getGraphics() (syncs back first), else raw pixels.
