@@ -18,3 +18,7 @@ dist/
 *.spec
 test_screenshots/
 ios_simulator_room/
+config/
+rms/
+__pycache__/
+app_icon.ico
