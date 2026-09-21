@@ -46,6 +46,16 @@ public struct LibraryView: View {
     
     public init(gameManager: GameManager) {
         _gameManager = ObservedObject(wrappedValue: gameManager)
+        
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor(red: 0x21/255.0, green: 0x21/255.0, blue: 0x21/255.0, alpha: 1.0)
+        appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
+        appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
+        UINavigationBar.appearance().standardAppearance = appearance
+        UINavigationBar.appearance().scrollEdgeAppearance = appearance
+        UINavigationBar.appearance().compactAppearance = appearance
+        UINavigationBar.appearance().tintColor = .white
     }
     
     public var filteredGames: [GameItem] {
@@ -113,6 +123,18 @@ public struct LibraryView: View {
                                 .multilineTextAlignment(.center)
                                 .foregroundColor(.secondary)
                                 .padding(.horizontal, 28)
+                            
+                            Button(action: { activeSheet = .generalSettings }) {
+                                Label("Cài đặt chung", systemImage: "gearshape.fill")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(J2MEColors.accent)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color(.secondarySystemBackground))
+                                    .cornerRadius(16)
+                            }
+                            .padding(.top, 4)
+                            
                             Spacer()
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -189,6 +211,12 @@ public struct LibraryView: View {
                         Button(action: { isSearching.toggle() }) {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+                        
+                        Button(action: { activeSheet = .generalSettings }) {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(.white)
                         }
                         
@@ -273,6 +301,7 @@ public struct LibraryView: View {
             .onAppear {
                 updateManager.checkForUpdates(manual: false)
             }
+            .darkNavigationBar()
         }
         .navigationViewStyle(StackNavigationViewStyle())
         
@@ -554,5 +583,25 @@ struct HelpView: View {
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
+    }
+}
+
+// MARK: - Dark Navigation Bar Modifier
+struct DarkNavBarModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) {
+            content
+                .toolbarBackground(Color(red: 0x21/255.0, green: 0x21/255.0, blue: 0x21/255.0), for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    func darkNavigationBar() -> some View {
+        self.modifier(DarkNavBarModifier())
     }
 }

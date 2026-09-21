@@ -38,17 +38,28 @@ jobs:
           path: |
             **/build/*.ipa
 
+      - name: Upload Simulator Artifact (Appetize.io)
+        uses: actions/upload-artifact@v4
+        with:
+          name: J2HienLoader-Simulator
+          path: |
+            **/build/*.zip
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
           tag_name: v1.8.3-j2hienloader
-          name: "J2HienLoader iOS v1.8.3 - Bản chính thức IPA"
+          name: "J2HienLoader iOS v1.8.3 - Bản chính thức IPA & Simulator"
           body: |
             ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.3)
             Ứng dụng giả lập J2ME chuẩn cho hệ điều hành iOS/iPadOS, nạp và chạy file .jar trực tiếp.
+            
+            - **Cài lên iPhone/iPad thật**: Tải file `J2HienLoader.ipa`.
+            - **Test trên Web (Appetize.io)**: Tải file `J2HienLoader-Simulator-iPad.zip`.
           files: |
             **/build/*.ipa
+            **/build/*.zip
           draft: false
           prerelease: false
           make_latest: true
