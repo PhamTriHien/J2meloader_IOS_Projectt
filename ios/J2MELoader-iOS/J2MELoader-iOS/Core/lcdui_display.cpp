@@ -117,6 +117,7 @@ static const uint8_t font8x8_basic[96][8] = {
 LcduiDisplay::LcduiDisplay(int width, int height)
     : m_width(width), m_height(height) {
     m_buffer.resize(width * height, 0xFF050814);
+    m_frontBuffer.resize(width * height, 0xFF050814);
     resetClip();
 }
 
@@ -127,6 +128,7 @@ void LcduiDisplay::resize(int width, int height) {
     m_width = width;
     m_height = height;
     m_buffer.resize(width * height, 0xFF050814);
+    m_frontBuffer.resize(width * height, 0xFF050814);
     m_transX = 0;
     m_transY = 0;
     resetClip();

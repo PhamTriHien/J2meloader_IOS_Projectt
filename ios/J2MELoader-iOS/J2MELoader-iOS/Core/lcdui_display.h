@@ -51,7 +51,15 @@ public:
     void drawChar(char c, int x, int y, uint32_t color);
     void drawString(const std::string& text, int x, int y, int anchor, uint32_t color);
 
-    const uint32_t* getBuffer() const { return m_buffer.data(); }
+    void publishFrame() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_frontBuffer.size() != m_buffer.size()) {
+            m_frontBuffer.resize(m_buffer.size(), 0xFF050814);
+        }
+        std::memcpy(m_frontBuffer.data(), m_buffer.data(), m_buffer.size() * sizeof(uint32_t));
+    }
+
+    const uint32_t* getBuffer() const { return m_frontBuffer.empty() ? m_buffer.data() : m_frontBuffer.data(); }
     int getWidth() const { return m_width; }
     int getHeight() const { return m_height; }
 
@@ -68,6 +76,7 @@ private:
     int m_origClipH = 320;
     uint32_t m_currentColor = 0xFF000000;
     std::vector<uint32_t> m_buffer;
+    std::vector<uint32_t> m_frontBuffer;
     ClipRect m_clip;
     std::mutex m_mutex;
 

@@ -21,4 +21,5 @@ ios_simulator_room/
 config/
 rms/
 __pycache__/
+android/
 app_icon.ico

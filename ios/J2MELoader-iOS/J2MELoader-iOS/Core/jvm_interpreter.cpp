@@ -548,6 +548,7 @@ void JvmInterpreter::executionLoop() {
                         m_display.get()
                     );
                 }
+                m_display->publishFrame();
                 ++m_paintTick;
             } else {
                 FullApis::renderCurrentScreen(m_display.get());
@@ -555,6 +556,7 @@ void JvmInterpreter::executionLoop() {
                 if (FullApis::currentScreen() == 0 && tickCount < 5) {
                     m_display->clear(0xFF000000);
                 }
+                m_display->publishFrame();
                 ++m_paintTick;
             }
         }

@@ -572,6 +572,267 @@ bool JvmBytecodeEngine::isInstanceOf(const std::string& className, const std::st
 // Native Dispatcher for Standard CLDC 1.1 / MIDP 2.0
 // ----------------------------------------------------
 bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const std::string& methodName, const std::string& desc, const std::vector<JavaValue>& args, JavaValue& outResult, LcduiDisplay* display) {
+    // dex2jar hex string decoders ($decode_S, $decode_B, $decode_I, $decode_J)
+    if (methodName.find("decode_S") != std::string::npos && !args.empty()) {
+        std::string hex = getString(args[0].asRef());
+        int count = (int)hex.size() / 4;
+        uint32_t arrRef = allocArray(9, count); // T_SHORT = 9
+        JavaArray* arr = getArray(arrRef);
+        if (arr) {
+            auto h = [](char c) -> uint8_t {
+                if (c >= '0' && c <= '9') return (uint8_t)(c - '0');
+                if (c >= 'a' && c <= 'f') return (uint8_t)(c - 'a' + 10);
+                if (c >= 'A' && c <= 'F') return (uint8_t)(c - 'A' + 10);
+                return 0;
+            };
+            for (int i = 0; i < count; ++i) {
+                uint8_t b0 = (h(hex[4 * i]) << 4) | h(hex[4 * i + 1]);
+                uint8_t b1 = (h(hex[4 * i + 2]) << 4) | h(hex[4 * i + 3]);
+                arr->shortData[i] = (int16_t)((uint16_t)b0 | ((uint16_t)b1 << 8));
+            }
+        }
+        outResult = JavaValue(arrRef, true);
+        return true;
+    }
+    if (methodName.find("decode_B") != std::string::npos && !args.empty()) {
+        std::string hex = getString(args[0].asRef());
+        int count = (int)hex.size() / 2;
+        uint32_t arrRef = allocArray(8, count); // T_BYTE = 8
+        JavaArray* arr = getArray(arrRef);
+        if (arr) {
+            auto h = [](char c) -> uint8_t {
+                if (c >= '0' && c <= '9') return (uint8_t)(c - '0');
+                if (c >= 'a' && c <= 'f') return (uint8_t)(c - 'a' + 10);
+                if (c >= 'A' && c <= 'F') return (uint8_t)(c - 'A' + 10);
+                return 0;
+            };
+            for (int i = 0; i < count; ++i) {
+                arr->byteData[i] = (h(hex[2 * i]) << 4) | h(hex[2 * i + 1]);
+            }
+        }
+        outResult = JavaValue(arrRef, true);
+        return true;
+    }
+    if (methodName.find("decode_I") != std::string::npos && !args.empty()) {
+        std::string hex = getString(args[0].asRef());
+        int count = (int)hex.size() / 8;
+        uint32_t arrRef = allocArray(10, count); // T_INT = 10
+        JavaArray* arr = getArray(arrRef);
+        if (arr) {
+            auto h = [](char c) -> uint8_t {
+                if (c >= '0' && c <= '9') return (uint8_t)(c - '0');
+                if (c >= 'a' && c <= 'f') return (uint8_t)(c - 'a' + 10);
+                if (c >= 'A' && c <= 'F') return (uint8_t)(c - 'A' + 10);
+                return 0;
+            };
+            for (int i = 0; i < count; ++i) {
+                uint8_t b0 = (h(hex[8 * i]) << 4) | h(hex[8 * i + 1]);
+                uint8_t b1 = (h(hex[8 * i + 2]) << 4) | h(hex[8 * i + 3]);
+                uint8_t b2 = (h(hex[8 * i + 4]) << 4) | h(hex[8 * i + 5]);
+                uint8_t b3 = (h(hex[8 * i + 6]) << 4) | h(hex[8 * i + 7]);
+                arr->intData[i] = (int32_t)((uint32_t)b0 | ((uint32_t)b1 << 8) | ((uint32_t)b2 << 16) | ((uint32_t)b3 << 24));
+            }
+        }
+        outResult = JavaValue(arrRef, true);
+        return true;
+    }
+    if (methodName.find("decode_J") != std::string::npos && !args.empty()) {
+        std::string hex = getString(args[0].asRef());
+        int count = (int)hex.size() / 16;
+        uint32_t arrRef = allocArray(11, count); // T_LONG = 11
+        JavaArray* arr = getArray(arrRef);
+        if (arr) {
+            auto h = [](char c) -> uint8_t {
+                if (c >= '0' && c <= '9') return (uint8_t)(c - '0');
+                if (c >= 'a' && c <= 'f') return (uint8_t)(c - 'a' + 10);
+                if (c >= 'A' && c <= 'F') return (uint8_t)(c - 'A' + 10);
+                return 0;
+            };
+            for (int i = 0; i < count; ++i) {
+                uint64_t v = 0;
+                for (int b = 0; b < 8; ++b) {
+                    uint8_t byteVal = (h(hex[16 * i + 2 * b]) << 4) | h(hex[16 * i + 2 * b + 1]);
+                    v |= ((uint64_t)byteVal << (8 * b));
+                }
+                arr->longData[i] = (int64_t)v;
+            }
+        }
+        outResult = JavaValue(arrRef, true);
+        return true;
+    }
+
+    // Java NIO support
+    if (className == "java/nio/ByteOrder") {
+        if (methodName == "nativeOrder") {
+            uint32_t boRef = allocObject("java/nio/ByteOrder");
+            JavaObject* bo = getObject(boRef);
+            if (bo) bo->fields["isLittle"] = JavaValue(1);
+            outResult = JavaValue(boRef, true);
+            return true;
+        }
+    }
+    if (className == "java/nio/ByteBuffer") {
+        if (methodName == "wrap" && !args.empty()) {
+            uint32_t bbRef = allocObject("java/nio/ByteBuffer");
+            JavaObject* bb = getObject(bbRef);
+            if (bb) {
+                bb->fields["buf"] = args[0];
+                int off = args.size() >= 3 ? args[1].asInt() : 0;
+                bb->fields["pos"] = JavaValue(off);
+                bb->fields["order"] = JavaValue(0);
+            }
+            outResult = JavaValue(bbRef, true);
+            return true;
+        }
+        if (methodName == "allocate" && !args.empty()) {
+            uint32_t bbRef = allocObject("java/nio/ByteBuffer");
+            int cap = args[0].asInt();
+            uint32_t arrRef = allocArray(8, std::max(0, cap));
+            JavaObject* bb = getObject(bbRef);
+            if (bb) {
+                bb->fields["buf"] = JavaValue(arrRef, true);
+                bb->fields["pos"] = JavaValue(0);
+                bb->fields["order"] = JavaValue(0);
+            }
+            outResult = JavaValue(bbRef, true);
+            return true;
+        }
+        if (methodName == "order" && !args.empty()) {
+            JavaObject* bb = getObject(args[0].asRef());
+            if (bb && args.size() >= 2) {
+                JavaObject* bo = getObject(args[1].asRef());
+                int isLit = (bo && bo->fields.find("isLittle") != bo->fields.end()) ? bo->fields["isLittle"].asInt() : 1;
+                bb->fields["order"] = JavaValue(isLit);
+            }
+            outResult = args[0];
+            return true;
+        }
+        if (methodName == "asShortBuffer" && !args.empty()) {
+            uint32_t sbRef = allocObject("java/nio/ShortBuffer");
+            JavaObject* sb = getObject(sbRef);
+            JavaObject* bb = getObject(args[0].asRef());
+            if (sb && bb) {
+                sb->fields["buf"] = bb->fields["buf"];
+                sb->fields["pos"] = bb->fields["pos"];
+                sb->fields["order"] = bb->fields["order"];
+            }
+            outResult = JavaValue(sbRef, true);
+            return true;
+        }
+        if (methodName == "asIntBuffer" && !args.empty()) {
+            uint32_t ibRef = allocObject("java/nio/IntBuffer");
+            JavaObject* ib = getObject(ibRef);
+            JavaObject* bb = getObject(args[0].asRef());
+            if (ib && bb) {
+                ib->fields["buf"] = bb->fields["buf"];
+                ib->fields["pos"] = bb->fields["pos"];
+                ib->fields["order"] = bb->fields["order"];
+            }
+            outResult = JavaValue(ibRef, true);
+            return true;
+        }
+        if (methodName == "asLongBuffer" && !args.empty()) {
+            uint32_t lbRef = allocObject("java/nio/LongBuffer");
+            JavaObject* lb = getObject(lbRef);
+            JavaObject* bb = getObject(args[0].asRef());
+            if (lb && bb) {
+                lb->fields["buf"] = bb->fields["buf"];
+                lb->fields["pos"] = bb->fields["pos"];
+                lb->fields["order"] = bb->fields["order"];
+            }
+            outResult = JavaValue(lbRef, true);
+            return true;
+        }
+    }
+    if (className == "java/nio/ShortBuffer") {
+        if (methodName == "get" && args.size() >= 2) {
+            JavaObject* sb = getObject(args[0].asRef());
+            JavaArray* dst = getArray(args[1].asRef());
+            if (sb && dst) {
+                JavaArray* srcBytes = getArray(sb->fields["buf"].asRef());
+                int pos = sb->fields["pos"].asInt();
+                bool littleEndian = (sb->fields["order"].asInt() == 1);
+                int off = args.size() >= 4 ? args[2].asInt() : 0;
+                int len = args.size() >= 4 ? args[3].asInt() : (int)dst->shortData.size();
+                if (srcBytes) {
+                    for (int i = 0; i < len; ++i) {
+                        int bPos = pos + i * 2;
+                        if (bPos + 1 < (int)srcBytes->byteData.size() && off + i < (int)dst->shortData.size()) {
+                            uint8_t b0 = srcBytes->byteData[bPos];
+                            uint8_t b1 = srcBytes->byteData[bPos + 1];
+                            dst->shortData[off + i] = littleEndian
+                                ? (int16_t)((uint16_t)b0 | ((uint16_t)b1 << 8))
+                                : (int16_t)(((uint16_t)b0 << 8) | (uint16_t)b1);
+                        }
+                    }
+                    sb->fields["pos"] = JavaValue(pos + len * 2);
+                }
+            }
+            outResult = args[0];
+            return true;
+        }
+    }
+    if (className == "java/nio/IntBuffer") {
+        if (methodName == "get" && args.size() >= 2) {
+            JavaObject* ib = getObject(args[0].asRef());
+            JavaArray* dst = getArray(args[1].asRef());
+            if (ib && dst) {
+                JavaArray* srcBytes = getArray(ib->fields["buf"].asRef());
+                int pos = ib->fields["pos"].asInt();
+                bool littleEndian = (ib->fields["order"].asInt() == 1);
+                int off = args.size() >= 4 ? args[2].asInt() : 0;
+                int len = args.size() >= 4 ? args[3].asInt() : (int)dst->intData.size();
+                if (srcBytes) {
+                    for (int i = 0; i < len; ++i) {
+                        int bPos = pos + i * 4;
+                        if (bPos + 3 < (int)srcBytes->byteData.size() && off + i < (int)dst->intData.size()) {
+                            uint8_t b0 = srcBytes->byteData[bPos];
+                            uint8_t b1 = srcBytes->byteData[bPos + 1];
+                            uint8_t b2 = srcBytes->byteData[bPos + 2];
+                            uint8_t b3 = srcBytes->byteData[bPos + 3];
+                            dst->intData[off + i] = littleEndian
+                                ? (int32_t)((uint32_t)b0 | ((uint32_t)b1 << 8) | ((uint32_t)b2 << 16) | ((uint32_t)b3 << 24))
+                                : (int32_t)(((uint32_t)b0 << 24) | ((uint32_t)b1 << 16) | ((uint32_t)b2 << 8) | (uint32_t)b3);
+                        }
+                    }
+                    ib->fields["pos"] = JavaValue(pos + len * 4);
+                }
+            }
+            outResult = args[0];
+            return true;
+        }
+    }
+    if (className == "java/nio/LongBuffer") {
+        if (methodName == "get" && args.size() >= 2) {
+            JavaObject* lb = getObject(args[0].asRef());
+            JavaArray* dst = getArray(args[1].asRef());
+            if (lb && dst) {
+                JavaArray* srcBytes = getArray(lb->fields["buf"].asRef());
+                int pos = lb->fields["pos"].asInt();
+                bool littleEndian = (lb->fields["order"].asInt() == 1);
+                int off = args.size() >= 4 ? args[2].asInt() : 0;
+                int len = args.size() >= 4 ? args[3].asInt() : (int)dst->longData.size();
+                if (srcBytes) {
+                    for (int i = 0; i < len; ++i) {
+                        int bPos = pos + i * 8;
+                        if (bPos + 7 < (int)srcBytes->byteData.size() && off + i < (int)dst->longData.size()) {
+                            uint64_t v = 0;
+                            if (littleEndian) {
+                                for (int b = 0; b < 8; ++b) v |= ((uint64_t)srcBytes->byteData[bPos + b] << (8 * b));
+                            } else {
+                                for (int b = 0; b < 8; ++b) v = (v << 8) | srcBytes->byteData[bPos + b];
+                            }
+                            dst->longData[off + i] = (int64_t)v;
+                        }
+                    }
+                    lb->fields["pos"] = JavaValue(pos + len * 8);
+                }
+            }
+            outResult = args[0];
+            return true;
+        }
+    }
+
     if (className == "java/lang/System") {
         if (methodName == "currentTimeMillis") {
             auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -724,8 +985,20 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 if (desc.find("(Z)") != std::string::npos) {
                     outResult = JavaValue(createString(args[0].asInt() ? "true" : "false"), true);
                 } else if (desc.find("(C)") != std::string::npos) {
-                    char c = (char)args[0].asInt();
-                    outResult = JavaValue(createString(std::string(1, c)), true);
+                    uint16_t ch = (uint16_t)args[0].asInt();
+                    std::string s = "";
+                    if (ch < 0x80) {
+                        s += (char)ch;
+                    } else if (ch < 0x800) {
+                        s += (char)(0xC0 | (ch >> 6));
+                        s += (char)(0x80 | (ch & 0x3F));
+                    } else {
+                        s += (char)(0xE0 | (ch >> 12));
+                        s += (char)(0x80 | ((ch >> 6) & 0x3F));
+                        s += (char)(0x80 | (ch & 0x3F));
+                    }
+                    outResult = JavaValue(createString(s), true);
+                    return true;
                 } else if (desc.find("(J)") != std::string::npos) {
                     outResult = JavaValue(createString(std::to_string(args[0].asLong())), true);
                 } else if (desc.find("(F)") != std::string::npos) {
@@ -2367,6 +2640,19 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             // Lazy System.out/err/in allocation
             if ((fKey=="java/lang/System:out"||fKey=="java/lang/System:err"||fKey=="java/lang/System:in") && sv.asRef()==0) {
                 uint32_t r=allocObject("java/io/PrintStream"); sv=JavaValue(r,true); setStaticField(fKey,sv);
+            }
+            if (fKey.find("ByteOrder:LITTLE_ENDIAN") != std::string::npos && sv.asRef() == 0) {
+                uint32_t r = allocObject("java/nio/ByteOrder");
+                JavaObject* bo = getObject(r);
+                if (bo) bo->fields["isLittle"] = JavaValue(1);
+                sv = JavaValue(r, true);
+                setStaticField(fKey, sv);
+            } else if (fKey.find("ByteOrder:BIG_ENDIAN") != std::string::npos && sv.asRef() == 0) {
+                uint32_t r = allocObject("java/nio/ByteOrder");
+                JavaObject* bo = getObject(r);
+                if (bo) bo->fields["isLittle"] = JavaValue(0);
+                sv = JavaValue(r, true);
+                setStaticField(fKey, sv);
             }
             frame.push(sv);
             break;
