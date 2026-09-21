@@ -286,6 +286,20 @@ static ConnData& httpEnsure(uint32_t ref){
     return c;
 }
 
+static std::vector<uint8_t> fetchHttpSync(const std::string& url){
+    uint8_t *d = nullptr; int n = 0, code = 0; char mt[128] = {0};
+    bool ok = false;
+    if(hasNative((const void*)native_http_fetch)){
+        ok = native_http_fetch(url.c_str(), "GET", &d, &n, &code, mt, sizeof(mt));
+    }
+    std::vector<uint8_t> result;
+    if(ok && d && n > 0){
+        result.assign(d, d + n);
+    }
+    if(d && hasNative((const void*)native_free)) native_free(d); else if(d) free(d);
+    return result;
+}
+
 void FullApis::reset(){
     g_screens.clear(); g_sprites.clear(); g_tiled.clear(); g_layerMgr.clear();
     g_m3gType.clear(); g_m3gWorlds.clear(); g_microFig.clear(); g_microTex.clear(); g_micro3dGfx.clear(); g_m3dTarget.clear(); g_sockFd.clear();
@@ -416,7 +430,15 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     if(className=="java/lang/Object"){
         if(methodName=="hashCode"){ outResult=JavaValue((int32_t)(args.empty()?0:(int)args[0].asRef())); return true; }
         if(methodName=="equals"&&args.size()>=2){ outResult=JavaValue(args[0].asRef()==args[1].asRef()?1:0); return true; }
-        if(methodName=="toString"){ outResult=JavaValue(ENG().createString("Object"),true); return true; }
+        if(methodName=="toString"){
+            std::string s = "";
+            if(!args.empty() && args[0].asRef() != 0){
+                JavaObject* o = ENG().getObject(args[0].asRef());
+                if(o && !o->stringVal.empty()) s = o->stringVal;
+            }
+            outResult = JavaValue(ENG().createString(s), true);
+            return true;
+        }
         if(methodName=="getClass"){
             uint32_t cRef = ENG().allocObject("java/lang/Class");
             JavaObject* cObj = ENG().getObject(cRef);
@@ -564,7 +586,15 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             uint32_t r=ENG().allocArray(8,(int)s0.size()); JavaArray*a=ENG().getArray(r); if(a)for(size_t i=0;i<s0.size();i++)a->byteData[i]=(uint8_t)s0[i]; outResult=JavaValue(r,true); return true; }
         if(methodName=="valueOf"&&args.size()>=1){
             JavaValue v=args[0]; std::string s;
-            if(v.type==JavaValue::OBJ_REF){ JavaObject*o=ENG().getObject(v.asRef()); s=o?o->stringVal:"null"; if(s.empty()&&o) s=o->stringVal; }
+            if(v.type==JavaValue::OBJ_REF){
+                if(v.asRef()==0) s="null";
+                else {
+                    JavaObject*o=ENG().getObject(v.asRef());
+                    if(o && (o->className=="java/lang/String"||o->className=="java/lang/StringBuffer"||o->className=="java/lang/StringBuilder")) s=o->stringVal;
+                    else if(o && o->fields.find("value")!=o->fields.end()) s=std::to_string(o->fields["value"].asInt());
+                    else if(o) s=o->stringVal;
+                }
+            }
             else if(desc.find("(D)")!=std::string::npos||desc.find("(F)")!=std::string::npos) s=std::to_string(v.asDouble());
             else if(desc.find("(J)")!=std::string::npos) s=std::to_string(v.asLong());
             else if(desc.find("(Z)")!=std::string::npos) s=v.asInt()?"true":"false";
@@ -784,7 +814,18 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         // DataOutputStream writes into BAOS-like buffer keyed by stream ref
         if(className=="java/io/DataOutputStream"){
             uint32_t self=args.empty()?0:args[0].asRef();
-            if(methodName=="<init>"){ g_baos[self]={}; return true; }
+            if(methodName=="<init>"){
+                g_baos[self]={};
+                JavaObject* so = ENG().getObject(self);
+                if(so && args.size() >= 2 && args[1].type == JavaValue::OBJ_REF){
+                    JavaObject* inner = ENG().getObject(args[1].asRef());
+                    if(inner){
+                        auto sf = inner->fields.find("sockFd");
+                        if(sf != inner->fields.end()) so->fields["sockFd"] = sf->second;
+                    }
+                }
+                return true;
+            }
             if(methodName=="writeInt"&&args.size()>=2){ int32_t v=args[1].asInt(); auto&b=g_baos[self]; b.push_back((v>>24)&0xFF); b.push_back((v>>16)&0xFF); b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
             if(methodName=="writeShort"&&args.size()>=2){ int v=args[1].asInt(); auto&b=g_baos[self]; b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
             if(methodName=="writeChar"&&args.size()>=2){ int v=args[1].asInt(); auto&b=g_baos[self]; b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
@@ -814,7 +855,22 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 else if(args.size()>=2){ JavaArray*a=ENG().getArray(args[1].asRef()); if(a&&!a->byteData.empty()) g_baos[self].insert(g_baos[self].end(),a->byteData.begin(),a->byteData.end()); }
                 return true;
             }
-            if(methodName=="flush"||methodName=="close") return true;
+            if(methodName=="flush"||methodName=="close"){
+                JavaObject* so = ENG().getObject(self);
+                if(so){
+                    auto sf = so->fields.find("sockFd");
+                    if(sf != so->fields.end() && sf->second.asInt() >= 0){
+                        auto it = g_baos.find(self);
+                        if(it != g_baos.end() && !it->second.empty()){
+#if !defined(_WIN32)&&!defined(_WIN64)
+                            tcpSendAll(sf->second.asInt(), it->second.data(), it->second.size());
+#endif
+                            it->second.clear();
+                        }
+                    }
+                }
+                return true;
+            }
             if(methodName=="size"){ auto it=g_baos.find(self); outResult=JavaValue(it==g_baos.end()?0:(int32_t)it->second.size()); return true; }
             if(methodName=="toByteArray"){ auto it=g_baos.find(self); int n=it==g_baos.end()?0:(int)it->second.size(); uint32_t r=ENG().allocArray(8,n); JavaArray*a=ENG().getArray(r); if(a&&it!=g_baos.end())a->byteData=it->second; outResult=JavaValue(r,true); return true; }
         }
@@ -1842,6 +1898,294 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="getNominalLength"){ outResult=JavaValue(1500); return true; }
         return true;
     }
+
+    // ============ DragonBoy Server List Method b/ci.Gd ============
+    if(className=="b/ci" && methodName=="Gd"){
+        std::string url = "https://raw.githubusercontent.com/2chinese2onetopup/chinese/refs/heads/main/ServerListScreen.txt";
+        std::vector<uint8_t> body = fetchHttpSync(url);
+        std::string text(body.begin(), body.end());
+        if(text.empty()){
+            text = "Vũ trụ 1:dragon1.teamobi.com:14445:0:0:0,Vũ trụ 2:dragon2.teamobi.com:14445:0:0:0,Vũ trụ 3:dragon3.teamobi.com:14445:0:0:0,Vũ trụ 4:dragon4.teamobi.com:14445:0:0:0,Vũ trụ 5:dragon5.teamobi.com:14445:0:0:0,Vũ trụ 6:dragon6.teamobi.com:14445:0:0:0,Vũ trụ 7:dragon7.teamobi.com:14445:0:0:0,Vũ trụ 8:dragon8.teamobi.com:14445:0:0:0,Vũ trụ 9:dragon9.teamobi.com:14445:0:0:0,Vũ trụ 10:dragon10.teamobi.com:14445:0:0:0,Võ Đài Liên Vũ Trụ:dragonwar.teamobi.com:14445:0:0:0,Đông Nam Á:dragonsea.teamobi.com:14445:0:0:0";
+        }
+        outResult = JavaValue(ENG().createString(text), true);
+        return true;
+    }
+
+    // ============ Standard Java SE Networking (Socket, URL, HttpURLConnection) ============
+    if(className=="java/net/Socket"){
+        uint32_t self = args.empty() ? 0 : args[0].asRef();
+        if(methodName=="<init>"){
+            JavaObject* so = ENG().getObject(self);
+            if(so) so->fields["sockFd"] = JavaValue(-1);
+            if(args.size()>=3 && args[1].type==JavaValue::OBJ_REF){
+                std::string host = ENG().getString(args[1].asRef());
+                int port = args[2].asInt();
+                int fd = tcpConnect(host, port);
+                if(fd>=0){
+                    g_sockFd[self] = fd;
+                    if(so) so->fields["sockFd"] = JavaValue(fd);
+                }
+            }
+            return true;
+        }
+        if(methodName=="connect" && args.size()>=2){
+            if(args[1].type==JavaValue::OBJ_REF){
+                JavaObject* addrObj = ENG().getObject(args[1].asRef());
+                std::string host = "";
+                int port = 0;
+                if(addrObj){
+                    uint32_t hr = addrObj->fields["host"].asRef();
+                    if(hr != 0) host = ENG().getString(hr);
+                    port = addrObj->fields["port"].asInt();
+                }
+                if(!host.empty() && port > 0){
+                    int fd = tcpConnect(host, port);
+                    if(fd>=0){
+                        g_sockFd[self] = fd;
+                        JavaObject* so = ENG().getObject(self);
+                        if(so) so->fields["sockFd"] = JavaValue(fd);
+                    }
+                }
+            }
+            return true;
+        }
+        if(methodName=="getInputStream"){
+            int sockFd = -1;
+            auto it = g_sockFd.find(self);
+            if(it != g_sockFd.end()) sockFd = it->second;
+            else { JavaObject* so = ENG().getObject(self); if(so) sockFd = so->fields["sockFd"].asInt(); }
+            uint32_t r = ENG().allocObject("java/io/InputStream");
+            uint32_t arr = ENG().allocArray(8, 0);
+            JavaObject* o = ENG().getObject(r);
+            if(o){
+                o->fields["buf"] = JavaValue(arr, true);
+                o->fields["pos"] = JavaValue(0);
+                o->fields["sockFd"] = JavaValue(sockFd);
+            }
+            outResult = JavaValue(r, true);
+            return true;
+        }
+        if(methodName=="getOutputStream"){
+            int sockFd = -1;
+            auto it = g_sockFd.find(self);
+            if(it != g_sockFd.end()) sockFd = it->second;
+            else { JavaObject* so = ENG().getObject(self); if(so) sockFd = so->fields["sockFd"].asInt(); }
+            uint32_t r = ENG().allocObject("java/io/OutputStream");
+            g_baos[r] = {};
+            JavaObject* o = ENG().getObject(r);
+            if(o){
+                o->fields["sockFd"] = JavaValue(sockFd);
+            }
+            outResult = JavaValue(r, true);
+            return true;
+        }
+        if(methodName=="close"){
+            auto it = g_sockFd.find(self);
+            if(it != g_sockFd.end()){ tcpClose(it->second); g_sockFd.erase(it); }
+            JavaObject* so = ENG().getObject(self);
+            if(so) so->fields["sockFd"] = JavaValue(-1);
+            return true;
+        }
+        if(methodName=="isConnected"){
+            int sockFd = -1;
+            auto it = g_sockFd.find(self);
+            if(it != g_sockFd.end()) sockFd = it->second;
+            else { JavaObject* so = ENG().getObject(self); if(so) sockFd = so->fields["sockFd"].asInt(); }
+            outResult = JavaValue(sockFd >= 0 ? 1 : 0);
+            return true;
+        }
+        if(methodName=="isClosed"){
+            int sockFd = -1;
+            auto it = g_sockFd.find(self);
+            if(it != g_sockFd.end()) sockFd = it->second;
+            else { JavaObject* so = ENG().getObject(self); if(so) sockFd = so->fields["sockFd"].asInt(); }
+            outResult = JavaValue(sockFd < 0 ? 1 : 0);
+            return true;
+        }
+        if(methodName=="setSoTimeout"||methodName=="setTcpNoDelay"||methodName=="setKeepAlive") return true;
+        if(methodName=="getInetAddress"){
+            uint32_t r = ENG().allocObject("java/net/InetAddress");
+            outResult = JavaValue(r, true);
+            return true;
+        }
+        return true;
+    }
+    if(className=="java/net/InetSocketAddress"){
+        uint32_t self = args.empty() ? 0 : args[0].asRef();
+        if(methodName=="<init>"){
+            JavaObject* so = ENG().getObject(self);
+            if(so && args.size() >= 3){
+                so->fields["host"] = args[1];
+                so->fields["port"] = args[2];
+            }
+            return true;
+        }
+        if(methodName=="getHostName"||methodName=="getHostString"){
+            JavaObject* so = ENG().getObject(self);
+            outResult = so ? so->fields["host"] : JavaValue(ENG().createString(""), true);
+            return true;
+        }
+        if(methodName=="getPort"){
+            JavaObject* so = ENG().getObject(self);
+            outResult = so ? so->fields["port"] : JavaValue(0);
+            return true;
+        }
+        return true;
+    }
+    if(className=="java/net/InetAddress"){
+        uint32_t self = args.empty() ? 0 : args[0].asRef();
+        if(methodName=="getByName"||methodName=="getAllByName"||methodName=="getLocalHost"){
+            uint32_t r = ENG().allocObject("java/net/InetAddress");
+            JavaObject* o = ENG().getObject(r);
+            if(o && !args.empty() && args[0].type==JavaValue::OBJ_REF) o->fields["host"] = args[0];
+            outResult = JavaValue(r, true);
+            return true;
+        }
+        if(methodName=="getHostAddress"||methodName=="getHostName"){
+            JavaObject* so = ENG().getObject(self);
+            outResult = so ? so->fields["host"] : JavaValue(ENG().createString("127.0.0.1"), true);
+            return true;
+        }
+        return true;
+    }
+    if(className=="java/net/URL"){
+        uint32_t self = args.empty() ? 0 : args[0].asRef();
+        if(methodName=="<init>"){
+            JavaObject* so = ENG().getObject(self);
+            if(so && args.size() >= 2 && args[1].type==JavaValue::OBJ_REF){
+                so->stringVal = ENG().getString(args[1].asRef());
+            }
+            return true;
+        }
+        if(methodName=="openConnection"){
+            JavaObject* so = ENG().getObject(self);
+            std::string url = so ? so->stringVal : "";
+            uint32_t conn = ENG().allocObject("java/net/HttpURLConnection");
+            JavaObject* co = ENG().getObject(conn);
+            if(co) co->stringVal = url;
+            outResult = JavaValue(conn, true);
+            return true;
+        }
+        return true;
+    }
+    if(className=="java/net/HttpURLConnection"||className=="java/net/URLConnection"){
+        uint32_t self = args.empty() ? 0 : args[0].asRef();
+        if(methodName=="setRequestMethod"||methodName=="setRequestProperty"||methodName=="connect"||methodName=="setConnectTimeout"||methodName=="setReadTimeout"||methodName=="setDoInput"||methodName=="setDoOutput"||methodName=="disconnect"||methodName=="close") return true;
+        if(methodName=="getResponseCode"){ outResult = JavaValue(200); return true; }
+        if(methodName=="getInputStream"||methodName=="getErrorStream"){
+            JavaObject* so = ENG().getObject(self);
+            std::string url = so ? so->stringVal : "";
+            std::vector<uint8_t> body;
+            if(!url.empty()){
+                body = fetchHttpSync(url);
+            }
+            if(body.empty() && (url.find("ServerListScreen") != std::string::npos || url.find("raw.githubusercontent.com") != std::string::npos)){
+                std::string fallback = "Vũ trụ 1:dragon1.teamobi.com:14445:0:0:0,Vũ trụ 2:dragon2.teamobi.com:14445:0:0:0,Vũ trụ 3:dragon3.teamobi.com:14445:0:0:0,Vũ trụ 4:dragon4.teamobi.com:14445:0:0:0,Vũ trụ 5:dragon5.teamobi.com:14445:0:0:0,Vũ trụ 6:dragon6.teamobi.com:14445:0:0:0,Vũ trụ 7:dragon7.teamobi.com:14445:0:0:0,Vũ trụ 8:dragon8.teamobi.com:14445:0:0:0,Vũ trụ 9:dragon9.teamobi.com:14445:0:0:0,Vũ trụ 10:dragon10.teamobi.com:14445:0:0:0,Võ Đài Liên Vũ Trụ:dragonwar.teamobi.com:14445:0:0:0,Đông Nam Á:dragonsea.teamobi.com:14445:0:0:0";
+                body.assign(fallback.begin(), fallback.end());
+            }
+            uint32_t r = ENG().allocObject("java/io/InputStream");
+            uint32_t arr = ENG().allocArray(8, (int)body.size());
+            JavaArray* a = ENG().getArray(arr);
+            if(a) a->byteData = std::move(body);
+            JavaObject* o = ENG().getObject(r);
+            if(o){
+                o->fields["buf"] = JavaValue(arr, true);
+                o->fields["pos"] = JavaValue(0);
+            }
+            outResult = JavaValue(r, true);
+            return true;
+        }
+        if(methodName=="getOutputStream"){
+            uint32_t r = ENG().allocObject("java/io/OutputStream");
+            g_baos[r] = {};
+            outResult = JavaValue(r, true);
+            return true;
+        }
+        return true;
+    }
+
+    // ============ java/util/Scanner ============
+    if(className=="java/util/Scanner"){
+        uint32_t self = args.empty() ? 0 : args[0].asRef();
+        if(methodName=="<init>"){
+            JavaObject* so = ENG().getObject(self);
+            std::string fullText = "";
+            if(so && args.size() >= 2 && args[1].type == JavaValue::OBJ_REF){
+                JavaObject* inStream = ENG().getObject(args[1].asRef());
+                if(inStream){
+                    JavaArray* ba = ENG().getArray(inStream->fields["buf"].asRef());
+                    int pos = inStream->fields["pos"].asInt();
+                    if(ba && pos >= 0 && pos < (int)ba->byteData.size()){
+                        fullText = std::string((char*)(ba->byteData.data() + pos), ba->byteData.size() - pos);
+                        inStream->fields["pos"] = JavaValue((int)ba->byteData.size());
+                    }
+                }
+            }
+            if(so){
+                so->stringVal = fullText;
+                so->fields["scanPos"] = JavaValue(0);
+            }
+            return true;
+        }
+        if(methodName=="hasNext"){
+            JavaObject* so = ENG().getObject(self);
+            int pos = so ? so->fields["scanPos"].asInt() : 0;
+            int len = so ? (int)so->stringVal.size() : 0;
+            while(pos < len && (uint8_t)so->stringVal[pos] <= 32) pos++;
+            if(so) so->fields["scanPos"] = JavaValue(pos);
+            outResult = JavaValue(pos < len ? 1 : 0);
+            return true;
+        }
+        if(methodName=="hasNextLine"){
+            JavaObject* so = ENG().getObject(self);
+            int pos = so ? so->fields["scanPos"].asInt() : 0;
+            int len = so ? (int)so->stringVal.size() : 0;
+            outResult = JavaValue(pos < len ? 1 : 0);
+            return true;
+        }
+        if(methodName=="next"){
+            JavaObject* so = ENG().getObject(self);
+            int pos = so ? so->fields["scanPos"].asInt() : 0;
+            int len = so ? (int)so->stringVal.size() : 0;
+            while(pos < len && (uint8_t)so->stringVal[pos] <= 32) pos++;
+            int start = pos;
+            while(pos < len && (uint8_t)so->stringVal[pos] > 32) pos++;
+            std::string token = (start < len) ? so->stringVal.substr(start, pos - start) : "";
+            if(so) so->fields["scanPos"] = JavaValue(pos);
+            outResult = JavaValue(ENG().createString(token), true);
+            return true;
+        }
+        if(methodName=="nextLine"){
+            JavaObject* so = ENG().getObject(self);
+            int pos = so ? so->fields["scanPos"].asInt() : 0;
+            int len = so ? (int)so->stringVal.size() : 0;
+            int start = pos;
+            while(pos < len && so->stringVal[pos] != '\n' && so->stringVal[pos] != '\r') pos++;
+            std::string line = (start <= len) ? so->stringVal.substr(start, pos - start) : "";
+            if(pos < len && so->stringVal[pos] == '\r') pos++;
+            if(pos < len && so->stringVal[pos] == '\n') pos++;
+            if(so) so->fields["scanPos"] = JavaValue(pos);
+            outResult = JavaValue(ENG().createString(line), true);
+            return true;
+        }
+        if(methodName=="useDelimiter"||methodName=="close") return true;
+        return true;
+    }
+
+    // ============ java/nio/charset/Charset & StandardCharsets ============
+    if(className=="java/nio/charset/Charset"||className=="java/nio/charset/StandardCharsets"){
+        if(methodName=="forName"||methodName=="defaultCharset"){
+            uint32_t r = ENG().allocObject("java/nio/charset/Charset");
+            outResult = JavaValue(r, true);
+            return true;
+        }
+        if(methodName=="name"){
+            outResult = JavaValue(ENG().createString("UTF-8"), true);
+            return true;
+        }
+        return true;
+    }
+
     if(className.rfind("javax/microedition/io/file/",0)==0){
         // Real FileConnection: JAR entries first, then local filesystem (Documents/Games shared via RMS dir)
         auto fileUrlOf = [&](uint32_t self)->std::string{

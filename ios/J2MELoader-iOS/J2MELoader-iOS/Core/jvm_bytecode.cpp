@@ -1007,13 +1007,21 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                     outResult = JavaValue(createString(std::to_string(args[0].asDouble())), true);
                 } else if (desc.find("(Ljava/lang/Object;)") != std::string::npos) {
                     uint32_t oRef = args[0].asRef();
-                    if (oRef == 0) outResult = JavaValue(createString("null"), true);
-                    else {
-                        std::string s = getString(oRef);
-                        if (!s.empty()) outResult = JavaValue(createString(s), true);
-                        else {
-                            JavaObject* o = getObject(oRef);
-                            outResult = JavaValue(createString(o ? o->className : "Object"), true);
+                    if (oRef == 0) {
+                        outResult = JavaValue(createString("null"), true);
+                    } else {
+                        JavaObject* o = getObject(oRef);
+                        if (o && (o->className == "java/lang/String" || o->className == "java/lang/StringBuffer" || o->className == "java/lang/StringBuilder")) {
+                            outResult = JavaValue(createString(o->stringVal), true);
+                        } else if (o && o->fields.find("value") != o->fields.end()) {
+                            auto v = o->fields["value"];
+                            if (v.type == JavaValue::INT) outResult = JavaValue(createString(std::to_string(v.asInt())), true);
+                            else if (v.type == JavaValue::LONG) outResult = JavaValue(createString(std::to_string(v.asLong())), true);
+                            else if (v.type == JavaValue::FLOAT) outResult = JavaValue(createString(std::to_string(v.asFloat())), true);
+                            else if (v.type == JavaValue::DOUBLE) outResult = JavaValue(createString(std::to_string(v.asDouble())), true);
+                            else outResult = JavaValue(createString(v.asInt() ? "true" : "false"), true);
+                        } else {
+                            outResult = JavaValue(createString(""), true);
                         }
                     }
                 } else {
@@ -1195,7 +1203,22 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                         }
                     }
                 } else if (args[1].type == JavaValue::OBJ_REF) {
-                    obj->stringVal += getString(args[1].asRef());
+                    uint32_t r = args[1].asRef();
+                    if (r != 0) {
+                        JavaObject* argObj = getObject(r);
+                        if (argObj && (argObj->className == "java/lang/String" || argObj->className == "java/lang/StringBuffer" || argObj->className == "java/lang/StringBuilder")) {
+                            obj->stringVal += argObj->stringVal;
+                        } else if (argObj && argObj->fields.find("value") != argObj->fields.end()) {
+                            auto v = argObj->fields["value"];
+                            if (v.type == JavaValue::INT) obj->stringVal += std::to_string(v.asInt());
+                            else if (v.type == JavaValue::LONG) obj->stringVal += std::to_string(v.asLong());
+                            else if (v.type == JavaValue::FLOAT) obj->stringVal += std::to_string(v.asFloat());
+                            else if (v.type == JavaValue::DOUBLE) obj->stringVal += std::to_string(v.asDouble());
+                            else obj->stringVal += (v.asInt() ? "true" : "false");
+                        } else if (argObj) {
+                            obj->stringVal += argObj->stringVal;
+                        }
+                    }
                 } else {
                     obj->stringVal += std::to_string(args[1].asInt());
                 }
@@ -2651,6 +2674,10 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
                 uint32_t r = allocObject("java/nio/ByteOrder");
                 JavaObject* bo = getObject(r);
                 if (bo) bo->fields["isLittle"] = JavaValue(0);
+                sv = JavaValue(r, true);
+                setStaticField(fKey, sv);
+            } else if (fKey.find("StandardCharsets:UTF_8") != std::string::npos && sv.asRef() == 0) {
+                uint32_t r = allocObject("java/nio/charset/Charset");
                 sv = JavaValue(r, true);
                 setStaticField(fKey, sv);
             }
