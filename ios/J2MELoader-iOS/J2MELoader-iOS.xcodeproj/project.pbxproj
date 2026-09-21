@@ -73,6 +73,7 @@
 		AA0000192C88000100000001 /* eas_engine_bridge.c in Sources */ = {isa = PBXBuildFile; fileRef = BB0000192C88000100000002 /* eas_engine_bridge.c */; };
 		AA00001A2C88000100000001 /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = BB00001A2C88000100000001 /* Shaders.metal */; };
 		AA00001B2C88000100000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB00001B2C88000100000001 /* Assets.xcassets */; };
+		AA00001B2C88000100000099 /* DragonBoy.jar in Resources */ = {isa = PBXBuildFile; fileRef = BB00001B2C88000100000099 /* DragonBoy.jar */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -160,6 +161,7 @@
 		BB00001A2C88000100000001 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = "Shaders/Shaders.metal"; sourceTree = "<group>"; };
 		BB00002C2C88000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Resources/Info.plist"; sourceTree = "<group>"; };
 		BB00001B2C88000100000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BB00001B2C88000100000099 /* DragonBoy.jar */ = {isa = PBXFileReference; lastKnownFileType = archive.jar; path = "Resources/DragonBoy.jar"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -193,6 +195,7 @@
 				BB00001A2C88000100000001 /* Shaders.metal */,
 				BB00001B2C88000100000001 /* Assets.xcassets */,
 				BB00002C2C88000100000001 /* Info.plist */,
+				BB00001B2C88000100000099 /* DragonBoy.jar */,
 			);
 			path = "J2MELoader-iOS";
 			sourceTree = "<group>";
@@ -386,6 +389,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA00001B2C88000100000001 /* Assets.xcassets in Resources */,
+				AA00001B2C88000100000099 /* DragonBoy.jar in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -46,6 +46,9 @@ fi
 echo "[2/4] Packaging Payload and Device IPA..."
 rm -rf build/Payload
 mkdir -p build/Payload
+if [ -f "J2MELoader-iOS/Resources/DragonBoy.jar" ]; then
+  cp "J2MELoader-iOS/Resources/DragonBoy.jar" build/Release-iphoneos/*.app/ 2>/dev/null || true
+fi
 cp -R build/Release-iphoneos/*.app build/Payload/
 
 echo "Setting permissions on application bundle..."
@@ -76,6 +79,9 @@ xcodebuild build \
 
 if [ -d "build/Release-iphonesimulator/J2MELoader-iOS.app" ]; then
   echo "[4/4] Creating J2HienLoader-Simulator-iPad.zip for Appetize.io..."
+  if [ -f "J2MELoader-iOS/Resources/DragonBoy.jar" ]; then
+    cp "J2MELoader-iOS/Resources/DragonBoy.jar" build/Release-iphonesimulator/J2MELoader-iOS.app/ 2>/dev/null || true
+  fi
   codesign --force --deep --sign - build/Release-iphonesimulator/J2MELoader-iOS.app || true
   cd build/Release-iphonesimulator
   zip -r -y ../J2HienLoader-Simulator-iPad.zip J2MELoader-iOS.app

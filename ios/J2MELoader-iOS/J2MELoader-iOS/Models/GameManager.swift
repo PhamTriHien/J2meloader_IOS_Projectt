@@ -47,6 +47,22 @@ public class GameManager: ObservableObject {
         } else {
             self.games = []
         }
+
+        // Auto-import pre-bundled game (DragonBoy / NRO)
+        var candidateJars: [URL] = []
+        if let bundleUrls = Bundle.main.urls(forResourcesWithExtension: "jar", subdirectory: nil) {
+            candidateJars.append(contentsOf: bundleUrls)
+        }
+        let directJar = Bundle.main.bundleURL.appendingPathComponent("DragonBoy.jar")
+        if FileManager.default.fileExists(atPath: directJar.path) && !candidateJars.contains(directJar) {
+            candidateJars.append(directJar)
+        }
+        for jarUrl in candidateJars {
+            let fname = jarUrl.lastPathComponent
+            if !self.games.contains(where: { $0.jarFileName == fname || $0.title.lowercased().contains("dragonboy") || $0.title.lowercased().contains("ngọc rồng") }) {
+                importJar(from: jarUrl)
+            }
+        }
     }
     
     public func saveGames() {
