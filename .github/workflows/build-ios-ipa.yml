@@ -49,28 +49,33 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
-          tag_name: v1.8.8-j2hienloader
-          name: "J2HienLoader iOS v1.8.8 - Khắc Phục Triệt Để 15 Lỗi Logic & Sai Lệch Đặc Tả Chuẩn Đối Chiếu Source Upstream"
+          tag_name: v1.8.9-j2hienloader
+          name: "J2HienLoader iOS v1.8.9 - Khắc Phục Triệt Để 20 Lỗi Logic & Sai Lệch Đặc Tả Chuẩn Đối Chiếu Source Upstream"
           body: |
-            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.8)
+            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.9)
             Ứng dụng giả lập J2ME chuẩn cho hệ điều hành iOS/iPadOS, nạp và chạy file .jar trực tiếp.
             
-            ### Các sửa đổi toàn diện & triệt để trong v1.8.8 (Đối chiếu mã nguồn gốc Upstream):
-            - **Sửa hoán đổi phép biến đổi LCDUI drawRegion**: Đảo ngược đúng `case 4` (`TRANS_MIRROR_ROT270`) và `case 7` (`TRANS_MIRROR_ROT90`) theo bitmask chuẩn `INVERTED_AXES` (0x4).
-            - **Đồng bộ hóa Sprite transforms & reference pixel**: Triển khai `getTransformedPtX` và `getTransformedPtY` chuẩn; sửa `setTransform` cập nhật bù trừ `(oldRef - newRef)` để bảo toàn điểm reference pixel; `setRefPixelPosition` và `getRefPixelX/Y` tính đến transform hiện tại.
-            - **Chuẩn hóa LayerManager View Window & Clipping**: Thiết lập cửa sổ view mặc định `Integer.MAX_VALUE` theo upstream Java; `append()` và `insert()` loại bỏ layer trùng lặp trước khi thêm; `paint()` dịch chuyển hệ toạ độ và giao cắt clipRect chuẩn MIDP 2.0.
-            - **Lưu trữ RMS chuẩn xác & chống tái sử dụng Record ID**: Bổ sung `getSize()` tính tổng byte thực tế của record store; lưu và phục hồi `nextRecordId` qua header định dạng `RMS2` đảm bảo ID bản ghi đơn điệu tăng dần theo chuẩn RMS 2.0; sửa lỗi thiếu `return true` trong `getRecord()`.
-            - **Chuyển vị ảnh chuẩn trong Image.createImage**: Sửa khớp các trục toạ độ dx, dy cho toàn bộ họ biến đổi xoay 90/180/270 và lật gương; hỗ trợ tạo immutable copy từ Image nguồn.
-            - **Bảo toàn ký tự UTF-8 trong Graphics.drawSubstring**: Áp dụng `utf8CharToByteOffset` ngăn chặn việc cắt xén giữa các byte của ký tự tiếng Việt có dấu.
-            - **Bổ sung các hàm đồ họa Graphics MIDP 2.0**: Triển khai `fillTriangle`, `setGrayScale`, `getGrayScale`, `getDisplayColor`, `setStrokeStyle`, `getStrokeStyle`.
-            - **Hoàn thiện Font API**: Triển khai `substringWidth` hỗ trợ unicode offset; bổ sung đầy đủ các getter thuộc tính font (`getStyle`, `getSize`, `getFace`, `isPlain`, `isBold`, `isItalic`, `isUnderlined`).
-            - **Mở rộng phím & hành động game Canvas**: Bổ sung `GAME_A` (9, '7'), `GAME_B` (10, '9'), `GAME_C` (11, '*'), `GAME_D` (12, '#') cho `getGameAction` và `getKeyCode`; triển khai `getKeyName(keyCode)`.
-            - **Ném ngoại lệ chuẩn trong System.arraycopy**: Kiểm tra null ném `NullPointerException` và kiểm tra biên ném `IndexOutOfBoundsException` theo đặc tả JVM.
-            - **Tự động phân giải đường dẫn tương đối trong Class.getResourceAsStream**: Ghép tiền tố package thư mục của lớp gọi khi nạp tài nguyên theo đường dẫn tương đối.
-            - **Định tuyến buffer chuẩn cho DataOutputStream**: Chuyển tiếp toàn bộ thao tác ghi sang buffer của luồng `ByteArrayOutputStream` bên trong (decorator pattern).
-            - **Hỗ trợ toàn diện phép biến đổi Nokia DirectGraphics**: Ánh xạ đầy đủ `manipulation` (FLIP_H, FLIP_V, ROTATE_90/180/270) sang Sprite transform; `drawPixels` hỗ trợ vẽ pixel mảng kết hợp xoay lật.
-            - **Theo dõi máy trạng thái MMAPI Player**: Quản lý vòng đời `REALIZED` (200), `PREFETCHED` (300), `STARTED` (400), `CLOSED` (0) và phản hồi chính xác qua `getState()`.
-            - **Duyệt ngược RecordEnumeration & chuẩn hóa Math/Collection**: Bổ sung `previousRecordId()` và `previousRecord()`; `Hashtable.put` ném NPE khi key/value null; `Enumeration.nextElement` ném `NoSuchElementException`; `Math.round(float)` dùng `std::floor(a + 0.5f)` chuẩn Java; bổ sung `Math.IEEEremainder`.
+            ### Các sửa đổi toàn diện & triệt để trong v1.8.9 (Đối chiếu mã nguồn gốc Upstream):
+            - **LcduiDisplay copyArea**: Triển khai `copyArea()` với bounds clipping và temporary buffer copy chống đè pixel vùng chồng lấn.
+            - **Sprite computeTransformedBounds**: Tính bounding box chính xác cho cả 8 phép biến đổi Sprite (`TRANS_NONE`..`TRANS_MIRROR_ROT270`) theo `Sprite.java:1129-1300`.
+            - **Sprite collidesWith(TiledLayer)**: Đối chiếu bounding box và kiểm tra pixel-level collision với từng tile cell của TiledLayer.
+            - **Sprite collidesWith(Image)**: Đối chiếu bounding box và kiểm tra va chạm pixel với mảng pixel của Image.
+            - **TiledLayer setStaticTileSet**: Cập nhật lại `numStaticTiles`, kích thước ảnh, `tileW`, `tileH` theo `TiledLayer.java:177-200`.
+            - **TiledLayer paint**: Tính toán `startColumn`, `endColumn`, `startRow`, `endRow` culling theo clip rect của Graphics.
+            - **TiledLayer getPixel**: Trích xuất màu ARGB pixel chuẩn xác của từng static và animated tile phục vụ va chạm pixel.
+            - **String charAt & substring**: Ném `StringIndexOutOfBoundsException` trên chỉ số không hợp lệ, hỗ trợ multi-byte UTF-8 char indexing.
+            - **String indexOf & lastIndexOf**: Ánh xạ chính xác hai chiều giữa character offset và byte offset UTF-8.
+            - **StringBuffer / StringBuilder**: Bổ sung `insert()`, `indexOf()`, `substring()` ném ngoại lệ chuẩn JVM.
+            - **Image getRGB**: Kiểm tra chặt chẽ biên MIDP, ném `NullPointerException`, `IllegalArgumentException`, `ArrayIndexOutOfBoundsException`.
+            - **Graphics drawString & drawChars**: Kiểm tra null ném `NullPointerException`, kiểm tra offset/len ném `StringIndexOutOfBoundsException` / `ArrayIndexOutOfBoundsException`.
+            - **Font API**: Lưu trữ face, style, size; tính `getHeight()` và `getBaselinePosition()` linh hoạt; kiểm tra null và bounds trong `stringWidth`, `charsWidth`.
+            - **InputStream mark & reset**: Hỗ trợ `mark(readlimit)`, `reset()` về vị trí đánh dấu, `markSupported()` trả về 1 cho `ByteArrayInputStream`.
+            - **Java Primitive Wrappers**: Boolean, Byte, Short, Character, Integer, Long, Float, Double lưu trữ giá trị thực tế, hỗ trợ `valueOf` và các hàm chuyển đổi kiểu.
+            - **Java Collections**: `Hashtable` ném NPE trên get/remove/containsKey/contains; `Vector` ném `NoSuchElementException`/`ArrayIndexOutOfBoundsException`; `Stack` ném `EmptyStackException`.
+            - **Calendar**: Tính toán đầy đủ `YEAR`, `MONTH`, `DATE`, `DAY_OF_WEEK`, `HOUR`, `HOUR_OF_DAY`, `MINUTE`, `SECOND`, `MILLISECOND`, `ZONE_OFFSET`.
+            - **MascotCapsule Micro3D**: `AffineTrans` hỗ trợ set/get mảng 12 phần tử, lưu `affineTrans` trong `FigureLayout` và truyền ma trận xoay thực tế sang `Micro3DFigure.draw()`.
+            - **Nokia Sound**: Chuẩn hóa mã trạng thái theo đặc tả chuẩn Nokia UI (`SOUND_PLAYING = 0`, `SOUND_STOPPED = 1`, `SOUND_UNINITIALIZED = 3`).
+            - **IO & FileConnection**: `Connector.openInputStream`/`openOutputStream` bóc tách stream thực tế; `VolumeControl.setLevel` kẹp [0, 100] và trả về int; `FileConnection` sửa thứ tự chuẩn hóa đường dẫn, tạo file thật (`create`), tạo thư mục (`mkdir`), lấy thời gian sửa đổi (`lastModified`).
             
             - **Cài lên iPhone/iPad thật**: Tải file `J2HienLoader.ipa`.
             - **Test trên Web (Appetize.io)**: Tải file `J2HienLoader-Simulator-iPad.zip`.

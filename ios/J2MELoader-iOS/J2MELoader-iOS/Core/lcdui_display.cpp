@@ -1,14 +1,31 @@
+#ifndef _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
+#endif
 #include "lcdui_display.h"
 #include <cmath>
 #include <algorithm>
 #include <cstring>
 #include <cstdint>
 #include <cstdlib>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+#ifndef M_PI_2
+#define M_PI_2 1.57079632679489661923
+#endif
+
+#if defined(_MSC_VER)
+#define WEAK_ATTR
+#else
+#define WEAK_ATTR __attribute__((weak))
+#endif
+
 // Full-Unicode font via iOS CoreText (weak-linked; fallback 8x8 on other builds)
 extern "C" {
-bool native_text_measure(const char *utf8, int px, int *outW, int *outH) __attribute__((weak));
-bool native_text_render(const char *utf8, int px, uint8_t **outAlpha, int *outW, int *outH) __attribute__((weak));
-void native_free(void *p) __attribute__((weak));
+bool native_text_measure(const char *utf8, int px, int *outW, int *outH) WEAK_ATTR;
+bool native_text_render(const char *utf8, int px, uint8_t **outAlpha, int *outW, int *outH) WEAK_ATTR;
+void native_free(void *p) WEAK_ATTR;
 }
 static bool needsUnicode(const std::string& s) {
     for (unsigned char c : s) if (c < 32 || c > 126) return true;
@@ -77,7 +94,7 @@ static const uint8_t font8x8_basic[96][8] = {
     {0x66,0x66,0x66,0x3C,0x18,0x18,0x18,0x00}, // Y
     {0x7E,0x06,0x0C,0x18,0x30,0x60,0x7E,0x00}, // Z
     {0x3C,0x30,0x30,0x30,0x30,0x30,0x3C,0x00}, // [
-    {0xC0,0x60,0x30,0x18,0x0C,0x06,0x02,0x00}, // \
+    {0xC0,0x60,0x30,0x18,0x0C,0x06,0x02,0x00}, // backslash
     {0x3C,0x0C,0x0C,0x0C,0x0C,0x0C,0x3C,0x00}, // ]
     {0x10,0x38,0x6C,0xC6,0x00,0x00,0x00,0x00}, // ^
     {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xFF}, // _
@@ -361,6 +378,48 @@ void LcduiDisplay::drawRegion(const uint32_t* srcPixels, int srcW, int srcH, int
     }
 }
 
+void LcduiDisplay::copyArea(int x_src, int y_src, int width, int height, int x_dest, int y_dest, int anchor) {
+    if (width <= 0 || height <= 0 || m_buffer.empty()) return;
+    int sx = x_src + m_transX;
+    int sy = y_src + m_transY;
+    int dx = x_dest + m_transX;
+    int dy = y_dest + m_transY;
+
+    if (anchor & 1) dx -= width / 2; // HCENTER
+    else if (anchor & 8) dx -= width; // RIGHT
+    if (anchor & 2) dy -= height / 2; // VCENTER
+    else if (anchor & (32 | 64)) dy -= height; // BOTTOM / BASELINE
+
+    // Copy source pixels into temporary buffer
+    std::vector<uint32_t> temp(width * height, 0);
+    for (int r = 0; r < height; ++r) {
+        int py = sy + r;
+        if (py < 0 || py >= m_height) continue;
+        for (int c = 0; c < width; ++c) {
+            int px = sx + c;
+            if (px >= 0 && px < m_width) {
+                temp[r * width + c] = m_buffer[(size_t)py * m_width + px];
+            }
+        }
+    }
+
+    // Blit to dest with clipping
+    int clipMinX = std::max(0, m_clip.x);
+    int clipMaxX = std::min(m_width, m_clip.x + m_clip.width);
+    int clipMinY = std::max(0, m_clip.y);
+    int clipMaxY = std::min(m_height, m_clip.y + m_clip.height);
+
+    for (int r = 0; r < height; ++r) {
+        int ty = dy + r;
+        if (ty < clipMinY || ty >= clipMaxY) continue;
+        for (int c = 0; c < width; ++c) {
+            int tx = dx + c;
+            if (tx < clipMinX || tx >= clipMaxX) continue;
+            m_buffer[(size_t)ty * m_width + tx] = temp[r * width + c];
+        }
+    }
+}
+
 void LcduiDisplay::drawRoundRect(int x, int y, int w, int h, int arcWidth, int arcHeight, uint32_t color) {
     if (w <= 0 || h <= 0) return;
     int rx = std::max(0, std::min(w / 2, arcWidth / 2));
@@ -502,7 +561,7 @@ void LcduiDisplay::fillArc(int x, int y, int w, int h, int startAngle, int arcAn
 void LcduiDisplay::drawString(const std::string& text, int x, int y, int anchor, uint32_t color) {
     int ax = x + m_transX, ay = y + m_transY;
     // Unicode path (Vietnamese/CJK): CoreText alpha bitmap blended with LCDUI color
-    if (!text.empty() && needsUnicode(text) && native_text_render && native_free) {
+    if (!text.empty() && needsUnicode(text) && ((const void*)native_text_render != nullptr) && ((const void*)native_free != nullptr)) {
         uint8_t *alpha = nullptr; int w = 0, h = 0;
         if (native_text_render(text.c_str(), 12, &alpha, &w, &h) && alpha && w > 0 && h > 0) {
             int drawX = ax, drawY = ay;

@@ -48,6 +48,7 @@ public:
 
     void drawRGB(const int32_t* rgbData, int offset, int scanlength, int x, int y, int width, int height, bool processAlpha);
     void drawRegion(const uint32_t* srcPixels, int srcW, int srcH, int x_src, int y_src, int width, int height, int transform, int x_dest, int y_dest, int anchor);
+    void copyArea(int x_src, int y_src, int width, int height, int x_dest, int y_dest, int anchor);
     void drawChar(char c, int x, int y, uint32_t color);
     void drawString(const std::string& text, int x, int y, int anchor, uint32_t color);
 

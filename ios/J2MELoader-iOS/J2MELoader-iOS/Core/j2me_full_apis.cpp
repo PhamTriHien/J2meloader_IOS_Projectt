@@ -1,3 +1,8 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "j2me_full_apis.h"
 #include "jvm_bytecode.h"
 #include "jvm_interpreter.h"
@@ -36,28 +41,43 @@
 #include <errno.h>
 #endif
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <direct.h>
+#define fs_mkdir(p) _mkdir(p)
+#else
+#include <sys/stat.h>
+#define fs_mkdir(p) mkdir(p, 0755)
+#endif
+#include <sys/stat.h>
+
+#if defined(_MSC_VER)
+#define WEAK_ATTR
+#else
+#define WEAK_ATTR __attribute__((weak))
+#endif
+
 // Real iOS native extensions (Bridge/NativeExtBridge.mm). Weak-linked:
 // on non-Apple builds these symbols are absent -> fallback stubs below.
 extern "C" {
-bool native_http_fetch(const char *url, const char *method, uint8_t **outData, int *outLen, int *outCode, char *outType, int typeCap) __attribute__((weak));
-void native_free(void *p) __attribute__((weak));
-bool native_socket_test(const char *url) __attribute__((weak));
-int native_bluetooth_state(void) __attribute__((weak));
-int native_bluetooth_scan(int timeoutSec, char *outNames, int cap) __attribute__((weak));
-bool native_location_get(double *lat, double *lon, float *accuracy) __attribute__((weak));
-void native_location_request(void) __attribute__((weak));
-int native_contacts_count(void) __attribute__((weak));
-int native_calendar_count(void) __attribute__((weak));
-void native_contacts_request(void) __attribute__((weak));
-void native_calendar_request(void) __attribute__((weak));
-bool native_contact_get(int index, char *name, int nameCap, char *phone, int phoneCap) __attribute__((weak));
-bool native_http_send(const char *url, const char *method, const uint8_t *body, int bodyLen, uint8_t **outData, int *outLen, int *outCode, char *outType, int typeCap) __attribute__((weak));
-bool native_can_send_text(void) __attribute__((weak));
-bool native_prompt_text_input(const char *title, const char *initialText, char *outBuffer, int maxLen) __attribute__((weak));
-void native_vibrate(int ms) __attribute__((weak));
-bool native_camera_snapshot(uint8_t **outPNG, int *outLen) __attribute__((weak));
-void native_background_keepalive_start(void) __attribute__((weak));
-void native_background_keepalive_stop(void) __attribute__((weak));
+bool native_http_fetch(const char *url, const char *method, uint8_t **outData, int *outLen, int *outCode, char *outType, int typeCap) WEAK_ATTR;
+void native_free(void *p) WEAK_ATTR;
+bool native_socket_test(const char *url) WEAK_ATTR;
+int native_bluetooth_state(void) WEAK_ATTR;
+int native_bluetooth_scan(int timeoutSec, char *outNames, int cap) WEAK_ATTR;
+bool native_location_get(double *lat, double *lon, float *accuracy) WEAK_ATTR;
+void native_location_request(void) WEAK_ATTR;
+int native_contacts_count(void) WEAK_ATTR;
+int native_calendar_count(void) WEAK_ATTR;
+void native_contacts_request(void) WEAK_ATTR;
+void native_calendar_request(void) WEAK_ATTR;
+bool native_contact_get(int index, char *name, int nameCap, char *phone, int phoneCap) WEAK_ATTR;
+bool native_http_send(const char *url, const char *method, const uint8_t *body, int bodyLen, uint8_t **outData, int *outLen, int *outCode, char *outType, int typeCap) WEAK_ATTR;
+bool native_can_send_text(void) WEAK_ATTR;
+bool native_prompt_text_input(const char *title, const char *initialText, char *outBuffer, int maxLen) WEAK_ATTR;
+void native_vibrate(int ms) WEAK_ATTR;
+bool native_camera_snapshot(uint8_t **outPNG, int *outLen) WEAK_ATTR;
+void native_background_keepalive_start(void) WEAK_ATTR;
+void native_background_keepalive_stop(void) WEAK_ATTR;
 }
 static bool hasNative(const void *f) { return f != nullptr; }
 
@@ -539,19 +559,19 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     }
     // ============ java/lang wrappers ============
     if(className=="java/lang/Boolean"){
-        if(methodName=="<init>") return true;
+        if(methodName=="<init>"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); if(o&&args.size()>=2) o->fields["value"]=args[1]; return true; }
         if(methodName=="booleanValue"&&!args.empty()){ JavaObject*o=ENG().getObject(args[0].asRef()); int v=o?o->fields["value"].asInt():0; outResult=JavaValue(v); return true; }
         if(methodName=="parseBoolean"||methodName=="valueOf"){ std::string s=args.empty()?"":ENG().getString(args[0].asRef()); outResult=JavaValue(toLowerStr(s)=="true"?1:0); if(methodName=="valueOf"){ uint32_t r=ENG().allocObject("java/lang/Boolean"); JavaObject*o=ENG().getObject(r); if(o)o->fields["value"]=outResult; outResult=JavaValue(r,true);} return true; }
         if(methodName=="toString"){ std::string s=(args.size()>=1&&args[0].asInt()!=0)?"true":"false"; if(!args.empty()&&args[0].type==JavaValue::OBJ_REF){ JavaObject*o=ENG().getObject(args[0].asRef()); if(o) s=(o->fields["value"].asInt()?"true":"false"); } outResult=JavaValue(ENG().createString(s),true); return true; }
     }
     if(className=="java/lang/Byte"||className=="java/lang/Short"){
-        if(methodName=="<init>") return true;
+        if(methodName=="<init>"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); if(o&&args.size()>=2) o->fields["value"]=args[1]; return true; }
         if(methodName=="parseByte"||methodName=="parseShort"){ std::string s=args.empty()?"":ENG().getString(args[0].asRef()); try{outResult=JavaValue((int32_t)std::stoi(s));}catch(...){outResult=JavaValue(0);} return true; }
         if(methodName=="toString"&&args.size()>=1){ outResult=JavaValue(ENG().createString(std::to_string(args[0].asInt())),true); return true; }
         if(methodName=="byteValue"||methodName=="shortValue"||methodName=="intValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?o->fields["value"].asInt():0); return true; }
     }
     if(className=="java/lang/Character"){
-        if(methodName=="<init>") return true;
+        if(methodName=="<init>"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); if(o&&args.size()>=2) o->fields["value"]=args[1]; return true; }
         if(methodName=="isDigit"&&!args.empty()){ int ch=args[0].asInt(); outResult=JavaValue(std::isdigit(ch)?1:0); return true; }
         if(methodName=="isWhitespace"&&!args.empty()){ int ch=args[0].asInt(); outResult=JavaValue(std::isspace(ch)?1:0); return true; }
         if(methodName=="isUpperCase"&&!args.empty()){ int ch=args[0].asInt(); outResult=JavaValue(std::isupper(ch)?1:0); return true; }
@@ -562,15 +582,30 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="charValue"&&!args.empty()){ JavaObject*o=ENG().getObject(args[0].asRef()); outResult=JavaValue(o?o->fields["value"].asInt():0); return true; }
         if(methodName=="toString"&&args.size()>=1){ char c=(char)args[0].asInt(); outResult=JavaValue(ENG().createString(std::string(1, c)), true); return true; }
     }
+    if(className=="java/lang/Integer"){
+        if(methodName=="<init>"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); if(o&&args.size()>=2) o->fields["value"]=args[1]; return true; }
+        if(methodName=="intValue"||methodName=="shortValue"||methodName=="byteValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?o->fields["value"].asInt():0); return true; }
+        if(methodName=="longValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?(int64_t)o->fields["value"].asInt():(int64_t)0); return true; }
+        if(methodName=="floatValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?(float)o->fields["value"].asInt():0.0f); return true; }
+        if(methodName=="doubleValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?(double)o->fields["value"].asInt():0.0); return true; }
+        if(methodName=="valueOf"&&!args.empty()){ uint32_t r=ENG().allocObject("java/lang/Integer"); JavaObject*o=ENG().getObject(r); if(o) o->fields["value"]=JavaValue(args[0].asInt()); outResult=JavaValue(r,true); return true; }
+        if(methodName=="parseInt"&&!args.empty()){ std::string s=ENG().getString(args[0].asRef()); int radix=args.size()>=2?args[1].asInt():10; try{outResult=JavaValue((int32_t)std::stoi(s,nullptr,radix));}catch(...){outResult=JavaValue(0);} return true; }
+        if(methodName=="toHexString"&&!args.empty()){ uint32_t v=(uint32_t)args[0].asInt(); char buf[32]; snprintf(buf,sizeof(buf),"%x",v); outResult=JavaValue(ENG().createString(buf),true); return true; }
+        if(methodName=="toOctalString"&&!args.empty()){ uint32_t v=(uint32_t)args[0].asInt(); char buf[32]; snprintf(buf,sizeof(buf),"%o",v); outResult=JavaValue(ENG().createString(buf),true); return true; }
+        if(methodName=="toBinaryString"&&!args.empty()){ uint32_t v=(uint32_t)args[0].asInt(); std::string b=""; if(v==0) b="0"; else { while(v>0){ b=((v&1)?'1':'0')+b; v>>=1; } } outResult=JavaValue(ENG().createString(b),true); return true; }
+        if(methodName=="toString"){ int32_t v=0; if(args.size()==1&&args[0].type==JavaValue::OBJ_REF){ JavaObject*o=ENG().getObject(args[0].asRef()); v=o?o->fields["value"].asInt():0; } else if(!args.empty()){ v=args[0].asInt(); } outResult=JavaValue(ENG().createString(std::to_string(v)),true); return true; }
+    }
     if(className=="java/lang/Long"){
-        if(methodName=="<init>") return true;
+        if(methodName=="<init>"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); if(o&&args.size()>=2) o->fields["value"]=args[1]; return true; }
         if(methodName=="parseLong"){ std::string s=args.empty()?"":ENG().getString(args[0].asRef()); try{outResult=JavaValue((int64_t)std::stoll(s));}catch(...){outResult=JavaValue((int64_t)0);} return true; }
-        if(methodName=="toString"){ int64_t v=args.empty()?0:args[0].asLong(); outResult=JavaValue(ENG().createString(std::to_string(v)),true); return true; }
+        if(methodName=="valueOf"&&!args.empty()){ uint32_t r=ENG().allocObject("java/lang/Long"); JavaObject*o=ENG().getObject(r); if(o) o->fields["value"]=JavaValue(args[0].asLong()); outResult=JavaValue(r,true); return true; }
+        if(methodName=="toString"){ int64_t v=0; if(args.size()==1&&args[0].type==JavaValue::OBJ_REF){ JavaObject*o=ENG().getObject(args[0].asRef()); v=o?o->fields["value"].asLong():0; } else if(!args.empty()){ v=args[0].asLong(); } outResult=JavaValue(ENG().createString(std::to_string(v)),true); return true; }
         if(methodName=="longValue"||methodName=="intValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=o?o->fields["value"]:JavaValue((int64_t)0); return true; }
     }
     if(className=="java/lang/Float"){
-        if(methodName=="<init>") return true;
+        if(methodName=="<init>"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); if(o&&args.size()>=2) o->fields["value"]=args[1]; return true; }
         if(methodName=="parseFloat"&&!args.empty()){ std::string s=ENG().getString(args[0].asRef()); try{outResult=JavaValue((float)std::stof(s));}catch(...){outResult=JavaValue(0.0f);} return true; }
+        if(methodName=="valueOf"&&!args.empty()){ uint32_t r=ENG().allocObject("java/lang/Float"); JavaObject*o=ENG().getObject(r); if(o) o->fields["value"]=JavaValue(args[0].asFloat()); outResult=JavaValue(r,true); return true; }
         if(methodName=="floatToIntBits"||methodName=="floatToRawIntBits"){
             float f = args.empty() ? 0.0f : args[0].asFloat();
             uint32_t u = 0; std::memcpy(&u, &f, 4);
@@ -583,14 +618,15 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             outResult = JavaValue(f);
             return true;
         }
-        if(methodName=="toString"){ float f=args.empty()?0.0f:args[0].asFloat(); outResult=JavaValue(ENG().createString(std::to_string(f)),true); return true; }
+        if(methodName=="toString"){ float f=0.0f; if(args.size()==1&&args[0].type==JavaValue::OBJ_REF){ JavaObject*o=ENG().getObject(args[0].asRef()); f=o?o->fields["value"].asFloat():0.0f; } else if(!args.empty()){ f=args[0].asFloat(); } outResult=JavaValue(ENG().createString(std::to_string(f)),true); return true; }
         if(methodName=="floatValue"||methodName=="intValue"||methodName=="longValue"||methodName=="doubleValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); JavaValue v=o?o->fields["value"]:JavaValue(0.0f); if(methodName=="intValue") outResult=JavaValue(v.asInt()); else if(methodName=="longValue") outResult=JavaValue(v.asLong()); else if(methodName=="doubleValue") outResult=JavaValue((double)v.asFloat()); else outResult=JavaValue(v.asFloat()); return true; }
         if(methodName=="isNaN"){ outResult=JavaValue(std::isnan(args.empty()?0.0f:args[0].asFloat())?1:0); return true; }
         if(methodName=="isInfinite"){ outResult=JavaValue(std::isinf(args.empty()?0.0f:args[0].asFloat())?1:0); return true; }
     }
     if(className=="java/lang/Double"){
-        if(methodName=="<init>") return true;
+        if(methodName=="<init>"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); if(o&&args.size()>=2) o->fields["value"]=args[1]; return true; }
         if(methodName=="parseDouble"&&!args.empty()){ std::string s=ENG().getString(args[0].asRef()); try{outResult=JavaValue(std::stod(s));}catch(...){outResult=JavaValue(0.0);} return true; }
+        if(methodName=="valueOf"&&!args.empty()){ uint32_t r=ENG().allocObject("java/lang/Double"); JavaObject*o=ENG().getObject(r); if(o) o->fields["value"]=JavaValue(args[0].asDouble()); outResult=JavaValue(r,true); return true; }
         if(methodName=="doubleToLongBits"||methodName=="doubleToRawLongBits"){
             double d = args.empty() ? 0.0 : args[0].asDouble();
             uint64_t u = 0; std::memcpy(&u, &d, 8);
@@ -603,7 +639,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             outResult = JavaValue(d);
             return true;
         }
-        if(methodName=="toString"){ double d=args.empty()?0.0:args[0].asDouble(); outResult=JavaValue(ENG().createString(std::to_string(d)),true); return true; }
+        if(methodName=="toString"){ double d=0.0; if(args.size()==1&&args[0].type==JavaValue::OBJ_REF){ JavaObject*o=ENG().getObject(args[0].asRef()); d=o?o->fields["value"].asDouble():0.0; } else if(!args.empty()){ d=args[0].asDouble(); } outResult=JavaValue(ENG().createString(std::to_string(d)),true); return true; }
         if(methodName=="doubleValue"||methodName=="floatValue"||methodName=="intValue"||methodName=="longValue"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); JavaValue v=o?o->fields["value"]:JavaValue(0.0); if(methodName=="intValue") outResult=JavaValue(v.asInt()); else if(methodName=="longValue") outResult=JavaValue(v.asLong()); else if(methodName=="floatValue") outResult=JavaValue(v.asFloat()); else outResult=JavaValue(v.asDouble()); return true; }
         if(methodName=="isNaN"){ outResult=JavaValue(std::isnan(args.empty()?0.0:args[0].asDouble())?1:0); return true; }
         if(methodName=="isInfinite"){ outResult=JavaValue(std::isinf(args.empty()?0.0:args[0].asDouble())?1:0); return true; }
@@ -809,7 +845,12 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             vec.emplace_back(k,v); outResult=JavaValue(0,true); return true;
         }
         if(methodName=="get"&&args.size()>=2){
-            uint32_t k=args[1].asRef(); auto it=g_hashtable.find(self);
+            uint32_t k=args[1].asRef();
+            if(k == 0){
+                ENG().setPendingException(ENG().allocObject("java/lang/NullPointerException"));
+                return true;
+            }
+            auto it=g_hashtable.find(self);
             if(it!=g_hashtable.end()){
                 for(auto &p:it->second){
                     if(keysEqual(p.first, k)){
@@ -820,7 +861,12 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             outResult=JavaValue(0,true); return true;
         }
         if(methodName=="remove"&&args.size()>=2){
-            uint32_t k=args[1].asRef(); auto it=g_hashtable.find(self);
+            uint32_t k=args[1].asRef();
+            if(k == 0){
+                ENG().setPendingException(ENG().allocObject("java/lang/NullPointerException"));
+                return true;
+            }
+            auto it=g_hashtable.find(self);
             if(it!=g_hashtable.end()){
                 for(size_t i=0;i<it->second.size();i++){
                     if(keysEqual(it->second[i].first, k)){
@@ -831,7 +877,12 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             outResult=JavaValue(0,true); return true;
         }
         if(methodName=="containsKey"&&args.size()>=2){
-            uint32_t k=args[1].asRef(); auto it=g_hashtable.find(self); bool f=false;
+            uint32_t k=args[1].asRef();
+            if(k == 0){
+                ENG().setPendingException(ENG().allocObject("java/lang/NullPointerException"));
+                return true;
+            }
+            auto it=g_hashtable.find(self); bool f=false;
             if(it!=g_hashtable.end()){
                 for(auto&p:it->second){
                     if(keysEqual(p.first, k)){ f=true; break; }
@@ -839,7 +890,16 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             }
             outResult=JavaValue(f?1:0); return true;
         }
-        if(methodName=="contains"&&args.size()>=2){ uint32_t v=args[1].asRef(); auto it=g_hashtable.find(self); bool f=false; if(it!=g_hashtable.end()) for(auto&p:it->second) if(p.second==v) f=true; outResult=JavaValue(f?1:0); return true; }
+        if(methodName=="contains"&&args.size()>=2){
+            uint32_t v=args[1].asRef();
+            if(v == 0){
+                ENG().setPendingException(ENG().allocObject("java/lang/NullPointerException"));
+                return true;
+            }
+            auto it=g_hashtable.find(self); bool f=false;
+            if(it!=g_hashtable.end()) for(auto&p:it->second) if(p.second==v) f=true;
+            outResult=JavaValue(f?1:0); return true;
+        }
         if(methodName=="keys"||methodName=="elements"){
             auto it=g_hashtable.find(self); uint32_t er=ENG().allocObject("java/util/Enumeration"); EnumData e;
             if(it!=g_hashtable.end()) for(auto&p:it->second) e.items.push_back(methodName=="keys"?p.first:p.second);
@@ -904,23 +964,100 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="removeElement"&&args.size()>=2&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); uint32_t t=args[1].asRef(); bool f=false; if(a) for(int i=0;i<cnt;i++) if(a->refData[i]==t){ for(int j=i;j<cnt-1;j++)a->refData[j]=a->refData[j+1]; o->fields["elementCount"]=JavaValue(cnt-1); f=true; break; } outResult=JavaValue(f?1:0); return true; }
         if(methodName=="contains"&&args.size()>=2&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); uint32_t t=args[1].asRef(); bool f=false; if(a) for(int i=0;i<cnt;i++) if(a->refData[i]==t) f=true; outResult=JavaValue(f?1:0); return true; }
         if(methodName=="indexOf"&&args.size()>=2&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); uint32_t t=args[1].asRef(); int r=-1; if(a) for(int i=0;i<cnt;i++) if(a->refData[i]==t){r=i;break;} outResult=JavaValue(r); return true; }
-        if((methodName=="firstElement"||methodName=="lastElement")&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); uint32_t r=0; if(a&&cnt>0) r=(methodName=="firstElement"?a->refData[0]:a->refData[cnt-1]); outResult=JavaValue(r,true); return true; }
-        if(methodName=="insertElementAt"&&args.size()>=3&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); int idx=args[2].asInt(); if(a&&idx>=0&&idx<=cnt){ if(cnt>=(int)a->refData.size()) a->refData.resize(a->refData.size()*2+8,0); for(int i=cnt;i>idx;i--)a->refData[i]=a->refData[i-1]; a->refData[idx]=args[1].asRef(); o->fields["elementCount"]=JavaValue(cnt+1);} return true; }
-        if(methodName=="removeElementAt"&&args.size()>=2&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); int idx=args[1].asInt(); if(a&&idx>=0&&idx<cnt){ for(int i=idx;i<cnt-1;i++)a->refData[i]=a->refData[i+1]; o->fields["elementCount"]=JavaValue(cnt-1);} return true; }
-        if(methodName=="setElementAt"&&args.size()>=3&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int idx=args[2].asInt(); if(a&&idx>=0&&idx<(int)a->refData.size()) a->refData[idx]=args[1].asRef(); return true; }
+        if((methodName=="firstElement"||methodName=="lastElement")&&o){
+            uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt();
+            if(!a || cnt <= 0){
+                ENG().setPendingException(ENG().allocObject("java/util/NoSuchElementException"));
+                outResult=JavaValue(0,true); return true;
+            }
+            uint32_t r=(methodName=="firstElement"?a->refData[0]:a->refData[cnt-1]);
+            outResult=JavaValue(r,true); return true;
+        }
+        if(methodName=="insertElementAt"&&args.size()>=3&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); int idx=args[2].asInt(); if(a&&idx>=0&&idx<=cnt){ if(cnt>=(int)a->refData.size()) a->refData.resize(a->refData.size()*2+8,0); for(int i=cnt;i>idx;i--)a->refData[i]=a->refData[i-1]; a->refData[idx]=args[1].asRef(); o->fields["elementCount"]=JavaValue(cnt+1);} else { ENG().setPendingException(ENG().allocObject("java/lang/ArrayIndexOutOfBoundsException")); } return true; }
+        if(methodName=="removeElementAt"&&args.size()>=2&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); int idx=args[1].asInt(); if(a&&idx>=0&&idx<cnt){ for(int i=idx;i<cnt-1;i++)a->refData[i]=a->refData[i+1]; o->fields["elementCount"]=JavaValue(cnt-1);} else { ENG().setPendingException(ENG().allocObject("java/lang/ArrayIndexOutOfBoundsException")); } return true; }
+        if(methodName=="setElementAt"&&args.size()>=3&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); int idx=args[2].asInt(); if(a&&idx>=0&&idx<cnt) a->refData[idx]=args[1].asRef(); else { ENG().setPendingException(ENG().allocObject("java/lang/ArrayIndexOutOfBoundsException")); } return true; }
         if(methodName=="isEmpty"){ outResult=JavaValue(o&&o->fields["elementCount"].asInt()==0?1:0); return true; }
     }
     if(className=="java/util/Stack"){
         if(methodName=="<init>"){ uint32_t self=args[0].asRef(); JavaObject*o=ENG().getObject(self); if(o){uint32_t a=ENG().allocArray(0,16); o->fields["elements"]=JavaValue(a,true); o->fields["elementCount"]=JavaValue(0);} return true; }
         if(methodName=="push"&&args.size()>=2){ JavaObject*o=ENG().getObject(args[0].asRef()); if(o){int c=o->fields["elementCount"].asInt(); JavaArray*a=ENG().getArray(o->fields["elements"].asRef()); if(a){ if(c>=(int)a->refData.size())a->refData.resize(a->refData.size()*2+8,0); a->refData[c]=args[1].asRef(); o->fields["elementCount"]=JavaValue(c+1);} } outResult=JavaValue(args[1].asRef(),true); return true; }
-        if(methodName=="pop"||methodName=="peek"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); uint32_t r=0; if(o){int c=o->fields["elementCount"].asInt(); JavaArray*a=ENG().getArray(o->fields["elements"].asRef()); if(a&&c>0){ r=a->refData[c-1]; if(methodName=="pop")o->fields["elementCount"]=JavaValue(c-1);} } outResult=JavaValue(r,true); return true; }
+        if(methodName=="pop"||methodName=="peek"){
+            JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef());
+            int c = o ? o->fields["elementCount"].asInt() : 0;
+            JavaArray*a = o ? ENG().getArray(o->fields["elements"].asRef()) : nullptr;
+            if(!a || c <= 0){
+                ENG().setPendingException(ENG().allocObject("java/util/EmptyStackException"));
+                outResult=JavaValue(0,true); return true;
+            }
+            uint32_t r = a->refData[c-1];
+            if(methodName=="pop") o->fields["elementCount"]=JavaValue(c-1);
+            outResult=JavaValue(r,true); return true;
+        }
         if(methodName=="empty"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(!o||o->fields["elementCount"].asInt()==0?1:0); return true; }
     }
     if(className=="java/util/Calendar"){
-        if(methodName=="getInstance"){ uint32_t r=ENG().allocObject("java/util/Calendar"); outResult=JavaValue(r,true); return true; }
-        if(methodName=="getTimeInMillis"||methodName=="getTime"){ auto now=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); if(desc.find("()J")!=std::string::npos) outResult=JavaValue((int64_t)now); else { uint32_t d=ENG().allocObject("java/util/Date"); JavaObject*o=ENG().getObject(d); if(o)o->fields["time"]=JavaValue((int64_t)now); outResult=JavaValue(d,true);} return true; }
-        if(methodName=="get"&&args.size()>=2){ int f=args[1].asInt(); std::time_t t=std::time(nullptr); std::tm* tm=std::localtime(&t); int v=0; switch(f){case 1:v=tm->tm_year+1900;break;case 2:v=tm->tm_mon;break;case 5:v=tm->tm_mday;break;case 11:v=tm->tm_hour;break;case 12:v=tm->tm_min;break;case 13:v=tm->tm_sec;break;case 7:v=tm->tm_wday+1;break;default:v=0;} outResult=JavaValue(v); return true; }
-        if(methodName=="setTime"||methodName=="setTimeInMillis"||methodName=="<init>") return true;
+        if(methodName=="getInstance"){
+            uint32_t r=ENG().allocObject("java/util/Calendar");
+            JavaObject* o=ENG().getObject(r);
+            auto now=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            if(o) o->fields["time"]=JavaValue((int64_t)now);
+            outResult=JavaValue(r,true); return true;
+        }
+        if(methodName=="<init>"){
+            JavaObject* o=args.empty()?nullptr:ENG().getObject(args[0].asRef());
+            auto now=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            if(o) o->fields["time"]=JavaValue((int64_t)now);
+            return true;
+        }
+        if(methodName=="setTime"&&args.size()>=2){
+            JavaObject* co=ENG().getObject(args[0].asRef());
+            JavaObject* d=ENG().getObject(args[1].asRef());
+            if(co&&d) co->fields["time"]=d->fields["time"];
+            return true;
+        }
+        if(methodName=="setTimeInMillis"&&args.size()>=2){
+            JavaObject* co=ENG().getObject(args[0].asRef());
+            if(co) co->fields["time"]=args[1];
+            return true;
+        }
+        if(methodName=="getTimeInMillis"||methodName=="getTime"){
+            JavaObject* co=args.empty()?nullptr:ENG().getObject(args[0].asRef());
+            int64_t t = (co && co->fields.count("time")) ? co->fields["time"].asLong() : (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            if(desc.find("()J")!=std::string::npos) outResult=JavaValue((int64_t)t);
+            else {
+                uint32_t d=ENG().allocObject("java/util/Date");
+                JavaObject* o=ENG().getObject(d);
+                if(o) o->fields["time"]=JavaValue((int64_t)t);
+                outResult=JavaValue(d,true);
+            }
+            return true;
+        }
+        if(methodName=="get"&&args.size()>=2){
+            JavaObject* co=ENG().getObject(args[0].asRef());
+            int64_t tMs = (co && co->fields.count("time")) ? co->fields["time"].asLong() : (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            std::time_t tSec = (std::time_t)(tMs / 1000);
+            std::tm* tm = std::localtime(&tSec);
+            int f = args[1].asInt();
+            int v = 0;
+            if (tm) {
+                switch(f){
+                    case 0: v=1; break; // ERA (AD)
+                    case 1: v=tm->tm_year+1900; break; // YEAR
+                    case 2: v=tm->tm_mon; break; // MONTH
+                    case 5: v=tm->tm_mday; break; // DATE
+                    case 7: v=tm->tm_wday+1; break; // DAY_OF_WEEK
+                    case 9: v=tm->tm_hour < 12 ? 0 : 1; break; // AM_PM
+                    case 10: v=tm->tm_hour % 12; break; // HOUR
+                    case 11: v=tm->tm_hour; break; // HOUR_OF_DAY
+                    case 12: v=tm->tm_min; break; // MINUTE
+                    case 13: v=tm->tm_sec; break; // SECOND
+                    case 14: v=(int)(tMs % 1000); break; // MILLISECOND
+                    case 15: v=0; break; // ZONE_OFFSET
+                    default: v=0; break;
+                }
+            }
+            outResult=JavaValue(v); return true;
+        }
     }
     if(className=="java/util/Date"){
         if(methodName=="<init>"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); if(o){ int64_t t=args.size()>=2?args[1].asLong():std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); o->fields["time"]=JavaValue(t);} return true; }
@@ -1014,8 +1151,10 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             if(so){
                 auto f=so->fields.find("sockFd"); if(f!=so->fields.end()&&f->second.asInt()>=0){ auto it=g_baos.find(self); if(it!=g_baos.end()&&!it->second.empty()){ tcpSendAll(f->second.asInt(), it->second.data(), it->second.size()); it->second.clear(); } }
                 auto ff=so->fields.find("fileUrl"); if(ff!=so->fields.end()&&ff->second.asRef()!=0){
-                    std::string u=ENG().getString(ff->second.asRef()); std::string p=u; if(p.rfind("file://",0)==0) p=p.substr(7); if(!p.empty()&&p[0]=='/') p.erase(0,1);
-                    if(p.rfind("/root/",0)==0) p=p.substr(6); if(p.rfind("/SDCard/",0)==0) p=p.substr(8);
+                    std::string u=ENG().getString(ff->second.asRef()); std::string p=u; if(p.rfind("file://",0)==0) p=p.substr(7);
+                    if(p.rfind("/root/",0)==0) p=p.substr(6); else if(p.rfind("/SDCard/",0)==0) p=p.substr(8);
+                    else if(p.rfind("root/",0)==0) p=p.substr(5); else if(p.rfind("SDCard/",0)==0) p=p.substr(7);
+                    if(!p.empty()&&p[0]=='/') p.erase(0,1);
                     auto it=g_baos.find(self); if(it!=g_baos.end()&&!p.empty()){ FILE*fw=fopen(p.c_str(),"wb"); if(fw){ fwrite(it->second.data(),1,it->second.size(),fw); fclose(fw);} }
                 }
             }
@@ -1029,8 +1168,10 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             if(so){
                 auto f=so->fields.find("sockFd"); if(f!=so->fields.end()&&f->second.asInt()>=0){ auto it=g_baos.find(self); if(it!=g_baos.end()&&!it->second.empty()){ tcpSendAll(f->second.asInt(), it->second.data(), it->second.size()); it->second.clear(); } }
                 auto ff=so->fields.find("fileUrl"); if(ff!=so->fields.end()&&ff->second.asRef()!=0){
-                    std::string u=ENG().getString(ff->second.asRef()); std::string p=u; if(p.rfind("file://",0)==0) p=p.substr(7); if(!p.empty()&&p[0]=='/') p.erase(0,1);
-                    if(p.rfind("/root/",0)==0) p=p.substr(6); if(p.rfind("/SDCard/",0)==0) p=p.substr(8);
+                    std::string u=ENG().getString(ff->second.asRef()); std::string p=u; if(p.rfind("file://",0)==0) p=p.substr(7);
+                    if(p.rfind("/root/",0)==0) p=p.substr(6); else if(p.rfind("/SDCard/",0)==0) p=p.substr(8);
+                    else if(p.rfind("root/",0)==0) p=p.substr(5); else if(p.rfind("SDCard/",0)==0) p=p.substr(7);
+                    if(!p.empty()&&p[0]=='/') p.erase(0,1);
                     auto it=g_baos.find(self); if(it!=g_baos.end()&&!p.empty()){ FILE*fw=fopen(p.c_str(),"wb"); if(fw){ fwrite(it->second.data(),1,it->second.size(),fw); fclose(fw);} it->second.clear(); }
                 }
             }
@@ -1169,9 +1310,26 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             return true;
         }
         if(methodName=="append"&&args.size()>=2){
-            std::string s=ENG().getString(args[1].asRef()); ensureScreen(self).items.push_back(s); if(display) renderScreen(self,display); outResult=JavaValue((int32_t)(ensureScreen(self).items.size()-1)); return true;
+            uint32_t argRef = args[1].asRef();
+            std::string s = ENG().getString(argRef);
+            if (s.empty() && argRef != 0) {
+                JavaObject* itemObj = ENG().getObject(argRef);
+                if (itemObj) {
+                    if (!itemObj->stringVal.empty()) s = itemObj->stringVal;
+                    else {
+                        auto it = g_screens.find(argRef);
+                        if (it != g_screens.end()) {
+                            s = it->second.text.empty() ? it->second.title : (it->second.title.empty() ? it->second.text : (it->second.title + ": " + it->second.text));
+                        }
+                    }
+                }
+            }
+            ensureScreen(self).items.push_back(s);
+            if(display) renderScreen(self,display);
+            outResult=JavaValue((int32_t)(ensureScreen(self).items.size()-1));
+            return true;
         }
-        if(methodName=="insert"&&args.size()>=3){ std::string s=ENG().getString(args[2].asRef()); int idx=args[1].asInt(); auto&it=ensureScreen(self).items; if(idx<0)idx=0; if(idx>(int)it.size())idx=it.size(); it.insert(it.begin()+idx,s); if(display)renderScreen(self,display); return true; }
+        if(methodName=="insert"&&args.size()>=3){ std::string s=ENG().getString(args[2].asRef()); int idx=args[1].asInt(); auto&it=ensureScreen(self).items; if(idx<0)idx=0; if(idx>(int)it.size())idx=(int)it.size(); it.insert(it.begin()+idx,s); if(display)renderScreen(self,display); return true; }
         if(methodName=="delete"&&args.size()>=2){ int idx=args[1].asInt(); auto&it=ensureScreen(self).items; if(idx>=0&&idx<(int)it.size()) it.erase(it.begin()+idx); if(display)renderScreen(self,display); return true; }
         if(methodName=="deleteAll"){ ensureScreen(self).items.clear(); if(display)renderScreen(self,display); return true; }
         if(methodName=="size"){ outResult=JavaValue((int32_t)ensureScreen(self).items.size()); return true; }
@@ -1192,20 +1350,126 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     }
     if(className=="javax/microedition/lcdui/TextField"||className=="javax/microedition/lcdui/ChoiceGroup"||className=="javax/microedition/lcdui/StringItem"||className=="javax/microedition/lcdui/ImageItem"||className=="javax/microedition/lcdui/DateField"||className=="javax/microedition/lcdui/Gauge"||className=="javax/microedition/lcdui/Spacer"||className=="javax/microedition/lcdui/CustomItem"||className=="javax/microedition/lcdui/Item"){
         uint32_t self=args.empty()?0:args[0].asRef();
-        if(methodName=="<init>"){ ensureScreen(self); if(args.size()>=2&&args[1].type==JavaValue::OBJ_REF) ensureScreen(self).title=ENG().getString(args[1].asRef()); if(args.size()>=3&&args[2].type==JavaValue::OBJ_REF) ensureScreen(self).text=ENG().getString(args[2].asRef()); return true; }
+        JavaObject* o = self ? ENG().getObject(self) : nullptr;
+        if(methodName=="<init>"){
+            ensureScreen(self);
+            if(className=="javax/microedition/lcdui/TextField"){
+                if(args.size()>=2&&args[1].type==JavaValue::OBJ_REF) ensureScreen(self).title=ENG().getString(args[1].asRef());
+                if(args.size()>=3&&args[2].type==JavaValue::OBJ_REF) ensureScreen(self).text=ENG().getString(args[2].asRef());
+                int maxSz = args.size()>=4 ? args[3].asInt() : 1024;
+                int constr = args.size()>=5 ? args[4].asInt() : 0;
+                if(o){ o->fields["maxSize"]=JavaValue(maxSz); o->fields["constraints"]=JavaValue(constr); }
+            } else if(className=="javax/microedition/lcdui/ChoiceGroup"){
+                if(args.size()>=2&&args[1].type==JavaValue::OBJ_REF) ensureScreen(self).title=ENG().getString(args[1].asRef());
+                if(args.size()>=3) { if(o) o->fields["choiceType"]=args[2]; }
+                if(args.size()>=4&&args[3].type==JavaValue::OBJ_REF){
+                    JavaArray* strArr = ENG().getArray(args[3].asRef());
+                    if(strArr) {
+                        for(uint32_t r : strArr->refData){
+                            if(r) ensureScreen(self).items.push_back(ENG().getString(r));
+                        }
+                    }
+                }
+            } else {
+                if(args.size()>=2&&args[1].type==JavaValue::OBJ_REF) ensureScreen(self).title=ENG().getString(args[1].asRef());
+                if(args.size()>=3&&args[2].type==JavaValue::OBJ_REF) ensureScreen(self).text=ENG().getString(args[2].asRef());
+            }
+            return true;
+        }
         if(methodName=="getLabel"){ outResult=JavaValue(ENG().createString(ensureScreen(self).title),true); return true; }
         if(methodName=="setLabel"&&args.size()>=2){ ensureScreen(self).title=ENG().getString(args[1].asRef()); return true; }
-        if(methodName=="getText"){ outResult=JavaValue(ENG().createString(ensureScreen(self).text),true); return true; }
-        if(methodName=="setText"&&args.size()>=2){ ensureScreen(self).text=ENG().getString(args[1].asRef()); return true; }
-        if(methodName=="getValue"||methodName=="getDate"||methodName=="getSelectedIndex"){ outResult=JavaValue(0); return true; }
-        if(methodName=="setValue"||methodName=="setDate"||methodName=="setSelectedIndex") return true;
-        if(methodName=="append"||methodName=="insert"||methodName=="delete"||methodName=="set"||methodName=="addCommand"||methodName=="setLayout"||methodName=="setPreferredSize") return true;
-        if(methodName=="size"){ outResult=JavaValue(0); return true; }
+        if(methodName=="getText"||methodName=="getString"){ outResult=JavaValue(ENG().createString(ensureScreen(self).text),true); return true; }
+        if(methodName=="setText"||methodName=="setString"){
+            if(args.size()>=2&&args[1].type==JavaValue::OBJ_REF) ensureScreen(self).text=ENG().getString(args[1].asRef());
+            return true;
+        }
+        if(methodName=="size"){
+            if(className=="javax/microedition/lcdui/ChoiceGroup") outResult=JavaValue((int32_t)ensureScreen(self).items.size());
+            else outResult=JavaValue((int32_t)ensureScreen(self).text.length());
+            return true;
+        }
+        if(methodName=="getMaxSize"){
+            int ms = (o && o->fields.count("maxSize")) ? o->fields["maxSize"].asInt() : 1024;
+            outResult=JavaValue(ms); return true;
+        }
+        if(methodName=="getConstraints"){
+            int c = (o && o->fields.count("constraints")) ? o->fields["constraints"].asInt() : 0;
+            outResult=JavaValue(c); return true;
+        }
+        if(methodName=="getSelectedIndex"){ outResult=JavaValue(ensureScreen(self).selected); return true; }
+        if(methodName=="setSelectedIndex"&&args.size()>=2){
+            if(args.size()>=3){ if(args[2].asInt()!=0) ensureScreen(self).selected=args[1].asInt(); }
+            else { ensureScreen(self).selected=args[1].asInt(); }
+            return true;
+        }
+        if(methodName=="append"&&args.size()>=2){
+            std::string s=ENG().getString(args[1].asRef());
+            ensureScreen(self).items.push_back(s);
+            outResult=JavaValue((int32_t)(ensureScreen(self).items.size()-1));
+            return true;
+        }
+        if(methodName=="insert"&&args.size()>=3){
+            int idx=args[1].asInt(); std::string s=ENG().getString(args[2].asRef());
+            auto& it=ensureScreen(self).items;
+            if(idx<0) idx=0; if(idx>(int)it.size()) idx=(int)it.size();
+            it.insert(it.begin()+idx, s);
+            return true;
+        }
+        if(methodName=="delete"&&args.size()>=2){
+            int idx=args[1].asInt(); auto& it=ensureScreen(self).items;
+            if(idx>=0&&idx<(int)it.size()) it.erase(it.begin()+idx);
+            return true;
+        }
+        if(methodName=="deleteAll"){ ensureScreen(self).items.clear(); return true; }
+        if(methodName=="set"&&args.size()>=3){
+            int idx=args[1].asInt(); std::string s=ENG().getString(args[2].asRef());
+            auto& it=ensureScreen(self).items;
+            if(idx>=0&&idx<(int)it.size()) it[idx]=s;
+            return true;
+        }
+        if(methodName=="getValue"||methodName=="getDate"){ outResult=JavaValue(0); return true; }
+        if(methodName=="setValue"||methodName=="setDate"||methodName=="addCommand"||methodName=="setLayout"||methodName=="setPreferredSize") return true;
     }
-    if(className=="javax/microedition/lcdui/Command"||className=="javax/microedition/lcdui/AlertType"||className=="javax/microedition/lcdui/Ticker"||className=="javax/microedition/lcdui/Font"){
-        if(methodName=="<init>"){ uint32_t self=args.empty()?0:args[0].asRef(); if(className=="javax/microedition/lcdui/Ticker"&&args.size()>=2) ensureScreen(self).text=ENG().getString(args[1].asRef()); return true; }
-        if(methodName=="getLabel"||methodName=="getString"){ outResult=JavaValue(ENG().createString("OK"),true); return true; }
-        if(methodName=="getCommandType"||methodName=="getPriority"){ outResult=JavaValue(1); return true; }
+    if(className=="javax/microedition/lcdui/Command"||className=="javax/microedition/lcdui/AlertType"||className=="javax/microedition/lcdui/Ticker"){
+        uint32_t self=args.empty()?0:args[0].asRef();
+        JavaObject* o = self ? ENG().getObject(self) : nullptr;
+        if(methodName=="<init>"){
+            if(className=="javax/microedition/lcdui/Ticker"&&args.size()>=2) ensureScreen(self).text=ENG().getString(args[1].asRef());
+            else if(className=="javax/microedition/lcdui/Command"&&o){
+                if(args.size()>=4 && desc.find("(Ljava/lang/String;II)")!=std::string::npos){
+                    o->fields["shortLabel"] = args[1];
+                    o->fields["longLabel"] = args[1];
+                    o->fields["commandType"] = args[2];
+                    o->fields["priority"] = args[3];
+                } else if(args.size()>=5 && desc.find("(Ljava/lang/String;Ljava/lang/String;II)")!=std::string::npos){
+                    o->fields["shortLabel"] = args[1];
+                    o->fields["longLabel"] = args[2];
+                    o->fields["commandType"] = args[3];
+                    o->fields["priority"] = args[4];
+                } else if(args.size()>=2){
+                    o->fields["shortLabel"] = args[1];
+                    o->fields["longLabel"] = args[1];
+                }
+            }
+            return true;
+        }
+        if(methodName=="getLabel"){
+            std::string lbl = (o && o->fields.count("shortLabel")) ? ENG().getString(o->fields["shortLabel"].asRef()) : "OK";
+            outResult=JavaValue(ENG().createString(lbl),true); return true;
+        }
+        if(methodName=="getLongLabel"){
+            std::string lbl = (o && o->fields.count("longLabel")) ? ENG().getString(o->fields["longLabel"].asRef()) : ((o && o->fields.count("shortLabel")) ? ENG().getString(o->fields["shortLabel"].asRef()) : "OK");
+            outResult=JavaValue(ENG().createString(lbl),true); return true;
+        }
+        if(methodName=="getString"){ outResult=JavaValue(ENG().createString(ensureScreen(self).text),true); return true; }
+        if(methodName=="getCommandType"){
+            int ct = (o && o->fields.count("commandType")) ? o->fields["commandType"].asInt() : 1;
+            outResult=JavaValue(ct); return true;
+        }
+        if(methodName=="getPriority"){
+            int pri = (o && o->fields.count("priority")) ? o->fields["priority"].asInt() : 1;
+            outResult=JavaValue(pri); return true;
+        }
     }
     // Display.setCurrent for high-level screens: render them + track for CommandListener
     if(className=="javax/microedition/lcdui/Display"){
@@ -1286,8 +1550,27 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="defineCollisionRectangle"&&args.size()>=5){ sp->defineCollisionRectangle(args[1].asInt(),args[2].asInt(),args[3].asInt(),args[4].asInt()); return true; }
         if(methodName=="collidesWith"){
             bool r=false;
-            if(args.size()>=4&&args[1].type==JavaValue::INT){ r=sp->collidesWith(args[1].asInt(),args[2].asInt(),args[3].asInt(),args.size()>=5?args[4].asInt():0); }
-            else if(args.size()>=2){ auto jt=g_sprites.find(args[1].asRef()); if(jt!=g_sprites.end()&&jt->second) r=sp->collidesWith(*jt->second, args.size()>=3?args[2].asInt()!=0:false); }
+            if(args.size()>=4&&args[1].type==JavaValue::INT){
+                r=sp->collidesWith(args[1].asInt(),args[2].asInt(),args[3].asInt(),args.size()>=5?args[4].asInt():0);
+            } else if(args.size()>=2){
+                uint32_t targetRef = args[1].asRef();
+                auto jt=g_sprites.find(targetRef);
+                if(jt!=g_sprites.end()&&jt->second){
+                    r=sp->collidesWith(*jt->second, args.size()>=3?args[2].asInt()!=0:false);
+                } else {
+                    auto kt=g_tiled.find(targetRef);
+                    if(kt!=g_tiled.end()&&kt->second){
+                        r=sp->collidesWith(*kt->second, args.size()>=3?args[2].asInt()!=0:false);
+                    } else if(args.size()>=5){
+                        NativeImage* ni=imgOf(targetRef);
+                        const uint32_t* px=imgPx(targetRef);
+                        if(ni&&px){
+                            std::vector<uint32_t> pxVec(px, px + ni->width * ni->height);
+                            r=sp->collidesWith(pxVec, ni->width, ni->height, args[2].asInt(), args[3].asInt(), args[4].asInt()!=0);
+                        }
+                    }
+                }
+            }
             outResult=JavaValue(r?1:0); return true;
         }
         if(methodName=="paint"&&args.size()>=2&&display){
@@ -1310,7 +1593,16 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="createAnimatedTile"&&args.size()>=2){ outResult=JavaValue(tl->createAnimatedTile(args[1].asInt())); return true; }
         if(methodName=="setAnimatedTile"&&args.size()>=3){ tl->setAnimatedTile(args[1].asInt(),args[2].asInt()); return true; }
         if(methodName=="getAnimatedTile"&&args.size()>=2){ outResult=JavaValue(tl->getAnimatedTile(args[1].asInt())); return true; }
-        if(methodName=="setStaticTileSet"&&args.size()>=4){ NativeImage*ni=imgOf(args[1].asRef()); (void)ni; return true; }
+        if(methodName=="setStaticTileSet"&&args.size()>=4){
+            NativeImage*ni=imgOf(args[1].asRef());
+            const uint32_t*px=imgPx(args[1].asRef());
+            int tw=args[2].asInt(), th=args[3].asInt();
+            if(ni&&px&&tw>0&&th>0){
+                std::vector<uint32_t> pxVec(px, px + ni->width * ni->height);
+                tl->setStaticTileSet(pxVec, ni->width, ni->height, tw, th);
+            }
+            return true;
+        }
         if(methodName=="setPosition"&&args.size()>=3){ tl->setPosition(args[1].asInt(),args[2].asInt()); return true; }
         if(methodName=="move"&&args.size()>=3){ tl->move(args[1].asInt(),args[2].asInt()); return true; }
         if(methodName=="setVisible"&&args.size()>=2){ tl->setVisible(args[1].asInt()!=0); return true; }
@@ -1654,11 +1946,47 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             setM("m20",(a20*b00+a21*b10+a22*b20)>>12); setM("m21",(a20*b01+a21*b11+a22*b21)>>12); setM("m22",(a20*b02+a21*b12+a22*b22)>>12); setM("m23",((a20*b03+a21*b13+a22*b23)>>12)+a23);
             return true;
         }
-        if((methodName=="set"||methodName=="get")&&args.size()>=2) return true;
+        if(methodName=="set"&&args.size()>=2&&o){
+            if(args[1].type==JavaValue::OBJ_REF){
+                JavaArray*a=ENG().getArray(args[1].asRef());
+                JavaObject*src=ENG().getObject(args[1].asRef());
+                if(a&&a->intData.size()>=12){
+                    int off=args.size()>=3?args[2].asInt():0;
+                    const char* ks[12]={"m00","m01","m02","m03","m10","m11","m12","m13","m20","m21","m22","m23"};
+                    for(int i=0;i<12&&off+i<(int)a->intData.size();i++) o->fields[ks[i]]=JavaValue(a->intData[off+i]);
+                } else if(src){
+                    for(auto &kv:src->fields) o->fields[kv.first]=kv.second;
+                }
+            }
+            return true;
+        }
+        if(methodName=="get"&&args.size()>=2&&o){
+            if(args[1].type==JavaValue::OBJ_REF){
+                JavaArray*a=ENG().getArray(args[1].asRef());
+                if(a&&a->intData.size()>=12){
+                    int off=args.size()>=3?args[2].asInt():0;
+                    const char* ks[12]={"m00","m01","m02","m03","m10","m11","m12","m13","m20","m21","m22","m23"};
+                    for(int i=0;i<12&&off+i<(int)a->intData.size();i++) a->intData[off+i]=o->fields[ks[i]].asInt();
+                }
+            }
+            return true;
+        }
         return true;
     }
     if(className.rfind("com/mascotcapsule/micro3d/",0)==0||className.rfind("com/jblend/graphics/j3d/",0)==0||className.rfind("com/motorola/graphics/j3d/",0)==0||className=="com/nokia/mid/m3d/M3D"){
         if(methodName=="<init>"||methodName=="<clinit>") return true;
+        if(className.find("FigureLayout")!=std::string::npos){
+            uint32_t self=args.empty()?0:args[0].asRef();
+            JavaObject*o=ENG().getObject(self);
+            if(methodName=="setAffineTrans"&&args.size()>=2&&o){
+                o->fields["affineTrans"]=args[1];
+                return true;
+            }
+            if(methodName=="getAffineTrans"&&o){
+                outResult = o->fields.count("affineTrans") ? o->fields["affineTrans"] : JavaValue((uint32_t)0, true);
+                return true;
+            }
+        }
         if((className.find("Graphics3D")!=std::string::npos)){
             uint32_t g3dSelf = args.empty() ? 0 : args[0].asRef();
             if(methodName=="bind"&&display){
@@ -1678,14 +2006,19 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 auto bit = g_micro3dGfx.find(g3dSelf);
                 if(bit != g_micro3dGfx.end()) boundGfx = bit->second;
                 LcduiDisplay* tgt = ENG().resolveGraphics(boundGfx, display);
-                Micro3DAffineTrans tr; // identity; AffineTrans object parsing omitted (rotation handled by game via setPosture)
-                // Try extract AffineTrans int[] from args (layout/effect may carry trans)
+                Micro3DAffineTrans tr;
                 for(size_t k=2;k<args.size();k++) if(args[k].type==JavaValue::OBJ_REF){
                     JavaObject*o=ENG().getObject(args[k].asRef());
-                    if(o && (o->className.find("AffineTrans")!=std::string::npos)){
-                        auto it=o->fields.find("m00");
-                        // fields not populated (AffineTrans methods stubbed) -> keep identity
-                        (void)it; break;
+                    if(o){
+                        if(o->className.find("FigureLayout")!=std::string::npos && o->fields.count("affineTrans")){
+                            o = ENG().getObject(o->fields["affineTrans"].asRef());
+                        }
+                        if(o && o->className.find("AffineTrans")!=std::string::npos && o->fields.count("m00")){
+                            tr.m00 = o->fields["m00"].asInt(); tr.m01 = o->fields["m01"].asInt(); tr.m02 = o->fields["m02"].asInt(); tr.m03 = o->fields["m03"].asInt();
+                            tr.m10 = o->fields["m10"].asInt(); tr.m11 = o->fields["m11"].asInt(); tr.m12 = o->fields["m12"].asInt(); tr.m13 = o->fields["m13"].asInt();
+                            tr.m20 = o->fields["m20"].asInt(); tr.m21 = o->fields["m21"].asInt(); tr.m22 = o->fields["m22"].asInt(); tr.m23 = o->fields["m23"].asInt();
+                            break;
+                        }
                     }
                 }
                 if(fit!=g_microFig.end() && fit->second){
@@ -1879,18 +2212,24 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     }
     if(className.rfind("com/nokia/mid/sound/",0)==0){
         uint32_t self=args.empty()?0:args[0].asRef();
+        if(methodName=="<clinit>"){
+            ENG().setStaticField("com/nokia/mid/sound/Sound:SOUND_PLAYING", JavaValue(0));
+            ENG().setStaticField("com/nokia/mid/sound/Sound:SOUND_STOPPED", JavaValue(1));
+            ENG().setStaticField("com/nokia/mid/sound/Sound:SOUND_UNINITIALIZED", JavaValue(3));
+            return true;
+        }
         if(methodName=="<init>"){
             JavaObject*o=ENG().getObject(self);
             if(o&&args.size()>=2){
                 JavaArray*a=ENG().getArray(args[1].asRef());
                 if(a&&!a->byteData.empty()){ uint32_t arr=ENG().allocArray(8,(int)a->byteData.size()); JavaArray*d=ENG().getArray(arr); if(d) d->byteData=a->byteData; o->fields["toneseq"]=JavaValue(arr,true); }
             }
-            o=ENG().getObject(self); if(o) o->fields["state"]=JavaValue(0);
+            o=ENG().getObject(self); if(o) o->fields["state"]=JavaValue(1); // SOUND_STOPPED
             return true;
         }
         if(methodName=="play"&&args.size()>=2){
             // Nokia tone seq: bytes after header are (duration,note) pairs; best-effort schedule
-            JavaObject*o=ENG().getObject(self); if(o) o->fields["state"]=JavaValue(1);
+            JavaObject*o=ENG().getObject(self); if(o) o->fields["state"]=JavaValue(0); // SOUND_PLAYING
             JavaObject*oo=ENG().getObject(args[0].asRef());
             JavaArray*a=oo?ENG().getArray(oo->fields["toneseq"].asRef()):nullptr;
             if(!a&&args.size()>=2) a=ENG().getArray(args[1].asRef());
@@ -1903,30 +2242,37 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                     if(d>0&&d<128&&n>0) notes.emplace_back(n,d*30);
                 }
                 if(!notes.empty()){
-                    std::thread([notes,loop](){
+                    std::thread([self,notes,loop](){
                         for(int l=0;l<std::max(1,loop)&&l<4;l++)
                             for(auto &nt: notes){
                                 int freq=(int)(440.0*pow(2.0,(nt.first-69)/12.0));
                                 JvmInterpreter::getInstance().triggerTone(freq,std::min(nt.second,400),90);
                                 std::this_thread::sleep_for(std::chrono::milliseconds(std::min(nt.second,400)+15));
                             }
+                        JavaObject*so=ENG().getObject(self); if(so) so->fields["state"]=JavaValue(1); // SOUND_STOPPED
                     }).detach();
                 } else {
                     JvmInterpreter::getInstance().triggerTone(880,150,90);
+                    if(o) o->fields["state"]=JavaValue(1);
                 }
             } else {
                 JvmInterpreter::getInstance().triggerTone(880,150,90);
+                if(o) o->fields["state"]=JavaValue(1);
             }
             return true;
         }
-        if(methodName=="stop"){ JavaObject*o=ENG().getObject(self); if(o) o->fields["state"]=JavaValue(0); return true; }
+        if(methodName=="stop"){ JavaObject*o=ENG().getObject(self); if(o) o->fields["state"]=JavaValue(1); return true; } // SOUND_STOPPED
         if(methodName=="init"&&args.size()>=3){
             JavaObject*o=ENG().getObject(self);
-            if(o){ JavaArray*a=ENG().getArray(args[1].asRef()); if(a&&!a->byteData.empty()){ uint32_t arr=ENG().allocArray(8,(int)a->byteData.size()); JavaArray*d=ENG().getArray(arr); if(d) d->byteData=a->byteData; o->fields["toneseq"]=JavaValue(arr,true); } }
+            if(o){
+                JavaArray*a=ENG().getArray(args[1].asRef());
+                if(a&&!a->byteData.empty()){ uint32_t arr=ENG().allocArray(8,(int)a->byteData.size()); JavaArray*d=ENG().getArray(arr); if(d) d->byteData=a->byteData; o->fields["toneseq"]=JavaValue(arr,true); }
+                o->fields["state"]=JavaValue(1); // SOUND_STOPPED
+            }
             return true;
         }
         if(methodName=="close"||methodName=="resume"||methodName=="setGain"||methodName=="setLoopCount") return true;
-        if(methodName=="getState"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?o->fields["state"].asInt():0); return true; }
+        if(methodName=="getState"){ JavaObject*o=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(o?o->fields["state"].asInt():1); return true; }
         return true;
     }
     // ---- Siemens MP game (Gameloft-era): GraphicObjectManager + ExtendedImage ----
@@ -2104,10 +2450,33 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     if(className.find("VolumeControl")!=std::string::npos){
         uint32_t self=args.empty()?0:args[0].asRef();
         JavaObject*o=ENG().getObject(self);
-        if(methodName=="setLevel"&&args.size()>=2&&o){ int lv=args[1].asInt(); o->fields["level"]=JavaValue(lv); JvmInterpreter::getInstance().triggerTone(0,0,0); /* volume applied via AudioBridge */ return true; }
-        if(methodName=="setMute"&&args.size()>=2&&o){ o->fields["mute"]=JavaValue(args[1].asInt()); return true; }
-        if(methodName=="getLevel"){ JavaObject*oo=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(oo?oo->fields["level"].asInt():100); if(outResult.asInt()==0) outResult=JavaValue(100); return true; }
-        if(methodName=="isMuted"){ JavaObject*oo=args.empty()?nullptr:ENG().getObject(args[0].asRef()); outResult=JavaValue(oo?oo->fields["mute"].asInt():0); return true; }
+        if(methodName=="<init>"&&o){
+            o->fields["level"]=JavaValue(100);
+            o->fields["mute"]=JavaValue(0);
+            return true;
+        }
+        if(methodName=="setLevel"&&args.size()>=2&&o){
+            int lv=args[1].asInt();
+            if(lv<0) lv=0;
+            if(lv>100) lv=100;
+            o->fields["level"]=JavaValue(lv);
+            JvmInterpreter::getInstance().triggerTone(0,0,0); /* volume applied via AudioBridge */
+            outResult=JavaValue(lv);
+            return true;
+        }
+        if(methodName=="setMute"&&args.size()>=2&&o){ o->fields["mute"]=JavaValue(args[1].asInt()!=0?1:0); return true; }
+        if(methodName=="getLevel"){
+            JavaObject*oo=args.empty()?nullptr:ENG().getObject(args[0].asRef());
+            int lv=100;
+            if(oo && oo->fields.count("level")) lv=oo->fields["level"].asInt();
+            outResult=JavaValue(lv);
+            return true;
+        }
+        if(methodName=="isMuted"){
+            JavaObject*oo=args.empty()?nullptr:ENG().getObject(args[0].asRef());
+            outResult=JavaValue((oo && oo->fields.count("mute")) ? oo->fields["mute"].asInt() : 0);
+            return true;
+        }
         return true;
     }
     if(className.find("Control")!=std::string::npos){
@@ -2118,7 +2487,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     }
     // ============ IO / Connector (real HTTP/nền + TCP socket thật) ============
     if(className=="javax/microedition/io/Connector"){
-        if(methodName.find("open")==0&&!args.empty()){
+        if(methodName.rfind("open",0)==0&&!args.empty()){
             std::string url=ENG().getString(args[0].asRef());
             std::string kind="javax/microedition/io/Connection";
             if(url.rfind("http",0)==0) kind="javax/microedition/io/HttpConnection";
@@ -2152,6 +2521,20 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 int fd=udpSocket();
                 if(fd>=0){ g_sockFd[r]=fd; if(jo) jo->fields["sockFd"]=JavaValue(fd); }
 #endif
+            }
+            if(methodName=="openInputStream"||methodName=="openDataInputStream"){
+                std::vector<JavaValue> streamArgs = { JavaValue(r, true) };
+                JavaValue streamResult;
+                FullApis::dispatch(kind, methodName, desc, streamArgs, streamResult, display);
+                outResult = streamResult;
+                return true;
+            }
+            if(methodName=="openOutputStream"||methodName=="openDataOutputStream"){
+                std::vector<JavaValue> streamArgs = { JavaValue(r, true) };
+                JavaValue streamResult;
+                FullApis::dispatch(kind, methodName, desc, streamArgs, streamResult, display);
+                outResult = streamResult;
+                return true;
             }
             outResult=JavaValue(r,true); return true;
         }
@@ -2580,9 +2963,11 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         auto localPathOf = [&](const std::string& url)->std::string{
             std::string p=url;
             if(p.rfind("file://",0)==0) p=p.substr(7);
-            // Normalize: /root/xxx -> xxx, /SDCard/xxx -> xxx
+            // Normalize: /root/xxx -> xxx, /SDCard/xxx -> xxx, root/xxx -> xxx
             if(p.rfind("/root/",0)==0) p=p.substr(6);
-            if(p.rfind("/SDCard/",0)==0) p=p.substr(8);
+            else if(p.rfind("/SDCard/",0)==0) p=p.substr(8);
+            else if(p.rfind("root/",0)==0) p=p.substr(5);
+            else if(p.rfind("SDCard/",0)==0) p=p.substr(7);
             if(!p.empty()&&p[0]=='/') p.erase(0,1);
             return p;
         };
@@ -2623,7 +3008,14 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 if(ENG().getJarLoader()->hasEntry(lp)) ex=true;
                 else { for(auto &e: ENG().getJarLoader()->listEntries()) if(e.rfind(lp,0)==0){ ex=true; dir=true; break; } }
             }
-            if(!ex){ FILE*f=fopen(lp.c_str(),"rb"); if(f){ ex=true; dir=false; fclose(f);} }
+            if(!ex){
+                struct stat st;
+                if(stat(lp.c_str(), &st) == 0){
+                    ex = true;
+                    if(st.st_mode & S_IFDIR) dir = true;
+                    else dir = false;
+                }
+            }
             if(methodName=="exists") outResult=JavaValue(ex?1:0);
             else if(methodName=="isDirectory") outResult=JavaValue(dir?1:0);
             else if(methodName=="isHidden") outResult=JavaValue(0);
@@ -2631,10 +3023,27 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             return true;
         }
         if(methodName=="create"||methodName=="mkdir"||methodName=="delete"||methodName=="close"||methodName=="setReadable"||methodName=="setWritable"||methodName=="truncate"){
-            // mkdir/delete on local fs best-effort (JAR is read-only)
             uint32_t self=args.empty()?0:args[0].asRef();
             std::string url=fileUrlOf(self); std::string lp=localPathOf(url);
-            if(methodName=="delete") ::remove(lp.c_str());
+            if(methodName=="create"){
+                FILE* fw = fopen(lp.c_str(), "wb");
+                if(fw) fclose(fw);
+            } else if(methodName=="mkdir"){
+                fs_mkdir(lp.c_str());
+            } else if(methodName=="delete"){
+                ::remove(lp.c_str());
+            }
+            return true;
+        }
+        if(methodName=="lastModified"){
+            uint32_t self=args.empty()?0:args[0].asRef();
+            std::string url=fileUrlOf(self); std::string lp=localPathOf(url);
+            int64_t lm = 0;
+            struct stat st;
+            if(stat(lp.c_str(), &st) == 0){
+                lm = (int64_t)st.st_mtime * 1000LL;
+            }
+            outResult = JavaValue(lm);
             return true;
         }
         if(methodName=="fileSize"||methodName=="availableSize"||methodName=="totalSize"||methodName=="directorySize"){

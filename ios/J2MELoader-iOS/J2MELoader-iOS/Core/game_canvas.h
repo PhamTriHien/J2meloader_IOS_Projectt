@@ -40,6 +40,8 @@ protected:
     bool m_visible = true;
 };
 
+class TiledLayer;
+
 class Sprite : public Layer {
 public:
     Sprite(const std::vector<uint32_t>& imagePixels, int imgWidth, int imgHeight, int frameWidth, int frameHeight);
@@ -59,6 +61,8 @@ public:
 
     void defineCollisionRectangle(int x, int y, int width, int height);
     bool collidesWith(const Sprite& other, bool pixelLevel) const;
+    bool collidesWith(const TiledLayer& other, bool pixelLevel) const;
+    bool collidesWith(const std::vector<uint32_t>& imgPixels, int imgW, int imgH, int imgX, int imgY, bool pixelLevel) const;
     bool collidesWith(int x, int y, int width, int height) const;
 
     void paint(LcduiDisplay* display) override;
@@ -82,11 +86,22 @@ private:
     int m_collY = 0;
     int m_collW = 0;
     int m_collH = 0;
+    int m_tCollX = 0;
+    int m_tCollY = 0;
+    int m_tCollW = 0;
+    int m_tCollH = 0;
     bool m_customCollision = false;
 
+    void computeTransformedBounds(SpriteTransform transform);
     int getTransformedPtX(int x, int y, SpriteTransform transform) const;
     int getTransformedPtY(int x, int y, SpriteTransform transform) const;
     uint32_t getPixel(int frame, int localX, int localY, SpriteTransform transform) const;
+
+public:
+    int getTransformedCollX() const { return m_tCollX; }
+    int getTransformedCollY() const { return m_tCollY; }
+    int getTransformedCollW() const { return m_tCollW; }
+    int getTransformedCollH() const { return m_tCollH; }
 };
 
 class TiledLayer : public Layer {
@@ -100,12 +115,14 @@ public:
     int createAnimatedTile(int staticTileIndex);
     void setAnimatedTile(int animatedTileIndex, int staticTileIndex);
     int getAnimatedTile(int animatedTileIndex) const;
+    void setStaticTileSet(const std::vector<uint32_t>& tileImage, int imgW, int imgH, int tileW, int tileH);
 
     int getColumns() const { return m_cols; }
     int getRows() const { return m_rows; }
     int getCellWidth() const { return m_tileWidth; }
     int getCellHeight() const { return m_tileHeight; }
 
+    uint32_t getPixel(int tileIdx, int localX, int localY) const;
     void paint(LcduiDisplay* display) override;
 
 private:

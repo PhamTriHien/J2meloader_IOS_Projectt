@@ -16,9 +16,14 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
-extern "C" bool native_text_measure(const char *utf8, int px, int *outW, int *outH) __attribute__((weak));
-extern "C" bool native_decode_image(const uint8_t *data, int len, uint8_t **out_rgba, int *outW, int *outH) __attribute__((weak));
-extern "C" void native_free(void *p) __attribute__((weak));
+#if defined(__GNUC__) || defined(__clang__)
+#define WEAK_ATTR __attribute__((weak))
+#else
+#define WEAK_ATTR
+#endif
+extern "C" WEAK_ATTR bool native_text_measure(const char *utf8, int px, int *outW, int *outH);
+extern "C" WEAK_ATTR bool native_decode_image(const uint8_t *data, int len, uint8_t **out_rgba, int *outW, int *outH);
+extern "C" WEAK_ATTR void native_free(void *p);
 
 static std::string toLowerStr(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return std::tolower(c); });
@@ -116,6 +121,36 @@ static inline size_t utf8CharToByteOffset(const std::string& s, int charIndex) {
         cur++;
     }
     return i;
+}
+
+static inline int utf8ByteToCharOffset(const std::string& s, size_t byteOffset) {
+    if (byteOffset == std::string::npos) return -1;
+    if (byteOffset == 0) return 0;
+    int chars = 0;
+    size_t i = 0;
+    while (i < s.size() && i < byteOffset) {
+        uint8_t b = (uint8_t)s[i++];
+        if ((b & 0x80) == 0) { /* 1 byte */ }
+        else if ((b & 0xE0) == 0xC0 && i < s.size()) { i += 1; }
+        else if ((b & 0xF0) == 0xE0 && i + 1 < s.size()) { i += 2; }
+        else if ((b & 0xF8) == 0xF0 && i + 2 < s.size()) { i += 3; }
+        chars++;
+    }
+    return chars;
+}
+
+static inline int utf8StringCharCount(const std::string& s) {
+    int chars = 0;
+    size_t i = 0;
+    while (i < s.size()) {
+        uint8_t b = (uint8_t)s[i++];
+        if ((b & 0x80) == 0) { /* 1 byte */ }
+        else if ((b & 0xE0) == 0xC0 && i < s.size()) { i += 1; }
+        else if ((b & 0xF0) == 0xE0 && i + 1 < s.size()) { i += 2; }
+        else if ((b & 0xF8) == 0xF0 && i + 2 < s.size()) { i += 3; }
+        chars++;
+    }
+    return chars;
 }
 
 JvmBytecodeEngine::JvmBytecodeEngine() {}
@@ -294,7 +329,7 @@ uint32_t JvmBytecodeEngine::loadNativeImageFromBytes(const uint8_t* data, size_t
     std::vector<uint32_t> pixels;
     if (!PngDecoder::decode(decData, decSize, w, h, pixels)) {
         // Fallback: UIImage decodes JPEG/GIF/BMP and odd PNGs game artists used.
-        if (native_decode_image && decSize > 0 && decSize <= (8 << 20)) {
+        if ((const void*)native_decode_image != nullptr && decSize > 0 && decSize <= (8 << 20)) {
             uint8_t* rgba = nullptr;
             int dw = 0, dh = 0;
             if (native_decode_image(decData, (int)decSize, &rgba, &dw, &dh) && rgba && dw > 0 && dh > 0) {
@@ -305,11 +340,11 @@ uint32_t JvmBytecodeEngine::loadNativeImageFromBytes(const uint8_t* data, size_t
                 img.isMutable = false;
                 img.pixels.assign((uint32_t*)rgba, (uint32_t*)rgba + (size_t)dw * dh);
                 m_nativeImages[ref] = std::move(img);
-                if (native_free) native_free(rgba);
+                if ((const void*)native_free != nullptr) native_free(rgba);
                 else free(rgba);
                 return ref;
             }
-            if (rgba) { if (native_free) native_free(rgba); else free(rgba); }
+            if (rgba) { if ((const void*)native_free != nullptr) native_free(rgba); else free(rgba); }
         }
         return allocateNativeImage(16, 16, false);
     }
@@ -610,13 +645,25 @@ void JvmBytecodeEngine::ensureClinit(std::shared_ptr<ClassFile> cls, LcduiDispla
 bool JvmBytecodeEngine::isInstanceOf(const std::string& className, const std::string& targetType) {
     if (className.empty() || targetType.empty()) return false;
     if (className == targetType || targetType == "java/lang/Object") return true;
+
+    std::function<bool(const std::string&, int)> checkIface = [&](const std::string& ifName, int depth) -> bool {
+        if (ifName == targetType) return true;
+        if (depth > 8) return false;
+        auto ic = findOrLoadClass(ifName, m_activeJar);
+        if (!ic) return false;
+        for (const auto& parentIface : ic->interfaces) {
+            if (checkIface(parentIface, depth + 1)) return true;
+        }
+        return false;
+    };
+
     std::string cur = className;
-    for (int d = 0; d < 10 && !cur.empty() && cur != "java/lang/Object"; ++d) {
+    for (int d = 0; d < 12 && !cur.empty() && cur != "java/lang/Object"; ++d) {
         if (cur == targetType) return true;
         auto c = findOrLoadClass(cur, m_activeJar);
         if (!c) break;
         for (const auto& iface : c->interfaces) {
-            if (iface == targetType) return true;
+            if (checkIface(iface, 0)) return true;
         }
         cur = c->superClassName;
     }
@@ -964,7 +1011,6 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                         else if (!dst->charData.empty() && dstPos+k<(int)dst->charData.size()) dst->charData[dstPos+k]=(uint16_t)v;
                     }
                 }
-            }
             return true;
         }
         if (methodName == "gc") return true;
@@ -1108,7 +1154,11 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         if (methodName == "charAt" && args.size() >= 2) {
             std::string s = getString(args[0].asRef());
             int targetIdx = args[1].asInt();
-            if (targetIdx < 0) { outResult = JavaValue(0); return true; }
+            int totalChars = utf8StringCharCount(s);
+            if (targetIdx < 0 || targetIdx >= totalChars) {
+                setPendingException(allocObject("java/lang/StringIndexOutOfBoundsException"));
+                return true;
+            }
             int curCharIdx = 0;
             uint32_t foundCp = 0;
             for (size_t i = 0; i < s.size();) {
@@ -1132,28 +1182,35 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "substring" && args.size() >= 2) {
             std::string s = getString(args[0].asRef());
-            int begin = std::max(0, args[1].asInt());
-            size_t bStart = utf8CharToByteOffset(s, begin);
-            if (args.size() >= 3) {
-                int end = std::max(begin, args[2].asInt());
-                size_t bEnd = utf8CharToByteOffset(s, end);
-                outResult = JavaValue(createString(s.substr(bStart, bEnd - bStart)), true);
-            } else {
-                outResult = JavaValue(createString(s.substr(bStart)), true);
+            int totalChars = utf8StringCharCount(s);
+            int begin = args[1].asInt();
+            int end = (args.size() >= 3) ? args[2].asInt() : totalChars;
+            if (begin < 0 || end > totalChars || begin > end) {
+                setPendingException(allocObject("java/lang/StringIndexOutOfBoundsException"));
+                return true;
             }
+            size_t bStart = utf8CharToByteOffset(s, begin);
+            size_t bEnd = utf8CharToByteOffset(s, end);
+            outResult = JavaValue(createString(s.substr(bStart, bEnd - bStart)), true);
             return true;
         }
         if (methodName == "indexOf" && args.size() >= 2) {
             std::string s = getString(args[0].asRef());
             int fromIndex = (args.size() >= 3) ? std::max(0, args[2].asInt()) : 0;
-            if (fromIndex > (int)s.length()) {
+            int totalChars = utf8StringCharCount(s);
+            if (fromIndex > totalChars) {
                 outResult = JavaValue(-1);
                 return true;
             }
             if (desc.find("(Ljava/lang/String;") != std::string::npos || (args[1].type == JavaValue::OBJ_REF && getObject(args[1].asRef()) && getObject(args[1].asRef())->className == "java/lang/String")) {
                 std::string target = getString(args[1].asRef());
-                size_t pos = s.find(target, fromIndex);
-                outResult = JavaValue(pos != std::string::npos ? (int32_t)pos : -1);
+                if (target.empty()) {
+                    outResult = JavaValue(fromIndex <= totalChars ? fromIndex : totalChars);
+                    return true;
+                }
+                size_t fromByte = utf8CharToByteOffset(s, fromIndex);
+                size_t pos = s.find(target, fromByte);
+                outResult = JavaValue(pos != std::string::npos ? utf8ByteToCharOffset(s, pos) : -1);
             } else {
                 uint32_t targetCp = (uint32_t)args[1].asInt();
                 int curCharIdx = 0;
@@ -1180,19 +1237,43 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "lastIndexOf" && args.size() >= 2) {
             std::string s = getString(args[0].asRef());
-            int fromIndex = (args.size() >= 3) ? std::min((int)s.length() - 1, args[2].asInt()) : (int)s.length() - 1;
+            int totalChars = utf8StringCharCount(s);
+            int fromIndex = (args.size() >= 3) ? args[2].asInt() : (totalChars - 1);
             if (fromIndex < 0) {
                 outResult = JavaValue(-1);
                 return true;
             }
+            if (fromIndex >= totalChars) fromIndex = totalChars - 1;
             if (desc.find("(Ljava/lang/String;") != std::string::npos || (args[1].type == JavaValue::OBJ_REF && getObject(args[1].asRef()) && getObject(args[1].asRef())->className == "java/lang/String")) {
                 std::string target = getString(args[1].asRef());
-                size_t pos = s.rfind(target, fromIndex);
-                outResult = JavaValue(pos != std::string::npos ? (int32_t)pos : -1);
+                if (target.empty()) {
+                    outResult = JavaValue(fromIndex);
+                    return true;
+                }
+                size_t fromByte = utf8CharToByteOffset(s, fromIndex);
+                size_t pos = s.rfind(target, fromByte);
+                outResult = JavaValue(pos != std::string::npos ? utf8ByteToCharOffset(s, pos) : -1);
             } else {
-                char c = (char)args[1].asInt();
-                size_t pos = s.rfind(c, fromIndex);
-                outResult = JavaValue(pos != std::string::npos ? (int32_t)pos : -1);
+                uint32_t targetCp = (uint32_t)args[1].asInt();
+                int curCharIdx = 0;
+                int foundIdx = -1;
+                for (size_t i = 0; i < s.size();) {
+                    uint32_t cp = 0;
+                    uint8_t b0 = (uint8_t)s[i++];
+                    if (b0 < 0x80) cp = b0;
+                    else if ((b0 & 0xE0) == 0xC0 && i < s.size()) {
+                        cp = ((b0 & 0x1F) << 6) | ((uint8_t)s[i++] & 0x3F);
+                    } else if ((b0 & 0xF0) == 0xE0 && i + 1 < s.size()) {
+                        cp = ((b0 & 0x0F) << 12) | (((uint8_t)s[i] & 0x3F) << 6) | ((uint8_t)s[i + 1] & 0x3F);
+                        i += 2;
+                    } else cp = b0;
+                    if (curCharIdx <= fromIndex && cp == targetCp) {
+                        foundIdx = curCharIdx;
+                    }
+                    if (curCharIdx > fromIndex) break;
+                    curCharIdx++;
+                }
+                outResult = JavaValue(foundIdx);
             }
             return true;
         }
@@ -1353,6 +1434,88 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 std::reverse(obj->stringVal.begin(), obj->stringVal.end());
             }
             outResult = JavaValue(args[0].asRef(), true);
+            return true;
+        }
+        if (methodName == "insert" && args.size() >= 3) {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (obj) {
+                int off = args[1].asInt();
+                if (off < 0 || off > (int)obj->stringVal.length()) {
+                    setPendingException(allocObject("java/lang/StringIndexOutOfBoundsException"));
+                    return true;
+                }
+                std::string insStr = "";
+                if (desc.find("(IC)") != std::string::npos) {
+                    appendUtf8Char(insStr, (uint16_t)args[2].asInt());
+                } else if (desc.find("(IZ)") != std::string::npos) {
+                    insStr = args[2].asInt() ? "true" : "false";
+                } else if (desc.find("(IJ)") != std::string::npos) {
+                    insStr = std::to_string(args[2].asLong());
+                } else if (desc.find("(IF)") != std::string::npos) {
+                    insStr = std::to_string(args[2].asFloat());
+                } else if (desc.find("(ID)") != std::string::npos) {
+                    insStr = std::to_string(args[2].asDouble());
+                } else if (desc.find("(I[CII)") != std::string::npos && args.size() >= 5) {
+                    JavaArray* ca = getArray(args[2].asRef());
+                    int arrOff = args[3].asInt(), len = args[4].asInt();
+                    if (ca && arrOff >= 0 && len >= 0 && arrOff + len <= (int)ca->charData.size()) {
+                        for (int i = 0; i < len; ++i) appendUtf8Char(insStr, ca->charData[arrOff + i]);
+                    }
+                } else if (desc.find("(I[C)") != std::string::npos) {
+                    JavaArray* ca = getArray(args[2].asRef());
+                    if (ca) {
+                        for (size_t i = 0; i < ca->charData.size(); ++i) appendUtf8Char(insStr, ca->charData[i]);
+                    }
+                } else if (args[2].type == JavaValue::OBJ_REF) {
+                    uint32_t r = args[2].asRef();
+                    if (r == 0) {
+                        insStr = "null";
+                    } else {
+                        JavaObject* argObj = getObject(r);
+                        if (argObj && (argObj->className == "java/lang/String" || argObj->className == "java/lang/StringBuffer" || argObj->className == "java/lang/StringBuilder")) {
+                            insStr = argObj->stringVal;
+                        } else if (argObj && argObj->fields.find("value") != argObj->fields.end()) {
+                            auto v = argObj->fields["value"];
+                            if (v.type == JavaValue::INT) insStr = std::to_string(v.asInt());
+                            else if (v.type == JavaValue::LONG) insStr = std::to_string(v.asLong());
+                            else if (v.type == JavaValue::FLOAT) insStr = std::to_string(v.asFloat());
+                            else if (v.type == JavaValue::DOUBLE) insStr = std::to_string(v.asDouble());
+                            else insStr = (v.asInt() ? "true" : "false");
+                        } else if (argObj) {
+                            insStr = argObj->stringVal;
+                        }
+                    }
+                } else {
+                    insStr = std::to_string(args[2].asInt());
+                }
+                obj->stringVal.insert(off, insStr);
+            }
+            outResult = JavaValue(args[0].asRef(), true);
+            return true;
+        }
+        if (methodName == "indexOf" && args.size() >= 2) {
+            JavaObject* obj = getObject(args[0].asRef());
+            std::string s = obj ? obj->stringVal : "";
+            int fromIndex = (args.size() >= 3) ? std::max(0, args[2].asInt()) : 0;
+            std::string target = getString(args[1].asRef());
+            if (fromIndex > (int)s.length()) {
+                outResult = JavaValue(-1);
+            } else {
+                size_t pos = s.find(target, fromIndex);
+                outResult = JavaValue(pos != std::string::npos ? (int32_t)pos : -1);
+            }
+            return true;
+        }
+        if (methodName == "substring" && args.size() >= 2) {
+            JavaObject* obj = getObject(args[0].asRef());
+            std::string s = obj ? obj->stringVal : "";
+            int start = args[1].asInt();
+            int end = (args.size() >= 3) ? args[2].asInt() : (int)s.length();
+            if (start < 0 || end > (int)s.length() || start > end) {
+                setPendingException(allocObject("java/lang/StringIndexOutOfBoundsException"));
+                return true;
+            }
+            outResult = JavaValue(createString(s.substr(start, end - start)), true);
             return true;
         }
     }
@@ -1623,19 +1786,44 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             outResult = JavaValue(img && img->isMutable ? 1 : 0);
             return true;
         }
-        if (methodName == "getRGB") {
+        if (methodName == "getRGB" && args.size() >= 8) {
+            uint32_t arrRef = args[1].asRef();
+            if (arrRef == 0) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
+            JavaArray* arr = getArray(arrRef);
+            if (!arr) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
             syncImageFromDisplay(args[0].asRef());
             NativeImage* img = getNativeImage(args[0].asRef());
-            JavaArray* arr = getArray(args[1].asRef());
+            if (!img) return true;
+
             int offset = args[2].asInt(), scanlength = args[3].asInt(), x = args[4].asInt(), y = args[5].asInt(), width = args[6].asInt(), height = args[7].asInt();
-            if (img && arr) {
-                for (int r = 0; r < height; ++r) {
-                    for (int c = 0; c < width; ++c) {
-                        int srcIdx = (y + r) * img->width + (x + c);
-                        int dstIdx = offset + r * scanlength + c;
-                        if (srcIdx < (int)img->pixels.size() && dstIdx < (int)arr->intData.size()) {
-                            arr->intData[dstIdx] = img->pixels[srcIdx];
-                        }
+            if (width <= 0 || height <= 0) return true;
+            if (x < 0 || y < 0 || x + width > img->width || y + height > img->height || std::abs(scanlength) < width) {
+                setPendingException(allocObject("java/lang/IllegalArgumentException"));
+                return true;
+            }
+            int minIdx = offset;
+            int maxIdx = offset + (height - 1) * scanlength + (width - 1);
+            if (scanlength < 0) {
+                minIdx = offset + (height - 1) * scanlength;
+                maxIdx = offset + (width - 1);
+            }
+            if (minIdx < 0 || maxIdx >= (int)arr->intData.size()) {
+                setPendingException(allocObject("java/lang/ArrayIndexOutOfBoundsException"));
+                return true;
+            }
+
+            for (int r = 0; r < height; ++r) {
+                for (int c = 0; c < width; ++c) {
+                    int srcIdx = (y + r) * img->width + (x + c);
+                    int dstIdx = offset + r * scanlength + c;
+                    if (srcIdx >= 0 && srcIdx < (int)img->pixels.size() && dstIdx >= 0 && dstIdx < (int)arr->intData.size()) {
+                        arr->intData[dstIdx] = img->pixels[srcIdx];
                     }
                 }
             }
@@ -1691,13 +1879,26 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             return true;
         }
         if (methodName == "drawString" && args.size() >= 5) {
+            if (args[1].asRef() == 0) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
             std::string text = getString(args[1].asRef());
             tgt->drawString(text, args[2].asInt(), args[3].asInt(), args[4].asInt(), tgt->getColor());
             return true;
         }
         if (methodName == "drawSubstring" && args.size() >= 7) {
+            if (args[1].asRef() == 0) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
             std::string text = getString(args[1].asRef());
             int off = args[2].asInt(), len = args[3].asInt();
+            int totalChars = utf8StringCharCount(text);
+            if (off < 0 || len < 0 || off + len > totalChars) {
+                setPendingException(allocObject("java/lang/StringIndexOutOfBoundsException"));
+                return true;
+            }
             size_t bOff = utf8CharToByteOffset(text, off);
             size_t bEnd = utf8CharToByteOffset(text, off + len);
             if (bOff < text.length() && bEnd >= bOff) {
@@ -1707,6 +1908,29 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "drawChar" && args.size() >= 5) {
             tgt->drawChar((char)args[1].asInt(), args[2].asInt(), args[3].asInt(), tgt->getColor());
+            return true;
+        }
+        if (methodName == "drawChars" && args.size() >= 7) {
+            uint32_t arrRef = args[1].asRef();
+            if (arrRef == 0) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
+            JavaArray* arr = getArray(arrRef);
+            if (!arr) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
+            int off = args[2].asInt(), len = args[3].asInt();
+            if (off < 0 || len < 0 || off + len > (int)arr->charData.size()) {
+                setPendingException(allocObject("java/lang/ArrayIndexOutOfBoundsException"));
+                return true;
+            }
+            std::string text = "";
+            for (int i = 0; i < len; ++i) {
+                appendUtf8Char(text, arr->charData[off + i]);
+            }
+            tgt->drawString(text, args[4].asInt(), args[5].asInt(), args[6].asInt(), tgt->getColor());
             return true;
         }
         if (methodName == "drawImage" && args.size() >= 5) {
@@ -1782,6 +2006,10 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             tgt->clipRect(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt());
             return true;
         }
+        if (methodName == "copyArea" && args.size() >= 8) {
+            tgt->copyArea(args[1].asInt(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), args[7].asInt());
+            return true;
+        }
         if (methodName == "getClipX") { outResult = JavaValue(tgt->getClipX()); return true; }
         if (methodName == "getClipY") { outResult = JavaValue(tgt->getClipY()); return true; }
         if (methodName == "getClipWidth") { outResult = JavaValue(tgt->getClipWidth()); return true; }
@@ -1797,15 +2025,42 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
 
     if (className == "javax/microedition/lcdui/Font") {
         if (methodName == "getFont" || methodName == "getDefaultFont") {
-            outResult = JavaValue(allocObject("javax/microedition/lcdui/Font"), true);
+            uint32_t fRef = allocObject("javax/microedition/lcdui/Font");
+            JavaObject* fObj = getObject(fRef);
+            int face = 0, style = 0, size = 0;
+            if (methodName == "getFont" && args.size() >= 3) {
+                face = args[0].asInt();
+                style = args[1].asInt();
+                size = args[2].asInt();
+            }
+            if (fObj) {
+                fObj->fields["face"] = JavaValue(face);
+                fObj->fields["style"] = JavaValue(style);
+                fObj->fields["size"] = JavaValue(size);
+            }
+            outResult = JavaValue(fRef, true);
             return true;
         }
-        if (methodName == "getHeight") { outResult = JavaValue(12); return true; }
-        if (methodName == "getBaselinePosition") { outResult = JavaValue(10); return true; }
+        if (methodName == "getHeight") {
+            JavaObject* fObj = args.empty() ? nullptr : getObject(args[0].asRef());
+            int sz = (fObj && fObj->fields.count("size")) ? fObj->fields["size"].asInt() : 0;
+            outResult = JavaValue(sz == 8 ? 10 : (sz == 16 ? 16 : 12));
+            return true;
+        }
+        if (methodName == "getBaselinePosition") {
+            JavaObject* fObj = args.empty() ? nullptr : getObject(args[0].asRef());
+            int sz = (fObj && fObj->fields.count("size")) ? fObj->fields["size"].asInt() : 0;
+            outResult = JavaValue(sz == 8 ? 8 : (sz == 16 ? 13 : 10));
+            return true;
+        }
         if (methodName == "stringWidth") {
+            if (args.size() < 2 || args[1].asRef() == 0) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
             std::string s = getString(args[1].asRef());
             // Unicode: ask CoreText for real width (Vietnamese combining marks)
-            if (native_text_measure) {
+            if ((const void*)native_text_measure != nullptr) {
                 bool nonAscii = false;
                 for (unsigned char c : s) if (c < 32 || c > 126) { nonAscii = true; break; }
                 if (nonAscii) {
@@ -1820,13 +2075,22 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             return true;
         }
         if (methodName == "substringWidth" && args.size() >= 4) {
+            if (args[1].asRef() == 0) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
             std::string s = getString(args[1].asRef());
             int off = args[2].asInt(), len = args[3].asInt();
+            int totalChars = utf8StringCharCount(s);
+            if (off < 0 || len < 0 || off + len > totalChars) {
+                setPendingException(allocObject("java/lang/StringIndexOutOfBoundsException"));
+                return true;
+            }
             size_t bOff = utf8CharToByteOffset(s, off);
             size_t bEnd = utf8CharToByteOffset(s, off + len);
             if (bOff <= s.length() && bEnd >= bOff) {
                 std::string sub = s.substr(bOff, bEnd - bOff);
-                if (native_text_measure) {
+                if ((const void*)native_text_measure != nullptr) {
                     int w = 0, h = 0;
                     if (native_text_measure(sub.c_str(), 12, &w, &h) && w > 0) {
                         outResult = JavaValue((int32_t)w);
@@ -1841,15 +2105,75 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "charWidth") { outResult = JavaValue(7); return true; }
         if (methodName == "charsWidth" && args.size() >= 4) {
-            outResult = JavaValue((int32_t)(args[3].asInt() * 7));
+            uint32_t arrRef = args[1].asRef();
+            if (arrRef == 0) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
+            JavaArray* arr = getArray(arrRef);
+            if (!arr) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
+            int off = args[2].asInt(), len = args[3].asInt();
+            if (off < 0 || len < 0 || off + len > (int)arr->charData.size()) {
+                setPendingException(allocObject("java/lang/ArrayIndexOutOfBoundsException"));
+                return true;
+            }
+            std::string sub = "";
+            for (int i = 0; i < len; ++i) {
+                appendUtf8Char(sub, arr->charData[off + i]);
+            }
+            if ((const void*)native_text_measure != nullptr) {
+                int w = 0, h = 0;
+                if (native_text_measure(sub.c_str(), 12, &w, &h) && w > 0) {
+                    outResult = JavaValue((int32_t)w);
+                    return true;
+                }
+            }
+            outResult = JavaValue((int32_t)(len * 7));
             return true;
         }
-        if (methodName == "getStyle") { outResult = JavaValue(0); return true; }
-        if (methodName == "getSize") { outResult = JavaValue(0); return true; }
-        if (methodName == "getFace") { outResult = JavaValue(0); return true; }
-        if (methodName == "isPlain") { outResult = JavaValue(1); return true; }
-        if (methodName == "isBold" || methodName == "isItalic" || methodName == "isUnderlined") {
-            outResult = JavaValue(0);
+        if (methodName == "getStyle") {
+            JavaObject* fObj = args.empty() ? nullptr : getObject(args[0].asRef());
+            int st = (fObj && fObj->fields.count("style")) ? fObj->fields["style"].asInt() : 0;
+            outResult = JavaValue(st);
+            return true;
+        }
+        if (methodName == "getSize") {
+            JavaObject* fObj = args.empty() ? nullptr : getObject(args[0].asRef());
+            int sz = (fObj && fObj->fields.count("size")) ? fObj->fields["size"].asInt() : 0;
+            outResult = JavaValue(sz);
+            return true;
+        }
+        if (methodName == "getFace") {
+            JavaObject* fObj = args.empty() ? nullptr : getObject(args[0].asRef());
+            int fc = (fObj && fObj->fields.count("face")) ? fObj->fields["face"].asInt() : 0;
+            outResult = JavaValue(fc);
+            return true;
+        }
+        if (methodName == "isPlain") {
+            JavaObject* fObj = args.empty() ? nullptr : getObject(args[0].asRef());
+            int st = (fObj && fObj->fields.count("style")) ? fObj->fields["style"].asInt() : 0;
+            outResult = JavaValue(st == 0 ? 1 : 0);
+            return true;
+        }
+        if (methodName == "isBold") {
+            JavaObject* fObj = args.empty() ? nullptr : getObject(args[0].asRef());
+            int st = (fObj && fObj->fields.count("style")) ? fObj->fields["style"].asInt() : 0;
+            outResult = JavaValue((st & 1) ? 1 : 0);
+            return true;
+        }
+        if (methodName == "isItalic") {
+            JavaObject* fObj = args.empty() ? nullptr : getObject(args[0].asRef());
+            int st = (fObj && fObj->fields.count("style")) ? fObj->fields["style"].asInt() : 0;
+            outResult = JavaValue((st & 2) ? 1 : 0);
+            return true;
+        }
+        if (methodName == "isUnderlined") {
+            JavaObject* fObj = args.empty() ? nullptr : getObject(args[0].asRef());
+            int st = (fObj && fObj->fields.count("style")) ? fObj->fields["style"].asInt() : 0;
+            outResult = JavaValue((st & 4) ? 1 : 0);
             return true;
         }
     }
@@ -2008,6 +2332,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                     int len = (args.size() >= 4) ? args[3].asInt() : (int)arr->byteData.size();
                     obj->fields["pos"] = JavaValue(std::max(0, off));
                     obj->fields["count"] = JavaValue(std::min((int)arr->byteData.size(), std::max(0, off) + std::max(0, len)));
+                    obj->fields["mark"] = JavaValue(std::max(0, off));
                 } else {
                     JavaObject* innerStream = getObject(args[1].asRef());
                     if (innerStream) {
@@ -2015,6 +2340,9 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                         obj->fields["pos"] = innerStream->fields["pos"];
                         if (innerStream->fields.count("count")) {
                             obj->fields["count"] = innerStream->fields["count"];
+                        }
+                        if (innerStream->fields.count("mark")) {
+                            obj->fields["mark"] = innerStream->fields["mark"];
                         }
                     }
                 }
@@ -2378,6 +2706,26 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             }
 #endif
             outResult = JavaValue(avail);
+            return true;
+        }
+        if (methodName == "markSupported") {
+            outResult = JavaValue(1);
+            return true;
+        }
+        if (methodName == "mark") {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (obj) {
+                int pos = obj->fields.count("pos") ? obj->fields["pos"].asInt() : 0;
+                obj->fields["mark"] = JavaValue(pos);
+            }
+            return true;
+        }
+        if (methodName == "reset") {
+            JavaObject* obj = getObject(args[0].asRef());
+            if (obj) {
+                int m = obj->fields.count("mark") ? obj->fields["mark"].asInt() : 0;
+                obj->fields["pos"] = JavaValue(m);
+            }
             return true;
         }
         if (methodName == "close") return true;
@@ -3136,7 +3484,7 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
                 if (fKey=="java/lang/Math:PI") sv=JavaValue(3.141592653589793);
                 else if (fKey=="java/lang/Math:E") sv=JavaValue(2.718281828459045);
                 else if (fKey=="java/lang/Integer:MAX_VALUE") sv=JavaValue((int32_t)2147483647);
-                else if (fKey=="java/lang/Integer:MIN_VALUE") sv=JavaValue((int32_t)-2147483648);
+                else if (fKey=="java/lang/Integer:MIN_VALUE") sv=JavaValue((int32_t)(-2147483647 - 1));
                 else if (fKey=="java/lang/Long:MAX_VALUE") sv=JavaValue((int64_t)9223372036854775807LL);
                 else if (fKey=="java/lang/Long:MIN_VALUE") sv=JavaValue((int64_t)(-9223372036854775807LL-1));
             }

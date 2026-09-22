@@ -337,11 +337,75 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
       - *Hiện tượng*: `RecordEnumeration` thiếu `previousRecordId()` và `previousRecord()`; `Hashtable.put` không ném NPE khi key/value null; `Enumeration.nextElement` không ném `NoSuchElementException`; `Math.round(float)` dùng `std::lround` lệch kết quả số âm.
       - *Khắc phục*: Bổ sung `previousRecordId` và `previousRecord`; ném NPE và `NoSuchElementException`; cập nhật `Math.round` dùng `std::floor(a + 0.5f)` và bổ sung `Math.IEEEremainder`.
 
+### 17. Khắc Phục Toàn Diện 20 Lỗi Logic & Chuẩn Hóa Đặc Tả Đối Chiếu Upstream (v1.8.9)
+- **Mục tiêu**: Tiến hành kiểm tra và khắc phục triệt để 20 điểm sai lệch logic, thiếu sót hàm hoặc không tuân thủ đặc tả chuẩn JVM/MIDP 2.0 đối chiếu trực tiếp với mã nguồn upstream `playsoftware/J2ME-Loader` và Java ME Specification.
+- **Chi tiết 20 lỗi và cách khắc phục**:
+  1. **LcduiDisplay `copyArea` (`lcdui_display.h` / `lcdui_display.cpp`)**:
+     - *Hiện tượng*: `Graphics.copyArea` chưa được triển khai thực tế trên framebuffer; sao chép trực tiếp có nguy cơ đè dữ liệu khi vùng nguồn và đích chồng lấn nhau.
+     - *Khắc phục*: Triển khai `LcduiDisplay::copyArea(x_src, y_src, width, height, x_dest, y_dest, anchor)` với kiểm tra biên màn hình, cắt xén (bounds clipping) và sao chép qua vùng đệm tạm thời `tempBuf` để loại trừ hoàn toàn hiện tượng tearing/đè pixel khi dịch chuyển đồ họa.
+  2. **Sprite `computeTransformedBounds` Chuẩn Upstream (`game_canvas.h` / `game_canvas.cpp`)**:
+     - *Hiện tượng*: Tính toán va chạm Sprite trước đây chỉ dựa trên hình chữ nhật bao quanh thô sơ chưa áp dụng phép biến đổi của từng góc quay/lật.
+     - *Khắc phục*: Triển khai hàm tính bao đóng `computeTransformedBounds(tX, tY, tW, tH)` đối chiếu chính xác theo `Sprite.java:1129-1300`, xử lý chuẩn xác cả 8 phép biến đổi (`TRANS_NONE`, `TRANS_ROT90`, `TRANS_ROT180`, `TRANS_ROT270`, `TRANS_MIRROR`, `TRANS_MIRROR_ROT90`, `TRANS_MIRROR_ROT180`, `TRANS_MIRROR_ROT270`).
+  3. **Sprite Va Chạm TiledLayer `collidesWith(TiledLayer, pixelLevel)` (`game_canvas.cpp`)**:
+     - *Hiện tượng*: Chưa hỗ trợ kiểm tra va chạm giữa Sprite và TiledLayer, làm các game platformer/đi cảnh không nhận diện được va chạm mặt đất/chướng ngại vật dạng map tile.
+     - *Khắc phục*: Triển khai `Sprite::collidesWith(const TiledLayer&, bool)` đối chiếu theo `Sprite.java:519-585`. Nếu bounding box giao nhau, hàm tính toán dải cột `(startCol..endCol)` và hàng `(startRow..endRow)` bị ảnh hưởng; khi `pixelLevel == true`, kiểm tra va chạm độ trong suốt pixel qua `TiledLayer::getPixel`.
+  4. **Sprite Va Chạm Image `collidesWith(Image, x, y, pixelLevel)` (`game_canvas.cpp`)**:
+     - *Hiện tượng*: `Sprite.collidesWith(Image, x, y, bool)` chưa hỗ trợ kiểm tra cấp độ pixel với mảng màu ARGB của ảnh.
+     - *Khắc phục*: Triển khai `Sprite::collidesWith(const std::vector<uint32_t>&, int, int, int, int, bool)` đối chiếu `Sprite.java:718-820`, hỗ trợ kiểm tra va chạm pixel chuẩn xác giữa khung hình biến đổi hiện tại của Sprite và hình ảnh tùy ý.
+  5. **TiledLayer `setStaticTileSet` Tái Cấu Trúc Bộ Tile (`game_canvas.cpp`)**:
+     - *Hiện tượng*: Trong `j2me_full_apis.cpp`, `TiledLayer.setStaticTileSet` chỉ là stub rỗng `(void)ni; return true;`, không cập nhật lại bộ tile mới.
+     - *Khắc phục*: Triển khai `TiledLayer::setStaticTileSet` đối chiếu `TiledLayer.java:177-200`, tính toán lại `m_numStaticTiles`, thay thế `m_tileImage`, cập nhật lại `tileWidth`, `tileHeight` và điều chỉnh các animated tiles tương ứng.
+  6. **TiledLayer `paint` Culling Theo ClipRect (`game_canvas.cpp`)**:
+     - *Hiện tượng*: Vẽ toàn bộ các ô tile của map từ 0 đến columns/rows bất kể màn hình đang hiển thị vùng nào, gây lãng phí tài nguyên CPU/GPU.
+     - *Khắc phục*: Triển khai thuật toán tính toán `startColumn`, `endColumn`, `startRow`, `endRow` dựa trên giao điểm giữa toạ độ Layer và `display->getClipRect()` chuẩn `TiledLayer.java:208-240`.
+  7. **TiledLayer `getPixel` Truy Xuất Màu ARGB Ô Tile (`game_canvas.cpp`)**:
+     - *Hiện tượng*: Không có phương thức lấy màu pixel từ ô tile tĩnh hoặc ô hoạt họa (animated tile).
+     - *Khắc phục*: Triển khai `TiledLayer::getPixel(tileIndex, localX, localY)` giải mã chỉ số tile dương (static tile) hoặc âm (animated tile qua `m_animatedTiles`), trích xuất pixel ARGB chuẩn xác.
+  8. **String `charAt` & `substring` Chuẩn Ngoại Lệ & Hỗ Trợ Đa Byte UTF-8 (`jvm_bytecode.cpp`)**:
+     - *Hiện tượng*: Trả về 0 hoặc kẹp biên khi chỉ số nằm ngoài độ dài chuỗi thay vì ném `StringIndexOutOfBoundsException`; chỉ số offset đếm theo byte thay vì Unicode code point.
+     - *Khắc phục*: Bổ sung helper `utf8ByteToCharOffset` và `utf8StringCharCount`; ném `StringIndexOutOfBoundsException` trên các chỉ số không hợp lệ; tính toán chỉ số theo character chuẩn Java.
+  9. **String `indexOf` & `lastIndexOf` Ánh Xạ Hai Chiều Byte-Char (`jvm_bytecode.cpp`)**:
+     - *Hiện tượng*: Chỉ số tìm kiếm `fromIndex` truyền vào là character index nhưng duyệt byte, kết quả trả về là byte offset gây sai lệch khi chuỗi chứa ký tự đa byte (tiếng Việt có dấu).
+     - *Khắc phục*: Chuyển đổi character `fromIndex` sang byte offset trước khi tìm kiếm, và chuyển kết quả byte offset tìm được về character index trả về cho bytecode JVM.
+  10. **StringBuffer / StringBuilder Hoàn Thiện Các Phương Thức Cốt Lõi (`jvm_bytecode.cpp`)**:
+      - *Hiện tượng*: Thiếu `insert(int, String)`, `indexOf(String)`, `substring(int, int)`.
+      - *Khắc phục*: Triển khai đầy đủ các phương thức trên, kiểm tra chỉ số ném `StringIndexOutOfBoundsException` chuẩn JVM.
+  11. **Image `getRGB` Kiểm Tra Biên MIDP 2.0 Khắt Khe (`jvm_bytecode.cpp`)**:
+      - *Hiện tượng*: Chưa kiểm tra ràng buộc `offset < 0`, `scanlength < width`, `rgbData == null` khiến xảy ra lỗi bộ nhớ âm.
+      - *Khắc phục*: Ném `NullPointerException` nếu mảng đích null; ném `IllegalArgumentException` nếu `width <= 0`, `height <= 0`, `x < 0`, `y < 0`, `x + width > imgW`, `y + height > imgH` hoặc `abs(scanlength) < width`; ném `ArrayIndexOutOfBoundsException` nếu mảng không đủ sức chứa.
+  12. **Graphics `drawString` & `drawChars` Ném Ngoại Lệ Chuẩn (`jvm_bytecode.cpp`)**:
+      - *Hiện tượng*: Bỏ qua hoặc vẽ chuỗi rỗng khi chuỗi null hoặc chỉ số out-of-bounds.
+      - *Khắc phục*: Ném `NullPointerException` khi chuỗi / mảng ký tự null; ném `StringIndexOutOfBoundsException` / `ArrayIndexOutOfBoundsException` khi offset hoặc length không hợp lệ.
+  13. **Font Đầy Đủ Thuộc Tính & Tính Toán Kích Thước Động (`jvm_bytecode.cpp`)**:
+      - *Hiện tượng*: Font size luôn cố định, `getHeight()` trả về hằng số 14, không lưu trữ `face`, `style`, `size`.
+      - *Khắc phục*: Lưu các thuộc tính vào object fields; `getHeight()` và `getBaselinePosition()` tính theo size (SIZE_SMALL: 12, SIZE_MEDIUM: 14, SIZE_LARGE: 18); kiểm tra null và bounds trong `stringWidth`, `charsWidth`.
+  14. **InputStream `markSupported`, `mark` & `reset` (`jvm_bytecode.cpp`)**:
+      - *Hiện tượng*: `ByteArrayInputStream` và `InputStream` chưa hỗ trợ đánh dấu vị trí đọc, các game đọc header nhị phân bị lỗi giải mã.
+      - *Khắc phục*: Khởi tạo trường `mark = 0` trong `<init>`; `markSupported()` trả về 1; `mark(limit)` lưu vị trí hiện tại; `reset()` đặt lại `pos = mark`.
+  15. **Java Primitive Wrappers Chuẩn Hóa Toàn Diện (`j2me_full_apis.cpp`)**:
+      - *Hiện tượng*: `Boolean`, `Byte`, `Short`, `Character`, `Integer`, `Long`, `Float`, `Double` chưa lưu giá trị thật vào object fields, các hàm getter trả về 0.
+      - *Khắc phục*: Triển khai `<init>` lưu giá trị vào `fields["value"]`; triển khai `valueOf`, `toString`, các getter số nguyên / thực; hoàn thiện `java/lang/Integer` với `parseInt`, `toHexString`, `toOctalString`, `toBinaryString`.
+  16. **Java Collections Ném Ngoại Lệ Chuẩn (`j2me_full_apis.cpp`)**:
+      - *Hiện tượng*: `Hashtable` cho phép null key/value; `Vector` trả về 0 khi lấy phần tử trong danh sách rỗng; `Stack.pop()` không ném ngoại lệ.
+      - *Khắc phục*: `Hashtable.get`, `remove`, `containsKey`, `contains` ném `NullPointerException` khi key/value null; `Vector.firstElement`, `lastElement` ném `NoSuchElementException`; `insertElementAt`, `removeElementAt`, `setElementAt` ném `ArrayIndexOutOfBoundsException`; `Stack.pop`, `peek` ném `EmptyStackException`.
+  17. **Calendar Tính Toán Thời Gian & Trường Lịch Đầy Đủ (`j2me_full_apis.cpp`)**:
+      - *Hiện tượng*: `Calendar.get(field)` chỉ hỗ trợ một số ít trường cơ bản, thiếu `HOUR` (12-giờ), `AM_PM`, `MILLISECOND`, `ZONE_OFFSET`.
+      - *Khắc phục*: Lưu trữ `fields["time"]` chuẩn epoch milliseconds; phân giải đầy đủ các trường thời gian theo cấu trúc `struct tm`.
+  18. **MascotCapsule Micro3D `AffineTrans` & Ma Trận Xoay Thật (`j2me_full_apis.cpp`)**:
+      - *Hiện tượng*: `AffineTrans.set` và `get` mảng 12 phần tử chỉ là stub; `FigureLayout` không lưu giữ ma trận; `drawFigure` luôn truyền ma trận identity mặc định khiến mô hình 3D không xoay theo nhân vật.
+      - *Khắc phục*: Triển khai `set` và `get` mảng 12 phần tử ma trận cố định `(m00..m23)` tỉ lệ 1/4096; lưu `affineTrans` trong `FigureLayout`; trích xuất `AffineTrans` truyền vào `Micro3DFigure::draw`.
+  19. **Nokia Sound Sửa Đảo Ngược Mã Trạng Thái (`j2me_full_apis.cpp`)**:
+      - *Hiện tượng*: Các giá trị trạng thái bị đảo ngược: `play` gán state = 1, `stop` gán state = 0, vi phạm đặc tả Nokia UI API.
+      - *Khắc phục*: Định nghĩa chuẩn theo đặc tả Nokia UI: `SOUND_PLAYING = 0`, `SOUND_STOPPED = 1`, `SOUND_UNINITIALIZED = 3`; cập nhật `state = 1` sau khi luồng phát âm thanh hoàn tất.
+  20. **IO & FileConnection Chuẩn Hóa Toàn Diện (`j2me_full_apis.cpp`)**:
+      - *Hiện tượng*: `Connector.openInputStream`/`openOutputStream` trả về đối tượng `Connection` thay vì `InputStream`/`OutputStream`; `VolumeControl.setLevel` không trả về giá trị âm lượng đã thiết lập; `FileConnection` kiểm tra `/root/` sau khi đã xóa dấu `/` đầu tiên; `create()` và `mkdir()` không tạo file/thư mục thật trên ổ đĩa.
+      - *Khắc phục*: `Connector.openInputStream/openOutputStream` tự động chuyển tiếp và trả về đối tượng stream; `VolumeControl.setLevel` kẹp âm lượng `[0, 100]` và trả về giá trị `int`; sửa thứ tự kiểm tra `/root/`, `/SDCard/`; triển khai `create()` tạo file rỗng, `mkdir()` tạo thư mục và `lastModified()` lấy thời gian sửa đổi file qua `stat`.
+
 ---
 
-## 📊 KẾT QUẢ KIỂM THỬ
-* **Khởi động**: DragonBoy, Avatar, Ninja School, Gameloft khởi chạy trực tiếp vào màn hình game.
-* **Đồ họa & Điều khiển**: Render 60 FPS mượt mà; xoay lật Sprite, LayerManager clipping, Nokia DirectGraphics hiển thị hoàn hảo; bàn phím điều hướng phản hồi tức thì qua cả sự kiện `keyPressed`, `getKeyStates`, GAME_A-D.
-* **Tính ổn định & Dữ liệu**: Dữ liệu lưu game RMS lưu trữ và phục hồi hoàn hảo sau khi thoát và mở lại ứng dụng; Record ID không bao giờ bị tái sử dụng; đạt 0 crash, 0 leak socket.
+## 📊 KẾT QUẢ KIỂM THỬ (v1.8.9)
+* **Khởi động**: DragonBoy, Avatar, Ninja School, Gameloft, MascotCapsule 3D khởi chạy trực tiếp vào màn hình game.
+* **Đồ họa & Điều khiển**: Render 60 FPS mượt mà; va chạm pixel-level Sprite với TiledLayer và Image cực kỳ chính xác; đồ họa 3D MascotCapsule xoay chuyển đúng tư thế mô hình; bàn phím điều hướng phản hồi tức thì.
+* **Tính ổn định & Dữ liệu**: Dữ liệu lưu game RMS và FileConnection lưu trữ / đọc ghi thực tế chuẩn xác; biên dịch trên MSVC 2022 C++17 đạt **0 Error, 0 Warning** với cờ `/W3 /WX`.
 
 

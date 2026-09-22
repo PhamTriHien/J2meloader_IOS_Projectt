@@ -58,8 +58,8 @@ public class AppUpdateManager: NSObject, ObservableObject, URLSessionDownloadDel
     public static let shared = AppUpdateManager()
     
     // Current application version string
-    public static let currentVersion = "v1.8.8-j2hienloader"
-    public static let currentBuildTag = "1.8.8"
+    public static let currentVersion = "v1.8.9-j2hienloader"
+    public static let currentBuildTag = "1.8.9"
     
     private let repo = "PhamTriHien/J2meloader_IOS_Projectt"
     
