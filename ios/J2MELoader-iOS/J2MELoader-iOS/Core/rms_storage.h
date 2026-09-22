@@ -25,6 +25,7 @@ public:
     std::vector<int> getRecordIds(const std::string& storeName);
     int getNextRecordID(const std::string& storeName);
     int getRecordSize(const std::string& storeName, int recordId);
+    int getSize(const std::string& storeName);
 
     std::vector<std::string> listRecordStores(const std::string& suiteName);
 

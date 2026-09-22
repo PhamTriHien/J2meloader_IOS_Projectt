@@ -21,6 +21,8 @@ std::string RmsStorage::getStoreFilePath(const std::string& suiteName, const std
     return m_baseDir + "/" + suiteName + "_" + storeName + ".rms";
 }
 
+static const uint32_t RMS_MAGIC_V2 = 0x524D5332; // "RMS2"
+
 void RmsStorage::loadFromDisk(const std::string& suiteName, const std::string& storeName) {
     std::string path = getStoreFilePath(suiteName, storeName);
     std::ifstream file(path, std::ios::binary);
@@ -29,15 +31,26 @@ void RmsStorage::loadFromDisk(const std::string& suiteName, const std::string& s
     auto& records = m_openStores[storeName];
     records.clear();
     int maxId = 0;
+    int persistedNextId = -1;
+
+    uint32_t firstWord = 0;
+    if (!file.read(reinterpret_cast<char*>(&firstWord), sizeof(firstWord))) return;
 
     uint32_t count = 0;
-    file.read(reinterpret_cast<char*>(&count), sizeof(count));
+    if (firstWord == RMS_MAGIC_V2) {
+        int32_t nId = 1;
+        file.read(reinterpret_cast<char*>(&nId), sizeof(nId));
+        persistedNextId = nId;
+        file.read(reinterpret_cast<char*>(&count), sizeof(count));
+    } else {
+        count = firstWord;
+    }
 
     for (uint32_t i = 0; i < count; ++i) {
         int32_t id = 0;
         uint32_t size = 0;
-        file.read(reinterpret_cast<char*>(&id), sizeof(id));
-        file.read(reinterpret_cast<char*>(&size), sizeof(size));
+        if (!file.read(reinterpret_cast<char*>(&id), sizeof(id))) break;
+        if (!file.read(reinterpret_cast<char*>(&size), sizeof(size))) break;
 
         std::vector<uint8_t> data(size);
         if (size > 0) {
@@ -47,7 +60,11 @@ void RmsStorage::loadFromDisk(const std::string& suiteName, const std::string& s
         if (id > maxId) maxId = id;
     }
 
-    m_nextRecordIds[storeName] = maxId + 1;
+    if (persistedNextId > maxId) {
+        m_nextRecordIds[storeName] = persistedNextId;
+    } else {
+        m_nextRecordIds[storeName] = maxId + 1;
+    }
 }
 
 void RmsStorage::saveToDisk(const std::string& suiteName, const std::string& storeName) {
@@ -59,7 +76,13 @@ void RmsStorage::saveToDisk(const std::string& suiteName, const std::string& sto
     if (!file.is_open()) return;
 
     const auto& records = it->second;
+    uint32_t magic = RMS_MAGIC_V2;
+    int32_t nextId = m_nextRecordIds[storeName];
+    if (nextId <= 0) nextId = 1;
     uint32_t count = (uint32_t)records.size();
+
+    file.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
+    file.write(reinterpret_cast<const char*>(&nextId), sizeof(nextId));
     file.write(reinterpret_cast<const char*>(&count), sizeof(count));
 
     for (const auto& pair : records) {
@@ -183,6 +206,17 @@ int RmsStorage::getRecordSize(const std::string& storeName, int recordId) {
     if (it == m_openStores.end()) return 0;
     auto recIt = it->second.find(recordId);
     return (recIt != it->second.end()) ? (int)recIt->second.size() : 0;
+}
+
+int RmsStorage::getSize(const std::string& storeName) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_openStores.find(storeName);
+    if (it == m_openStores.end()) return 0;
+    int total = 0;
+    for (const auto& pair : it->second) {
+        total += (int)pair.second.size();
+    }
+    return total;
 }
 
 bool RmsStorage::deleteRecordStore(const std::string& suiteName, const std::string& storeName) {

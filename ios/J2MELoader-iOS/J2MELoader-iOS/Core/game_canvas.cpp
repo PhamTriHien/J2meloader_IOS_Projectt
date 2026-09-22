@@ -33,7 +33,38 @@ void Sprite::prevFrame() {
     m_currentFrameIndex = (m_currentFrameIndex - 1 + (int)m_sequence.size()) % m_sequence.size();
 }
 
+int Sprite::getTransformedPtX(int x, int y, SpriteTransform transform) const {
+    switch (transform) {
+    case TRANS_NONE: return x;
+    case TRANS_MIRROR: return m_frameWidth - x - 1;
+    case TRANS_MIRROR_ROT180: return x;
+    case TRANS_ROT90: return m_frameHeight - y - 1;
+    case TRANS_ROT180: return m_frameWidth - x - 1;
+    case TRANS_ROT270: return y;
+    case TRANS_MIRROR_ROT90: return m_frameHeight - y - 1;
+    case TRANS_MIRROR_ROT270: return y;
+    default: return x;
+    }
+}
+
+int Sprite::getTransformedPtY(int x, int y, SpriteTransform transform) const {
+    switch (transform) {
+    case TRANS_NONE: return y;
+    case TRANS_MIRROR: return y;
+    case TRANS_MIRROR_ROT180: return m_frameHeight - y - 1;
+    case TRANS_ROT90: return x;
+    case TRANS_ROT180: return m_frameHeight - y - 1;
+    case TRANS_ROT270: return m_frameWidth - x - 1;
+    case TRANS_MIRROR_ROT90: return m_frameWidth - x - 1;
+    case TRANS_MIRROR_ROT270: return x;
+    default: return y;
+    }
+}
+
 void Sprite::setTransform(SpriteTransform transform) {
+    int oldRefX = getTransformedPtX(m_refX, m_refY, m_transform);
+    int oldRefY = getTransformedPtY(m_refX, m_refY, m_transform);
+
     m_transform = transform;
     if (transform == TRANS_ROT90 || transform == TRANS_ROT270 ||
         transform == TRANS_MIRROR_ROT90 || transform == TRANS_MIRROR_ROT270) {
@@ -43,6 +74,11 @@ void Sprite::setTransform(SpriteTransform transform) {
         m_width = m_frameWidth;
         m_height = m_frameHeight;
     }
+
+    int newRefX = getTransformedPtX(m_refX, m_refY, m_transform);
+    int newRefY = getTransformedPtY(m_refX, m_refY, m_transform);
+    m_x += (oldRefX - newRefX);
+    m_y += (oldRefY - newRefY);
 }
 
 void Sprite::defineReferencePixel(int x, int y) {
@@ -51,12 +87,17 @@ void Sprite::defineReferencePixel(int x, int y) {
 }
 
 void Sprite::setRefPixelPosition(int x, int y) {
-    m_x = x - m_refX;
-    m_y = y - m_refY;
+    m_x = x - getTransformedPtX(m_refX, m_refY, m_transform);
+    m_y = y - getTransformedPtY(m_refX, m_refY, m_transform);
 }
 
-int Sprite::getRefPixelX() const { return m_x + m_refX; }
-int Sprite::getRefPixelY() const { return m_y + m_refY; }
+int Sprite::getRefPixelX() const {
+    return m_x + getTransformedPtX(m_refX, m_refY, m_transform);
+}
+
+int Sprite::getRefPixelY() const {
+    return m_y + getTransformedPtY(m_refX, m_refY, m_transform);
+}
 
 void Sprite::defineCollisionRectangle(int x, int y, int width, int height) {
     m_collX = x;
@@ -76,9 +117,9 @@ uint32_t Sprite::getPixel(int frame, int localX, int localY, SpriteTransform tra
     case TRANS_ROT180: srcX = m_frameWidth - 1 - localX; srcY = m_frameHeight - 1 - localY; break;
     case TRANS_ROT90: srcX = localY; srcY = m_frameWidth - 1 - localX; break;
     case TRANS_ROT270: srcX = m_frameHeight - 1 - localY; srcY = localX; break;
-    case TRANS_MIRROR_ROT90: srcX = localY; srcY = localX; break;
+    case TRANS_MIRROR_ROT90: srcX = m_frameHeight - 1 - localY; srcY = m_frameWidth - 1 - localX; break;
+    case TRANS_MIRROR_ROT270: srcX = localY; srcY = localX; break;
     case TRANS_MIRROR_ROT180: srcX = localX; srcY = m_frameHeight - 1 - localY; break;
-    case TRANS_MIRROR_ROT270: srcX = m_frameHeight - 1 - localY; srcY = m_frameWidth - 1 - localX; break;
     }
 
     int framesPerRow = m_imageWidth / m_frameWidth;
@@ -216,16 +257,21 @@ void TiledLayer::paint(LcduiDisplay* display) {
 LayerManager::LayerManager() {}
 
 void LayerManager::append(std::shared_ptr<Layer> layer) {
+    if (!layer) return;
+    remove(layer);
     m_layers.push_back(layer);
 }
 
 void LayerManager::insert(std::shared_ptr<Layer> layer, int index) {
-    if (index >= 0 && index <= (int)m_layers.size()) {
-        m_layers.insert(m_layers.begin() + index, layer);
-    }
+    if (!layer) return;
+    remove(layer);
+    if (index < 0) index = 0;
+    if (index > (int)m_layers.size()) index = (int)m_layers.size();
+    m_layers.insert(m_layers.begin() + index, layer);
 }
 
 void LayerManager::remove(std::shared_ptr<Layer> layer) {
+    if (!layer) return;
     auto it = std::find(m_layers.begin(), m_layers.end(), layer);
     if (it != m_layers.end()) m_layers.erase(it);
 }
@@ -244,15 +290,15 @@ void LayerManager::paint(LcduiDisplay* display, int x, int y) {
     int oldW = display->getClipWidth();
     int oldH = display->getClipHeight();
 
-    display->setClip(x, y, m_viewW, m_viewH);
+    display->translate(x - m_viewX, y - m_viewY);
+    display->clipRect(m_viewX, m_viewY, m_viewW, m_viewH);
+
     for (auto it = m_layers.rbegin(); it != m_layers.rend(); ++it) {
         if ((*it)->isVisible()) {
-            int origX = (*it)->getX();
-            int origY = (*it)->getY();
-            (*it)->setPosition(origX - m_viewX + x, origY - m_viewY + y);
             (*it)->paint(display);
-            (*it)->setPosition(origX, origY);
         }
     }
+
+    display->translate(-x + m_viewX, -y + m_viewY);
     display->setClip(oldX, oldY, oldW, oldH);
 }

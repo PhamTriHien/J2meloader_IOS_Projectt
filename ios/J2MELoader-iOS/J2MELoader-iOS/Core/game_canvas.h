@@ -84,6 +84,8 @@ private:
     int m_collH = 0;
     bool m_customCollision = false;
 
+    int getTransformedPtX(int x, int y, SpriteTransform transform) const;
+    int getTransformedPtY(int x, int y, SpriteTransform transform) const;
     uint32_t getPixel(int frame, int localX, int localY, SpriteTransform transform) const;
 };
 
@@ -137,8 +139,8 @@ private:
     std::vector<std::shared_ptr<Layer>> m_layers;
     int m_viewX = 0;
     int m_viewY = 0;
-    int m_viewW = 240;
-    int m_viewH = 320;
+    int m_viewW = 0x7FFFFFFF;
+    int m_viewH = 0x7FFFFFFF;
 };
 
 #endif // GAME_CANVAS_H

@@ -895,12 +895,28 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             return true;
         }
         if (methodName == "arraycopy" && args.size() >= 5) {
-            JavaArray* src = getArray(args[0].asRef());
+            uint32_t srcRef = args[0].asRef();
+            uint32_t dstRef = args[2].asRef();
+            if (srcRef == 0 || dstRef == 0) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
+            JavaArray* src = getArray(srcRef);
+            JavaArray* dst = getArray(dstRef);
+            if (!src || !dst) {
+                setPendingException(allocObject("java/lang/NullPointerException"));
+                return true;
+            }
             int srcPos = args[1].asInt();
-            JavaArray* dst = getArray(args[2].asRef());
             int dstPos = args[3].asInt();
             int len = args[4].asInt();
-            if (src && dst && len > 0) {
+            int srcLen = src->length();
+            int dstLen = dst->length();
+            if (srcPos < 0 || dstPos < 0 || len < 0 || srcPos + len > srcLen || dstPos + len > dstLen) {
+                setPendingException(allocObject("java/lang/IndexOutOfBoundsException"));
+                return true;
+            }
+            if (len == 0) return true;
                 // Use memmove-safe temp copy for overlapping regions
                 if (!src->intData.empty() && !dst->intData.empty()) {
                     std::vector<int32_t> tmp; tmp.reserve(len);
@@ -1506,13 +1522,13 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                         for (int c = 0; c < w; ++c) {
                             uint32_t px = at(c, r);
                             int dx = c, dy = r;
-                            if (t == 1) dx = w - 1 - c;
-                            else if (t == 2) dy = h - 1 - r;
-                            else if (t == 3) { dx = w - 1 - c; dy = h - 1 - r; }
-                            else if (t == 4) { dx = r; dy = c; }
-                            else if (t == 5) { dx = h - 1 - r; dy = c; }
-                            else if (t == 6) { dx = r; dy = w - 1 - c; }
-                            else if (t == 7) { dx = h - 1 - r; dy = w - 1 - c; }
+                            if (t == 1) { dx = c; dy = h - 1 - r; } // MIRROR_ROT180
+                            else if (t == 2) { dx = w - 1 - c; dy = r; } // MIRROR
+                            else if (t == 3) { dx = w - 1 - c; dy = h - 1 - r; } // ROT180
+                            else if (t == 4) { dx = r; dy = c; } // MIRROR_ROT270
+                            else if (t == 5) { dx = h - 1 - r; dy = c; } // ROT90
+                            else if (t == 6) { dx = r; dy = w - 1 - c; } // ROT270
+                            else if (t == 7) { dx = h - 1 - r; dy = w - 1 - c; } // MIRROR_ROT90
                             if (dx >= 0 && dx < dw && dy >= 0 && dy < dh) {
                                 dst->pixels[(size_t)dy * dw + dx] = px;
                             }
@@ -1682,8 +1698,10 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         if (methodName == "drawSubstring" && args.size() >= 7) {
             std::string text = getString(args[1].asRef());
             int off = args[2].asInt(), len = args[3].asInt();
-            if (off >= 0 && off + len <= (int)text.length()) {
-                tgt->drawString(text.substr(off, len), args[4].asInt(), args[5].asInt(), args[6].asInt(), tgt->getColor());
+            size_t bOff = utf8CharToByteOffset(text, off);
+            size_t bEnd = utf8CharToByteOffset(text, off + len);
+            if (bOff < text.length() && bEnd >= bOff) {
+                tgt->drawString(text.substr(bOff, bEnd - bOff), args[4].asInt(), args[5].asInt(), args[6].asInt(), tgt->getColor());
             }
             return true;
         }
@@ -1712,6 +1730,48 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             if (arr && !arr->intData.empty()) {
                 tgt->drawRGB(arr->intData.data(), args[2].asInt(), args[3].asInt(), args[4].asInt(), args[5].asInt(), args[6].asInt(), args[7].asInt(), args[8].asInt() != 0);
             }
+            return true;
+        }
+        if (methodName == "fillTriangle" && args.size() >= 7) {
+            int x0 = args[1].asInt(), y0 = args[2].asInt();
+            int x1 = args[3].asInt(), y1 = args[4].asInt();
+            int x2 = args[5].asInt(), y2 = args[6].asInt();
+            if (y0 > y1) { std::swap(x0, x1); std::swap(y0, y1); }
+            if (y0 > y2) { std::swap(x0, x2); std::swap(y0, y2); }
+            if (y1 > y2) { std::swap(x1, x2); std::swap(y1, y2); }
+            int totalH = y2 - y0;
+            if (totalH > 0) {
+                for (int y = y0; y <= y2; ++y) {
+                    bool secondHalf = y > y1 || y1 == y0;
+                    int segmentH = secondHalf ? (y2 - y1) : (y1 - y0);
+                    if (segmentH == 0) continue;
+                    float alpha = (float)(y - y0) / (float)totalH;
+                    float beta = secondHalf ? (float)(y - y1) / (float)segmentH : (float)(y - y0) / (float)segmentH;
+                    int ax = x0 + (int)std::round((x2 - x0) * alpha);
+                    int bx = secondHalf ? (x1 + (int)std::round((x2 - x1) * beta)) : (x0 + (int)std::round((x1 - x0) * beta));
+                    if (ax > bx) std::swap(ax, bx);
+                    tgt->drawLine(ax, y, bx, y, tgt->getColor());
+                }
+            }
+            return true;
+        }
+        if (methodName == "setGrayScale" && args.size() >= 2) {
+            int g = std::max(0, std::min(255, args[1].asInt()));
+            tgt->setColor(0xFF000000 | (g << 16) | (g << 8) | g);
+            return true;
+        }
+        if (methodName == "getGrayScale") {
+            uint32_t c = tgt->getColor();
+            int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+            outResult = JavaValue((int32_t)(0.30f * r + 0.59f * g + 0.11f * b));
+            return true;
+        }
+        if (methodName == "getDisplayColor" && args.size() >= 2) {
+            outResult = JavaValue(args[1].asInt());
+            return true;
+        }
+        if (methodName == "setStrokeStyle" || methodName == "getStrokeStyle") {
+            outResult = JavaValue(0);
             return true;
         }
         if (methodName == "setClip" && args.size() >= 5) {
@@ -1759,9 +1819,37 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             outResult = JavaValue((int32_t)(s.length() * 7));
             return true;
         }
+        if (methodName == "substringWidth" && args.size() >= 4) {
+            std::string s = getString(args[1].asRef());
+            int off = args[2].asInt(), len = args[3].asInt();
+            size_t bOff = utf8CharToByteOffset(s, off);
+            size_t bEnd = utf8CharToByteOffset(s, off + len);
+            if (bOff <= s.length() && bEnd >= bOff) {
+                std::string sub = s.substr(bOff, bEnd - bOff);
+                if (native_text_measure) {
+                    int w = 0, h = 0;
+                    if (native_text_measure(sub.c_str(), 12, &w, &h) && w > 0) {
+                        outResult = JavaValue((int32_t)w);
+                        return true;
+                    }
+                }
+                outResult = JavaValue((int32_t)(len * 7));
+            } else {
+                outResult = JavaValue(0);
+            }
+            return true;
+        }
         if (methodName == "charWidth") { outResult = JavaValue(7); return true; }
         if (methodName == "charsWidth" && args.size() >= 4) {
             outResult = JavaValue((int32_t)(args[3].asInt() * 7));
+            return true;
+        }
+        if (methodName == "getStyle") { outResult = JavaValue(0); return true; }
+        if (methodName == "getSize") { outResult = JavaValue(0); return true; }
+        if (methodName == "getFace") { outResult = JavaValue(0); return true; }
+        if (methodName == "isPlain") { outResult = JavaValue(1); return true; }
+        if (methodName == "isBold" || methodName == "isItalic" || methodName == "isUnderlined") {
+            outResult = JavaValue(0);
             return true;
         }
     }
@@ -1795,6 +1883,10 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             else if (code == -3 || code == '4') action = 2; // LEFT
             else if (code == -4 || code == '6') action = 5; // RIGHT
             else if (code == -5 || code == '5') action = 8; // FIRE
+            else if (code == -6 || code == '7') action = 9; // GAME_A
+            else if (code == -7 || code == '9') action = 10; // GAME_B
+            else if (code == -8 || code == '*') action = 11; // GAME_C
+            else if (code == -9 || code == '#') action = 12; // GAME_D
             outResult = JavaValue(action);
             return true;
         }
@@ -1806,7 +1898,36 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             else if (action == 2) code = -3; // LEFT
             else if (action == 5) code = -4; // RIGHT
             else if (action == 8) code = -5; // FIRE
+            else if (action == 9) code = -6; // GAME_A
+            else if (action == 10) code = -7; // GAME_B
+            else if (action == 11) code = -8; // GAME_C
+            else if (action == 12) code = -9; // GAME_D
             outResult = JavaValue(code);
+            return true;
+        }
+        if (methodName == "getKeyName") {
+            int code = args.size() >= 2 ? args[1].asInt() : 0;
+            std::string name;
+            switch (code) {
+                case -1: name = "UP"; break;
+                case -2: name = "DOWN"; break;
+                case -3: name = "LEFT"; break;
+                case -4: name = "RIGHT"; break;
+                case -5: name = "FIRE"; break;
+                case -6: name = "SOFT1"; break;
+                case -7: name = "SOFT2"; break;
+                case -8: name = "CLEAR"; break;
+                case '*': name = "ASTERISK"; break;
+                case '#': name = "POUND"; break;
+                default:
+                    if (code >= '0' && code <= '9') {
+                        name = std::string(1, (char)code);
+                    } else {
+                        name = "KEY_" + std::to_string(code);
+                    }
+                    break;
+            }
+            outResult = JavaValue(createString(name), true);
             return true;
         }
     }
@@ -1816,11 +1937,25 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             std::string path = args.size() >= 2 ? getString(args[1].asRef()) : "";
             if (m_activeJar && !path.empty()) {
                 std::string origPath = path;
-                if (path[0] == '/') path.erase(0, 1);
+                if (path[0] == '/') {
+                    path.erase(0, 1);
+                } else {
+                    JavaObject* classObj = !args.empty() ? getObject(args[0].asRef()) : nullptr;
+                    if (classObj && !classObj->stringVal.empty()) {
+                        size_t lastSlash = classObj->stringVal.rfind('/');
+                        if (lastSlash != std::string::npos) {
+                            path = classObj->stringVal.substr(0, lastSlash + 1) + path;
+                        }
+                    }
+                }
                 std::vector<uint8_t> bytes;
                 bool ok = m_activeJar->extractEntry(path, bytes);
                 if (!ok && path != origPath) {
                     ok = m_activeJar->extractEntry(origPath, bytes);
+                }
+                if (!ok && origPath[0] == '/') {
+                    std::string noSlash = origPath.substr(1);
+                    ok = m_activeJar->extractEntry(noSlash, bytes);
                 }
                 if (!ok) {
                     static const char* kPrefixes[] = { "x1/", "x2/", "res/", "data/" };
@@ -2394,6 +2529,17 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             JavaObject* obj = getObject(args[0].asRef());
             int recId = args[1].asInt();
             outResult = JavaValue(obj ? RmsStorage::getInstance().getRecordSize(obj->stringVal, recId) : 0);
+            return true;
+        }
+        if (methodName == "getSize") {
+            JavaObject* obj = getObject(args[0].asRef());
+            outResult = JavaValue(obj ? RmsStorage::getInstance().getSize(obj->stringVal) : 0);
+            return true;
+        }
+        if (methodName == "getSizeAvailable") {
+            JavaObject* obj = getObject(args[0].asRef());
+            int sz = obj ? RmsStorage::getInstance().getSize(obj->stringVal) : 0;
+            outResult = JavaValue(std::max(0, 32 * 1024 * 1024 - sz));
             return true;
         }
     }

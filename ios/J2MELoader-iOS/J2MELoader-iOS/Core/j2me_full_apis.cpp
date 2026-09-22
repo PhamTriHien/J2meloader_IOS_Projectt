@@ -268,7 +268,7 @@ static bool keysEqual(uint32_t k1, uint32_t k2) {
     if (!a->stringVal.empty() && a->stringVal == b->stringVal) return true;
     return false;
 }
-struct PlayerData { std::vector<uint8_t> data; std::string ctype; std::string locator; int loop=1; bool playing=false; };
+struct PlayerData { std::vector<uint8_t> data; std::string ctype; std::string locator; int loop=1; bool playing=false; int state=200; };
 static std::map<uint32_t, PlayerData> g_players;
 struct ConnData { std::string url; std::string kind; std::string method="GET"; std::vector<uint8_t> body; std::vector<uint8_t> postBody; int code=0; std::string mime; bool fetched=false; };
 static std::map<uint32_t, ConnData> g_conns;
@@ -740,7 +740,17 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="log"){outResult=JavaValue(std::log(D(0)));return true;}
         if(methodName=="ceil"){outResult=JavaValue(std::ceil(D(0)));return true;}
         if(methodName=="floor"){outResult=JavaValue(std::floor(D(0)));return true;}
-        if(methodName=="round"){ if(desc.find("(D)")!=std::string::npos) outResult=JavaValue((int64_t)std::llround(D(0))); else outResult=JavaValue((int32_t)std::lround(args[0].asFloat())); return true; }
+        if(methodName=="round"){
+            if(desc.find("(D)")!=std::string::npos) {
+                double a = D(0);
+                outResult = JavaValue((int64_t)std::floor(a + 0.5));
+            } else {
+                float a = args.size() >= 1 ? args[0].asFloat() : 0.0f;
+                outResult = JavaValue((int32_t)std::floor(a + 0.5f));
+            }
+            return true;
+        }
+        if(methodName=="IEEEremainder"){ outResult=JavaValue(std::remainder(D(0), D(1))); return true; }
         if(methodName=="random"){outResult=JavaValue((double)rand()/(double)RAND_MAX);return true;}
         if(methodName=="toRadians"){outResult=JavaValue(D(0)*3.14159265358979/180.0);return true;}
         if(methodName=="toDegrees"){outResult=JavaValue(D(0)*180.0/3.14159265358979);return true;}
@@ -786,6 +796,10 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="isEmpty"){ auto it=g_hashtable.find(self); outResult=JavaValue(it==g_hashtable.end()||it->second.empty()?1:0); return true; }
         if(methodName=="put"&&args.size()>=3){
             uint32_t k=args[1].asRef(), v=args[2].asRef();
+            if(k == 0 || v == 0){
+                ENG().setPendingException(ENG().allocObject("java/lang/NullPointerException"));
+                return true;
+            }
             auto &vec=g_hashtable[self];
             for(auto &p:vec){
                 if(keysEqual(p.first, k)){
@@ -835,7 +849,16 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     if(className=="java/util/Enumeration"||className=="java/util/Vector$1"){
         uint32_t self=args.empty()?0:args[0].asRef();
         if(methodName=="hasMoreElements"){ auto it=g_enums.find(self); outResult=JavaValue(it!=g_enums.end()&&it->second.idx<it->second.items.size()?1:0); return true; }
-        if(methodName=="nextElement"){ auto it=g_enums.find(self); if(it!=g_enums.end()&&it->second.idx<it->second.items.size()){ outResult=JavaValue(it->second.items[it->second.idx++],true);} else outResult=JavaValue(0,true); return true; }
+        if(methodName=="nextElement"){
+            auto it=g_enums.find(self);
+            if(it!=g_enums.end()&&it->second.idx<it->second.items.size()){
+                outResult=JavaValue(it->second.items[it->second.idx++],true);
+            } else {
+                ENG().setPendingException(ENG().allocObject("java/util/NoSuchElementException"));
+                outResult=JavaValue(0,true);
+            }
+            return true;
+        }
     }
     if(className=="java/util/Vector"){
         JavaObject* o=args.empty()?nullptr:ENG().getObject(args[0].asRef());
@@ -1023,6 +1046,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 g_baos[self]={};
                 JavaObject* so = ENG().getObject(self);
                 if(so && args.size() >= 2 && args[1].type == JavaValue::OBJ_REF){
+                    so->fields["out"] = args[1];
                     JavaObject* inner = ENG().getObject(args[1].asRef());
                     if(inner){
                         auto sf = inner->fields.find("sockFd");
@@ -1031,41 +1055,55 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 }
                 return true;
             }
-            if(methodName=="writeInt"&&args.size()>=2){ int32_t v=args[1].asInt(); auto&b=g_baos[self]; b.push_back((v>>24)&0xFF); b.push_back((v>>16)&0xFF); b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
-            if(methodName=="writeShort"&&args.size()>=2){ int v=args[1].asInt(); auto&b=g_baos[self]; b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
-            if(methodName=="writeChar"&&args.size()>=2){ int v=args[1].asInt(); auto&b=g_baos[self]; b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
-            if(methodName=="writeBoolean"&&args.size()>=2){ g_baos[self].push_back((uint8_t)(args[1].asInt() ? 1 : 0)); return true; }
-            if(methodName=="writeByte"&&args.size()>=2){ g_baos[self].push_back((uint8_t)args[1].asInt()); return true; }
+            auto getTargetBuf = [self]() -> std::vector<uint8_t>& {
+                JavaObject* so = ENG().getObject(self);
+                if(so){
+                    auto oit = so->fields.find("out");
+                    if(oit != so->fields.end() && oit->second.asRef() != 0){
+                        return g_baos[oit->second.asRef()];
+                    }
+                }
+                return g_baos[self];
+            };
+            if(methodName=="writeInt"&&args.size()>=2){ int32_t v=args[1].asInt(); auto&b=getTargetBuf(); b.push_back((v>>24)&0xFF); b.push_back((v>>16)&0xFF); b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
+            if(methodName=="writeShort"&&args.size()>=2){ int v=args[1].asInt(); auto&b=getTargetBuf(); b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
+            if(methodName=="writeChar"&&args.size()>=2){ int v=args[1].asInt(); auto&b=getTargetBuf(); b.push_back((v>>8)&0xFF); b.push_back(v&0xFF); return true; }
+            if(methodName=="writeBoolean"&&args.size()>=2){ getTargetBuf().push_back((uint8_t)(args[1].asInt() ? 1 : 0)); return true; }
+            if(methodName=="writeByte"&&args.size()>=2){ getTargetBuf().push_back((uint8_t)args[1].asInt()); return true; }
             if(methodName=="writeLong"&&args.size()>=2){
-                int64_t v=args[1].asLong(); auto&b=g_baos[self];
+                int64_t v=args[1].asLong(); auto&b=getTargetBuf();
                 for(int i=56;i>=0;i-=8) b.push_back((uint8_t)((v>>i)&0xFF));
                 return true;
             }
             if(methodName=="writeFloat"&&args.size()>=2){
-                float f=args[1].asFloat(); uint32_t u=0; std::memcpy(&u,&f,4); auto&b=g_baos[self];
+                float f=args[1].asFloat(); uint32_t u=0; std::memcpy(&u,&f,4); auto&b=getTargetBuf();
                 b.push_back((u>>24)&0xFF); b.push_back((u>>16)&0xFF); b.push_back((u>>8)&0xFF); b.push_back(u&0xFF);
                 return true;
             }
             if(methodName=="writeDouble"&&args.size()>=2){
-                double d=args[1].asDouble(); uint64_t u=0; std::memcpy(&u,&d,8); auto&b=g_baos[self];
+                double d=args[1].asDouble(); uint64_t u=0; std::memcpy(&u,&d,8); auto&b=getTargetBuf();
                 for(int i=56;i>=0;i-=8) b.push_back((uint8_t)((u>>i)&0xFF));
                 return true;
             }
-            if(methodName=="writeUTF"&&args.size()>=2){ std::string s=ENG().getString(args[1].asRef()); auto&b=g_baos[self]; uint16_t l=(uint16_t)s.size(); b.push_back((l>>8)&0xFF); b.push_back(l&0xFF); for(char c:s)b.push_back(c); return true; }
-            if(methodName=="writeChars"&&args.size()>=2){ std::string s=ENG().getString(args[1].asRef()); auto&b=g_baos[self]; for(char c:s){ b.push_back(0); b.push_back((uint8_t)c); } return true; }
-            if(methodName=="writeBytes"&&args.size()>=2){ std::string s=ENG().getString(args[1].asRef()); auto&b=g_baos[self]; for(char c:s) b.push_back((uint8_t)c); return true; }
+            if(methodName=="writeUTF"&&args.size()>=2){ std::string s=ENG().getString(args[1].asRef()); auto&b=getTargetBuf(); uint16_t l=(uint16_t)s.size(); b.push_back((l>>8)&0xFF); b.push_back(l&0xFF); for(char c:s)b.push_back(c); return true; }
+            if(methodName=="writeChars"&&args.size()>=2){ std::string s=ENG().getString(args[1].asRef()); auto&b=getTargetBuf(); for(char c:s){ b.push_back(0); b.push_back((uint8_t)c); } return true; }
+            if(methodName=="writeBytes"&&args.size()>=2){ std::string s=ENG().getString(args[1].asRef()); auto&b=getTargetBuf(); for(char c:s) b.push_back((uint8_t)c); return true; }
             if(methodName=="write"&&args.size()>=2){
-                if(args.size()==2&&args[1].type!=JavaValue::OBJ_REF){ g_baos[self].push_back((uint8_t)args[1].asInt()); }
-                else if(args.size()>=4){ JavaArray*a=ENG().getArray(args[1].asRef()); int off=args[2].asInt(),len=args[3].asInt(); if(a) for(int i=0;i<len&&off+i<(int)a->byteData.size();i++) g_baos[self].push_back(a->byteData[off+i]); }
-                else if(args.size()>=2){ JavaArray*a=ENG().getArray(args[1].asRef()); if(a&&!a->byteData.empty()) g_baos[self].insert(g_baos[self].end(),a->byteData.begin(),a->byteData.end()); }
+                auto& b = getTargetBuf();
+                if(args.size()==2&&args[1].type!=JavaValue::OBJ_REF){ b.push_back((uint8_t)args[1].asInt()); }
+                else if(args.size()>=4){ JavaArray*a=ENG().getArray(args[1].asRef()); int off=args[2].asInt(),len=args[3].asInt(); if(a) for(int i=0;i<len&&off+i<(int)a->byteData.size();i++) b.push_back(a->byteData[off+i]); }
+                else if(args.size()>=2){ JavaArray*a=ENG().getArray(args[1].asRef()); if(a&&!a->byteData.empty()) b.insert(b.end(),a->byteData.begin(),a->byteData.end()); }
                 return true;
             }
             if(methodName=="flush"||methodName=="close"){
                 JavaObject* so = ENG().getObject(self);
+                uint32_t tBuf = self;
                 if(so){
+                    auto oit = so->fields.find("out");
+                    if(oit != so->fields.end() && oit->second.asRef() != 0) tBuf = oit->second.asRef();
                     auto sf = so->fields.find("sockFd");
                     if(sf != so->fields.end() && sf->second.asInt() >= 0){
-                        auto it = g_baos.find(self);
+                        auto it = g_baos.find(tBuf);
                         if(it != g_baos.end() && !it->second.empty()){
 #if !defined(_WIN32)&&!defined(_WIN64)
                             tcpSendAll(sf->second.asInt(), it->second.data(), it->second.size());
@@ -1076,8 +1114,8 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 }
                 return true;
             }
-            if(methodName=="size"){ auto it=g_baos.find(self); outResult=JavaValue(it==g_baos.end()?0:(int32_t)it->second.size()); return true; }
-            if(methodName=="toByteArray"){ auto it=g_baos.find(self); int n=it==g_baos.end()?0:(int)it->second.size(); uint32_t r=ENG().allocArray(8,n); JavaArray*a=ENG().getArray(r); if(a&&it!=g_baos.end())a->byteData=it->second; outResult=JavaValue(r,true); return true; }
+            if(methodName=="size"){ auto&b=getTargetBuf(); outResult=JavaValue((int32_t)b.size()); return true; }
+            if(methodName=="toByteArray"){ auto&b=getTargetBuf(); uint32_t r=ENG().allocArray(8,(int)b.size()); JavaArray*a=ENG().getArray(r); if(a)a->byteData=b; outResult=JavaValue(r,true); return true; }
         }
     }
     if(className=="java/io/OutputStream"||className=="java/io/PrintStream"||className=="java/io/Writer"||className=="java/io/OutputStreamWriter"){
@@ -1687,7 +1725,52 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             if(methodName=="setARGBColor"&&args.size()>=2){ tgt->setColor((uint32_t)args[1].asInt()); return true; }
             if(methodName=="getAlphaComponent"){ outResult=JavaValue((int32_t)((tgt->getColor()>>24)&0xFF)); return true; }
             if(methodName=="getNativePixelFormat"){ outResult=JavaValue(0x8888); return true; }
-            if(methodName=="drawImage"&&args.size()>=5){ NativeImage*ni=imgOf(args[1].asRef()); const uint32_t*px=imgPx(args[1].asRef()); if(ni&&px) tgt->drawRegion(px,ni->width,ni->height,0,0,ni->width,ni->height,0,args[2].asInt(),args[3].asInt(),args[4].asInt()); return true; }
+            if(methodName=="drawImage"&&args.size()>=5){
+                NativeImage* ni = imgOf(args[1].asRef());
+                const uint32_t* px = imgPx(args[1].asRef());
+                int manip = args.size() >= 6 ? args[5].asInt() : 0;
+                auto nokiaToTransform = [](int manipulation) -> int {
+                    int ret = 0;
+                    int rotation = manipulation & 0x0FFF;
+                    if ((manipulation & 8192) != 0) { // FLIP_HORIZONTAL
+                        if ((manipulation & 16384) != 0) { // FLIP_VERTICAL
+                            switch (rotation) {
+                                case 0: ret = 3; break;
+                                case 90: ret = 5; break;
+                                case 180: ret = 0; break;
+                                case 270: ret = 6; break;
+                            }
+                        } else {
+                            switch (rotation) {
+                                case 0: ret = 2; break;
+                                case 90: ret = 7; break;
+                                case 180: ret = 1; break;
+                                case 270: ret = 4; break;
+                            }
+                        }
+                    } else {
+                        if ((manipulation & 16384) != 0) { // FLIP_VERTICAL
+                            switch (rotation) {
+                                case 0: ret = 1; break;
+                                case 90: ret = 4; break;
+                                case 180: ret = 2; break;
+                                case 270: ret = 7; break;
+                            }
+                        } else {
+                            switch (rotation) {
+                                case 0: ret = 0; break;
+                                case 90: ret = 6; break;
+                                case 180: ret = 3; break;
+                                case 270: ret = 5; break;
+                            }
+                        }
+                    }
+                    return ret;
+                };
+                int transform = nokiaToTransform(manip);
+                if(ni && px) tgt->drawRegion(px, ni->width, ni->height, 0, 0, ni->width, ni->height, transform, args[2].asInt(), args[3].asInt(), args[4].asInt());
+                return true;
+            }
             if(methodName=="drawTriangle"&&args.size()>=8){ tgt->drawLine(args[1].asInt(),args[2].asInt(),args[3].asInt(),args[4].asInt(),tgt->getColor()); tgt->drawLine(args[3].asInt(),args[4].asInt(),args[5].asInt(),args[6].asInt(),tgt->getColor()); tgt->drawLine(args[5].asInt(),args[6].asInt(),args[1].asInt(),args[2].asInt(),tgt->getColor()); return true; }
             if(methodName=="fillTriangle"&&args.size()>=8){
                 int x0=args[1].asInt(),y0=args[2].asInt();
@@ -1713,7 +1796,74 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
                 return true;
             }
             if((methodName=="drawPolygon"||methodName=="fillPolygon")&&args.size()>=7){ JavaArray*xa=ENG().getArray(args[1].asRef()); JavaArray*ya=ENG().getArray(args[3].asRef()); int n=args[5].asInt(); if(xa&&ya){ for(int i=0;i<n;i++){ int x0=i<(int)xa->intData.size()?xa->intData[(args[2].asInt()+i)]:0; int y0=i<(int)ya->intData.size()?ya->intData[(args[4].asInt()+i)]:0; int x1=(i+1<n)?(xa->intData[args[2].asInt()+i+1]):xa->intData[args[2].asInt()]; int y1=(i+1<n)?(ya->intData[args[4].asInt()+i+1]):ya->intData[args[4].asInt()]; tgt->drawLine(x0,y0,x1,y1,args[6].asInt()|(0xFF000000)); } } return true; }
-            if(methodName=="drawPixels"&&args.size()>=10){ JavaArray*pa=ENG().getArray(args[1].asRef()); int x=args[5].asInt(),y=args[6].asInt(),w=args[7].asInt(),h=args[8].asInt(); if(pa&&!pa->intData.empty()&&tgt){ tgt->drawRGB(pa->intData.data(),args[3].asInt(),args[4].asInt(),x,y,w,h,true);} return true; }
+            if(methodName=="drawPixels"&&args.size()>=9){
+                JavaArray* pa = ENG().getArray(args[1].asRef());
+                bool trans = args.size() > 2 ? (args[2].asInt() != 0) : true;
+                int off = args.size() > 3 ? args[3].asInt() : 0;
+                int scan = args.size() > 4 ? args[4].asInt() : 0;
+                int x = args.size() > 5 ? args[5].asInt() : 0;
+                int y = args.size() > 6 ? args[6].asInt() : 0;
+                int w = args.size() > 7 ? args[7].asInt() : 0;
+                int h = args.size() > 8 ? args[8].asInt() : 0;
+                int manip = args.size() > 9 ? args[9].asInt() : 0;
+                if(pa && !pa->intData.empty() && tgt && w > 0 && h > 0){
+                    auto nokiaToTransform = [](int manipulation) -> int {
+                        int ret = 0;
+                        int rotation = manipulation & 0x0FFF;
+                        if ((manipulation & 8192) != 0) {
+                            if ((manipulation & 16384) != 0) {
+                                switch (rotation) {
+                                    case 0: ret = 3; break;
+                                    case 90: ret = 5; break;
+                                    case 180: ret = 0; break;
+                                    case 270: ret = 6; break;
+                                }
+                            } else {
+                                switch (rotation) {
+                                    case 0: ret = 2; break;
+                                    case 90: ret = 7; break;
+                                    case 180: ret = 1; break;
+                                    case 270: ret = 4; break;
+                                }
+                            }
+                        } else {
+                            if ((manipulation & 16384) != 0) {
+                                switch (rotation) {
+                                    case 0: ret = 1; break;
+                                    case 90: ret = 4; break;
+                                    case 180: ret = 2; break;
+                                    case 270: ret = 7; break;
+                                }
+                            } else {
+                                switch (rotation) {
+                                    case 0: ret = 0; break;
+                                    case 90: ret = 6; break;
+                                    case 180: ret = 3; break;
+                                    case 270: ret = 5; break;
+                                }
+                            }
+                        }
+                        return ret;
+                    };
+                    int t = nokiaToTransform(manip);
+                    if (t == 0) {
+                        tgt->drawRGB(pa->intData.data(), off, scan > 0 ? scan : w, x, y, w, h, trans);
+                    } else {
+                        std::vector<uint32_t> buf(w * h);
+                        int sc = scan > 0 ? scan : w;
+                        for (int r = 0; r < h; ++r) {
+                            for (int c = 0; c < w; ++c) {
+                                int idx = off + r * sc + c;
+                                uint32_t p = (idx >= 0 && idx < (int)pa->intData.size()) ? (uint32_t)pa->intData[idx] : 0;
+                                if (!trans) p |= 0xFF000000;
+                                buf[r * w + c] = p;
+                            }
+                        }
+                        tgt->drawRegion(buf.data(), w, h, 0, 0, w, h, t, x, y, 0 | 16);
+                    }
+                }
+                return true;
+            }
             if(methodName=="getPixels"&&args.size()>=9){ JavaArray*pa=ENG().getArray(args[1].asRef()); int x=args[4].asInt(),yy=args[5].asInt(),w=args[6].asInt(),h=args[7].asInt(); if(pa&&tgt){ if((int)pa->intData.size()<w*h) pa->intData.resize(w*h,0); for(int r=0;r<h;r++)for(int c=0;c<w;c++){ pa->intData[r*w+c]=0xFF000000; } } return true; }
         }
         if(className=="com/nokia/mid/ui/DeviceControl"){
@@ -1896,13 +2046,30 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     }
     if(className=="javax/microedition/media/Player"||className=="javax/microedition/media/BasePlayer"){
         uint32_t self=args.empty()?0:args[0].asRef();
-        if(methodName=="realize"||methodName=="prefetch"||methodName=="close"||methodName=="stop"||methodName=="<init>") { if(methodName=="stop"){ auto it=g_players.find(self); if(it!=g_players.end()) it->second.playing=false; } return true; }
-        if(methodName=="start"){ auto it=g_players.find(self); if(it!=g_players.end()){ it->second.playing=true; if(!it->second.data.empty()) JvmInterpreter::getInstance().triggerMidi(it->second.data.data(), it->second.data.size()); else if(!it->second.locator.empty()){ /* locator tone */ JvmInterpreter::getInstance().triggerTone(880,200,100);} } return true; }
+        if(methodName=="realize"){ auto it=g_players.find(self); if(it!=g_players.end() && it->second.state < 200) it->second.state = 200; return true; }
+        if(methodName=="prefetch"){ auto it=g_players.find(self); if(it!=g_players.end() && it->second.state < 300) it->second.state = 300; return true; }
+        if(methodName=="stop"){ auto it=g_players.find(self); if(it!=g_players.end()){ it->second.playing=false; if(it->second.state == 400) it->second.state = 300; } return true; }
+        if(methodName=="close"){ auto it=g_players.find(self); if(it!=g_players.end()){ it->second.playing=false; it->second.state = 0; } return true; }
+        if(methodName=="<init>") return true;
+        if(methodName=="start"){
+            auto it=g_players.find(self);
+            if(it!=g_players.end()){
+                it->second.playing=true;
+                it->second.state=400; // STARTED
+                if(!it->second.data.empty()) JvmInterpreter::getInstance().triggerMidi(it->second.data.data(), it->second.data.size());
+                else if(!it->second.locator.empty()){ JvmInterpreter::getInstance().triggerTone(880,200,100); }
+            }
+            return true;
+        }
         if(methodName=="setLoopCount"&&args.size()>=2){ g_players[self].loop=args[1].asInt(); return true; }
         if(methodName=="getControl"&&args.size()>=2){ std::string t=ENG().getString(args[1].asRef()); uint32_t r=ENG().allocObject(t.empty()?"javax/microedition/media/control/VolumeControl":t); outResult=JavaValue(r,true); return true; }
         if(methodName=="getControls"){ uint32_t arr=ENG().allocArray(0,0); outResult=JavaValue(arr,true); return true; }
         if(methodName=="getDuration"){ outResult=JavaValue((int64_t)1000000); return true; }
-        if(methodName=="getState"){ outResult=JavaValue(400); return true; } // STARTED
+        if(methodName=="getState"){
+            auto it=g_players.find(self);
+            outResult = JavaValue(it != g_players.end() ? it->second.state : 300);
+            return true;
+        }
         if(methodName=="setListener"||methodName=="addPlayerListener"||methodName=="removePlayerListener"||methodName=="setTimeBase") return true;
         return true;
     }
@@ -2594,7 +2761,18 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             if (obj && !obj->stringVal.empty()) RmsStorage::getInstance().closeRecordStore(obj->stringVal);
             return true;
         }
-        if(methodName=="getSize"||methodName=="getSizeAvailable"){ outResult=JavaValue(1024*1024); return true; }
+        if(methodName=="getSize"){
+            JavaObject* obj = (!args.empty() && args[0].asRef()) ? ENG().getObject(args[0].asRef()) : nullptr;
+            int sz = (obj && !obj->stringVal.empty()) ? RmsStorage::getInstance().getSize(obj->stringVal) : 0;
+            outResult = JavaValue(sz);
+            return true;
+        }
+        if(methodName=="getSizeAvailable"){
+            JavaObject* obj = (!args.empty() && args[0].asRef()) ? ENG().getObject(args[0].asRef()) : nullptr;
+            int sz = (obj && !obj->stringVal.empty()) ? RmsStorage::getInstance().getSize(obj->stringVal) : 0;
+            outResult = JavaValue(std::max(0, 32 * 1024 * 1024 - sz));
+            return true;
+        }
         if(methodName=="getVersion"||methodName=="getLastModified"){ outResult=JavaValue(1); return true; }
         if(methodName=="setRecord"&&args.size()>=5){
             JavaObject* obj = ENG().getObject(args[0].asRef());
@@ -2652,6 +2830,8 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             } else {
                 outResult = (args.size() >= 4) ? JavaValue(0) : JavaValue(0, true);
             }
+            return true;
+        }
         if(methodName=="getNextRecordID"&&args.size()>=1){
             JavaObject* obj = ENG().getObject(args[0].asRef());
             outResult = JavaValue(obj ? RmsStorage::getInstance().getNextRecordID(obj->stringVal) : 1);
@@ -2666,7 +2846,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         return true;
     }
     if(className.find("RecordEnumeration")!=std::string::npos){
-        uint32_t self = args.empty() ? 0 : args[0].asRef();
+        uint32_t self = args.empty()?0:args[0].asRef();
         std::lock_guard<std::mutex> lk(g_enumMutex);
         auto it = g_recordEnums.find(self);
         if(methodName=="hasNextElement"){
@@ -2686,6 +2866,24 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         }
         if(methodName=="nextRecord"){
             int id = (it != g_recordEnums.end() && it->second.cursor < it->second.recordIds.size()) ? it->second.recordIds[it->second.cursor++] : 0;
+            std::vector<uint8_t> data;
+            if (it != g_recordEnums.end() && id > 0 && RmsStorage::getInstance().getRecord(it->second.storeName, id, data)) {
+                uint32_t aRef = ENG().allocArray(8, (int)data.size());
+                JavaArray* a = ENG().getArray(aRef);
+                if (a) a->byteData = std::move(data);
+                outResult = JavaValue(aRef, true);
+            } else {
+                outResult = JavaValue(0, true);
+            }
+            return true;
+        }
+        if(methodName=="previousRecordId"){
+            int id = (it != g_recordEnums.end() && it->second.cursor > 0) ? it->second.recordIds[--it->second.cursor] : 0;
+            outResult = JavaValue(id);
+            return true;
+        }
+        if(methodName=="previousRecord"){
+            int id = (it != g_recordEnums.end() && it->second.cursor > 0) ? it->second.recordIds[--it->second.cursor] : 0;
             std::vector<uint8_t> data;
             if (it != g_recordEnums.end() && id > 0 && RmsStorage::getInstance().getRecord(it->second.storeName, id, data)) {
                 uint32_t aRef = ENG().allocArray(8, (int)data.size());

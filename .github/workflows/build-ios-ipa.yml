@@ -49,28 +49,28 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
-          tag_name: v1.8.7-j2hienloader
-          name: "J2HienLoader iOS v1.8.7 - Sửa Toàn Diện 15 Lỗi Logic & Ngoại Lệ Runtime Cốt Lõi JVM/LCDUI/RMS"
+          tag_name: v1.8.8-j2hienloader
+          name: "J2HienLoader iOS v1.8.8 - Khắc Phục Triệt Để 15 Lỗi Logic & Sai Lệch Đặc Tả Chuẩn Đối Chiếu Source Upstream"
           body: |
-            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.7)
+            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.8)
             Ứng dụng giả lập J2ME chuẩn cho hệ điều hành iOS/iPadOS, nạp và chạy file .jar trực tiếp.
             
-            ### Các sửa đổi toàn diện & triệt để trong v1.8.7:
-            - **Dọn dẹp Pending Exception**: Triệt tiêu rò rỉ ngoại lệ chưa bắt tại ranh giới executeMethod (`DepthGuard`), ngăn chặn ô nhiễm trạng thái luồng game giữa các tick render và sự kiện phím/chuột.
-            - **Xử lý triệt để phép chia số học 0 & SIGFPE**: Ném `ArithmeticException` và chặn crash phần cứng SIGFPE khi chia cho 0 hoặc chia `INT_MIN` cho `-1` trong `OP_IDIV`, `OP_IREM`, `OP_LDIV`, `OP_LREM`.
-            - **Ném NullPointerException trong OP_ARRAYLENGTH**: Ném `NullPointerException` chuẩn khi đối tượng mảng null thay vì âm thầm trả về 0.
-            - **Hỗ trợ kiểm tra mảng trong OP_INSTANCEOF**: Kiểm tra chuẩn xác các kiểu mảng (`JavaArray`) với `[B`, `[I`, `java/lang/Object` v.v.
-            - **Ném NullPointerException trong OP_ATHROW**: Tự động cấp phát và dispatch `NullPointerException` nếu đối tượng ngoại lệ ném ra là null.
-            - **Chuẩn hóa Unicode trong String.substring & getChars**: Tính toán chính xác vị trí ký tự UTF-16 sang byte offset UTF-8, khắc phục hoàn toàn lỗi vỡ chuỗi tiếng Việt có dấu.
-            - **Chuẩn hóa StringBuffer.append(null)**: Nối chuỗi `"null"` đúng đặc tả Java SE/ME khi nối đối tượng null.
-            - **Ném EOFException trong DataInputStream.readUTF**: Ném `EOFException` chuẩn khi luồng dữ liệu UTF bị kết thúc sớm.
-            - **Tối ưu hóa JavaArray::length() O(1)**: Chuyển đổi sang switch-case theo `elemType`, giảm độ trễ truy cập độ dài mảng.
-            - **Bù trừ Translation trong Graphics.getClipX/getClipY**: Trả về tọa độ tương đối theo `m_transX/m_transY` đúng chuẩn MIDP 2.0.
-            - **Khắc phục lỗi vẽ Graphics.drawRoundRect & fillRoundRect**: Loại bỏ dịch chuyển tọa độ bị cộng 2 lần trong `drawRoundRect` và sửa cận lặp trong `fillRoundRect`.
-            - **Bảo toàn Clip trong LayerManager.paint()**: Lưu và khôi phục chính xác vùng clip gốc của Graphics trước và sau khi vẽ các layer.
-            - **Hoàn thiện đầy đủ API TiledLayer & LayerManager**: Triển khai `getColumns`, `getRows`, `getCellWidth`, `getCellHeight`, `getSize`, `getLayerAt` thực tế thay vì các giá trị ước lượng.
-            - **Hoàn thiện API RMS getNextRecordID & getRecordSize**: Bổ sung hỗ trợ đầy đủ và an toàn đa luồng cho RecordStore.
-            - **Chuẩn hóa kiểu Math.min/max (FF)F**: Trả về đúng giá trị kiểu Float, tránh nhầm lẫn sang Integer.
+            ### Các sửa đổi toàn diện & triệt để trong v1.8.8 (Đối chiếu mã nguồn gốc Upstream):
+            - **Sửa hoán đổi phép biến đổi LCDUI drawRegion**: Đảo ngược đúng `case 4` (`TRANS_MIRROR_ROT270`) và `case 7` (`TRANS_MIRROR_ROT90`) theo bitmask chuẩn `INVERTED_AXES` (0x4).
+            - **Đồng bộ hóa Sprite transforms & reference pixel**: Triển khai `getTransformedPtX` và `getTransformedPtY` chuẩn; sửa `setTransform` cập nhật bù trừ `(oldRef - newRef)` để bảo toàn điểm reference pixel; `setRefPixelPosition` và `getRefPixelX/Y` tính đến transform hiện tại.
+            - **Chuẩn hóa LayerManager View Window & Clipping**: Thiết lập cửa sổ view mặc định `Integer.MAX_VALUE` theo upstream Java; `append()` và `insert()` loại bỏ layer trùng lặp trước khi thêm; `paint()` dịch chuyển hệ toạ độ và giao cắt clipRect chuẩn MIDP 2.0.
+            - **Lưu trữ RMS chuẩn xác & chống tái sử dụng Record ID**: Bổ sung `getSize()` tính tổng byte thực tế của record store; lưu và phục hồi `nextRecordId` qua header định dạng `RMS2` đảm bảo ID bản ghi đơn điệu tăng dần theo chuẩn RMS 2.0; sửa lỗi thiếu `return true` trong `getRecord()`.
+            - **Chuyển vị ảnh chuẩn trong Image.createImage**: Sửa khớp các trục toạ độ dx, dy cho toàn bộ họ biến đổi xoay 90/180/270 và lật gương; hỗ trợ tạo immutable copy từ Image nguồn.
+            - **Bảo toàn ký tự UTF-8 trong Graphics.drawSubstring**: Áp dụng `utf8CharToByteOffset` ngăn chặn việc cắt xén giữa các byte của ký tự tiếng Việt có dấu.
+            - **Bổ sung các hàm đồ họa Graphics MIDP 2.0**: Triển khai `fillTriangle`, `setGrayScale`, `getGrayScale`, `getDisplayColor`, `setStrokeStyle`, `getStrokeStyle`.
+            - **Hoàn thiện Font API**: Triển khai `substringWidth` hỗ trợ unicode offset; bổ sung đầy đủ các getter thuộc tính font (`getStyle`, `getSize`, `getFace`, `isPlain`, `isBold`, `isItalic`, `isUnderlined`).
+            - **Mở rộng phím & hành động game Canvas**: Bổ sung `GAME_A` (9, '7'), `GAME_B` (10, '9'), `GAME_C` (11, '*'), `GAME_D` (12, '#') cho `getGameAction` và `getKeyCode`; triển khai `getKeyName(keyCode)`.
+            - **Ném ngoại lệ chuẩn trong System.arraycopy**: Kiểm tra null ném `NullPointerException` và kiểm tra biên ném `IndexOutOfBoundsException` theo đặc tả JVM.
+            - **Tự động phân giải đường dẫn tương đối trong Class.getResourceAsStream**: Ghép tiền tố package thư mục của lớp gọi khi nạp tài nguyên theo đường dẫn tương đối.
+            - **Định tuyến buffer chuẩn cho DataOutputStream**: Chuyển tiếp toàn bộ thao tác ghi sang buffer của luồng `ByteArrayOutputStream` bên trong (decorator pattern).
+            - **Hỗ trợ toàn diện phép biến đổi Nokia DirectGraphics**: Ánh xạ đầy đủ `manipulation` (FLIP_H, FLIP_V, ROTATE_90/180/270) sang Sprite transform; `drawPixels` hỗ trợ vẽ pixel mảng kết hợp xoay lật.
+            - **Theo dõi máy trạng thái MMAPI Player**: Quản lý vòng đời `REALIZED` (200), `PREFETCHED` (300), `STARTED` (400), `CLOSED` (0) và phản hồi chính xác qua `getState()`.
+            - **Duyệt ngược RecordEnumeration & chuẩn hóa Math/Collection**: Bổ sung `previousRecordId()` và `previousRecord()`; `Hashtable.put` ném NPE khi key/value null; `Enumeration.nextElement` ném `NoSuchElementException`; `Math.round(float)` dùng `std::floor(a + 0.5f)` chuẩn Java; bổ sung `Math.IEEEremainder`.
             
             - **Cài lên iPhone/iPad thật**: Tải file `J2HienLoader.ipa`.
             - **Test trên Web (Appetize.io)**: Tải file `J2HienLoader-Simulator-iPad.zip`.

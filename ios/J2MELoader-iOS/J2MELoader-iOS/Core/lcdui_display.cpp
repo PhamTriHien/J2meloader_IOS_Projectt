@@ -349,10 +349,10 @@ void LcduiDisplay::drawRegion(const uint32_t* srcPixels, int srcW, int srcH, int
             case 1: targetX = dx + c; targetY = dy + (height - 1 - r); break;
             case 2: targetX = dx + (width - 1 - c); targetY = dy + r; break;
             case 3: targetX = dx + (width - 1 - c); targetY = dy + (height - 1 - r); break;
-            case 4: targetX = dx + (height - 1 - r); targetY = dy + (width - 1 - c); break;
+            case 4: targetX = dx + r; targetY = dy + c; break;
             case 5: targetX = dx + (height - 1 - r); targetY = dy + c; break;
             case 6: targetX = dx + r; targetY = dy + (width - 1 - c); break;
-            case 7: targetX = dx + r; targetY = dy + c; break;
+            case 7: targetX = dx + (height - 1 - r); targetY = dy + (width - 1 - c); break;
             default: break;
             }
 

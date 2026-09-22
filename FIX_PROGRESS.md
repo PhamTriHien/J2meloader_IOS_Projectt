@@ -287,10 +287,61 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
       - *Hiện tượng*: `Math.min(float, float)` và `Math.max(float, float)` trả về `JavaValue(int)` thay vì `JavaValue(float)`, dẫn đến các phép toán vật lý float trong game bị đọc sai bit representation.
       - *Khắc phục*: Trả về `JavaValue(float)` cho đúng chữ ký hàm `(FF)F`.
 
+
+### 16. Khắc Phục Triệt Để 15 Lỗi Logic & Sai Lệch Đặc Tả Từ Đối Chiếu Upstream (v1.8.8)
+- **Mục tiêu**: Đối chiếu sâu toàn bộ engine C++ với mã nguồn gốc upstream `playsoftware/J2ME-Loader` và đặc tả chuẩn MIDP 2.0 / CLDC 1.1 / MMAPI / Nokia UI.
+- **Chi tiết 15 lỗi và cách khắc phục**:
+  1. **Sửa hoán đổi phép biến đổi `lcdui_display.cpp` `drawRegion`**:
+     - *Hiện tượng*: Case 4 (`TRANS_MIRROR_ROT270`) và case 7 (`TRANS_MIRROR_ROT90`) bị đảo ngược logic.
+     - *Khắc phục*: Bitmask chuẩn `Sprite.java`: 0x4 là `INVERTED_AXES`, 0x2 là `X_FLIP`, 0x1 là `Y_FLIP`. Case 4 (binary 100) chỉ tráo trục, 0 lật -> `dx + r; dy + c`. Case 7 (binary 111) tráo trục và lật cả 2 chiều -> `dx + (height - 1 - r); dy + (width - 1 - c)`.
+  2. **Đồng bộ hóa Sprite Transforms & Reference Pixel (`game_canvas.cpp` / `game_canvas.h`)**:
+     - *Hiện tượng*: `Sprite::setTransform` chưa cập nhật bù trừ `(oldRef - newRef)` để bảo toàn điểm reference pixel trên màn hình khi xoay/lật; `setRefPixelPosition` và `getRefPixelX/Y` chưa tính đến transform hiện tại; case 4 và case 7 trong `Sprite::getPixel` bị tráo đổi.
+     - *Khắc phục*: Bổ sung `getTransformedPtX` và `getTransformedPtY` chuẩn upstream; `setTransform` cập nhật bù trừ tọa độ x/y; sửa hoán đổi case 4 và case 7 trong `getPixel`.
+  3. **Chuẩn hóa LayerManager View Window & Clipping (`game_canvas.cpp` / `game_canvas.h`)**:
+     - *Hiện tượng*: View window khởi tạo mặc định 240x320 thay vì `Integer.MAX_VALUE` (`0x7FFFFFFF`); `append()` và `insert()` cho phép thêm layer trùng lặp; `paint()` dùng `setClip` ghi đè toàn bộ thay vì `clipRect` giao cắt và không `translate` graphics context.
+     - *Khắc phục*: Khởi tạo view window là `Integer.MAX_VALUE`; `append` và `insert` tự động gọi `remove(layer)` trước khi thêm; `paint()` gọi `translate(x - viewX, y - viewY)` và `clipRect(viewX, viewY, viewWidth, viewHeight)` chuẩn MIDP 2.0.
+  4. **Lưu Trữ RMS Chuẩn Xác & Chống Tái Sử Dụng Record ID (`rms_storage.h` / `rms_storage.cpp`)**:
+     - *Hiện tượng*: `RmsStorage::loadFromDisk` đặt `m_nextRecordIds = maxId + 1`, làm tái sử dụng ID của các bản ghi đã xóa, vi phạm đặc tả RMS; thiếu hàm `getSize()` tính tổng byte lưu trữ; `RecordStore.getRecord()` trong `j2me_full_apis.cpp` thiếu `return true;`.
+     - *Khắc phục*: Bổ sung header magic `RMS2` (0x524D5332) để lưu trữ và phục hồi `nextRecordId` tăng đơn điệu; tương thích ngược hoàn hảo với file định dạng cũ; triển khai `getSize(storeName)`; bổ sung `return true;` trong `getRecord()`.
+  5. **Chuyển Vị Ảnh Chuẩn Trong `Image.createImage` (`jvm_bytecode.cpp`)**:
+     - *Hiện tượng*: Phép biến đổi `t == 1` (`TRANS_MIRROR_ROT180`) và `t == 2` (`TRANS_MIRROR`) bị tráo trục; thiếu hỗ trợ tạo immutable copy từ Image nguồn.
+     - *Khắc phục*: Sửa khớp `dx, dy` cho toàn bộ các case 1 đến 7; bổ sung xử lý sao chép immutable Image.
+  6. **Bảo Toàn Ký Tự UTF-8 Trong `Graphics.drawSubstring` (`jvm_bytecode.cpp`)**:
+     - *Hiện tượng*: Cắt chuỗi trực tiếp theo byte `text.substr(off, len)` làm vỡ các ký tự UTF-8 đa byte tiếng Việt có dấu.
+     - *Khắc phục*: Sử dụng `utf8CharToByteOffset` chuyển đổi chỉ số ký tự thành byte offset chính xác trước khi trích xuất chuỗi con.
+  7. **Bổ Sung Các Hàm Đồ Họa Graphics MIDP 2.0 Còn Thiếu (`jvm_bytecode.cpp`)**:
+     - *Hiện tượng*: Chưa hỗ trợ `fillTriangle`, `setGrayScale`, `getGrayScale`, `getDisplayColor`, `setStrokeStyle`, `getStrokeStyle` trong `jvm_bytecode.cpp`.
+     - *Khắc phục*: Triển khai thuật toán rasterizer tam giác chuẩn và đầy đủ các hàm grayscale / color / stroke.
+  8. **Hoàn Thiện Bộ API Font (`jvm_bytecode.cpp`)**:
+     - *Hiện tượng*: Thiếu `Font.substringWidth(str, off, len)` và các getter thuộc tính font (`getStyle`, `getSize`, `getFace`, `isPlain`, `isBold`, `isItalic`, `isUnderlined`).
+     - *Khắc phục*: Triển khai `substringWidth` hỗ trợ unicode offset; trả về đầy đủ các thuộc tính chuẩn font hệ thống.
+  9. **Mở Rộng Phím & Hành Động Game Canvas (`jvm_bytecode.cpp`)**:
+     - *Hiện tượng*: `getGameAction` và `getKeyCode` chỉ hỗ trợ UP, DOWN, LEFT, RIGHT, FIRE; thiếu GAME_A, GAME_B, GAME_C, GAME_D; thiếu hàm `getKeyName(keyCode)`.
+     - *Khắc phục*: Bổ sung các hằng số GAME_A (9, '7'), GAME_B (10, '9'), GAME_C (11, '*'), GAME_D (12, '#') và triển khai hàm `getKeyName`.
+  10. **Ném Ngoại Lệ Chuẩn Trong `System.arraycopy` (`jvm_bytecode.cpp`)**:
+      - *Hiện tượng*: Khi tham chiếu mảng null hoặc chỉ số out-of-bounds, hàm tự động kẹp biên hoặc sao chép 0 thay vì ném ngoại lệ chuẩn JVM.
+      - *Khắc phục*: Kiểm tra null ném `NullPointerException`; kiểm tra biên (`srcPos < 0 || dstPos < 0 || len < 0 || srcPos + len > srcLen || dstPos + len > dstLen`) ném `IndexOutOfBoundsException`.
+  11. **Tự Động Phân Giải Đường Dẫn Tương Đối Trong `Class.getResourceAsStream` (`jvm_bytecode.cpp`)**:
+      - *Hiện tượng*: Khi nạp tài nguyên theo đường dẫn tương đối (không bắt đầu bằng `/`), engine chỉ tìm ở root JAR thay vì thư mục package của lớp gọi.
+      - *Khắc phục*: Trích xuất package từ `classObj->stringVal` và ghép vào đường dẫn trước khi tra cứu tài nguyên trong JAR.
+  12. **Định Tuyến Buffer Chuẩn Cho `DataOutputStream` (`j2me_full_apis.cpp`)**:
+      - *Hiện tượng*: `DataOutputStream` ghi vào buffer riêng (`g_baos[self]`), khi game gọi `baos.toByteArray()` trên `ByteArrayOutputStream` bọc bên dưới thì dữ liệu bị rỗng.
+      - *Khắc phục*: Lưu tham chiếu luồng bên trong vào `so->fields["out"]` và chuyển hướng toàn bộ các lệnh ghi vào buffer của luồng bên trong.
+  13. **Hỗ Trợ Toàn Diện Phép Biến Đổi Nokia DirectGraphics (`j2me_full_apis.cpp`)**:
+      - *Hiện tượng*: `DirectGraphics.drawImage` bỏ qua tham số `manipulation`; `drawPixels` chưa hỗ trợ transform manipulation.
+      - *Khắc phục*: Ánh xạ chuẩn toàn bộ hằng số Nokia `manipulation` (FLIP_HORIZONTAL, FLIP_VERTICAL, ROTATE_90/180/270) sang Sprite transform; render chuẩn `drawImage` và `drawPixels`.
+  14. **Theo Dõi Máy Trạng Thái MMAPI Player (`j2me_full_apis.cpp`)**:
+      - *Hiện tượng*: `Player.getState()` luôn trả về cứng 400 (`STARTED`) ngay cả khi mới tạo hoặc đã dừng/đóng.
+      - *Khắc phục*: Bổ sung biến trạng thái `state` trong `PlayerData`, quản lý chuyển đổi chính xác qua `realize` (200), `prefetch` (300), `start` (400), `stop` (300), `close` (0).
+  15. **Duyệt Ngược RecordEnumeration & Chuẩn Hóa Math/Collection (`j2me_full_apis.cpp`)**:
+      - *Hiện tượng*: `RecordEnumeration` thiếu `previousRecordId()` và `previousRecord()`; `Hashtable.put` không ném NPE khi key/value null; `Enumeration.nextElement` không ném `NoSuchElementException`; `Math.round(float)` dùng `std::lround` lệch kết quả số âm.
+      - *Khắc phục*: Bổ sung `previousRecordId` và `previousRecord`; ném NPE và `NoSuchElementException`; cập nhật `Math.round` dùng `std::floor(a + 0.5f)` và bổ sung `Math.IEEEremainder`.
+
 ---
 
 ## 📊 KẾT QUẢ KIỂM THỬ
 * **Khởi động**: DragonBoy, Avatar, Ninja School, Gameloft khởi chạy trực tiếp vào màn hình game.
-* **Đồ họa & Điều khiển**: Render 60 FPS mượt mà; bàn phím điều hướng phản hồi tức thì qua cả sự kiện `keyPressed` và `getKeyStates`.
-* **Tính ổn định & Dữ liệu**: Dữ liệu lưu game RMS lưu trữ và phục hồi hoàn hảo sau khi thoát và mở lại ứng dụng; không còn luồng chạy ngầm dư thừa; đạt 0 crash, 0 leak socket.
+* **Đồ họa & Điều khiển**: Render 60 FPS mượt mà; xoay lật Sprite, LayerManager clipping, Nokia DirectGraphics hiển thị hoàn hảo; bàn phím điều hướng phản hồi tức thì qua cả sự kiện `keyPressed`, `getKeyStates`, GAME_A-D.
+* **Tính ổn định & Dữ liệu**: Dữ liệu lưu game RMS lưu trữ và phục hồi hoàn hảo sau khi thoát và mở lại ứng dụng; Record ID không bao giờ bị tái sử dụng; đạt 0 crash, 0 leak socket.
+
 
