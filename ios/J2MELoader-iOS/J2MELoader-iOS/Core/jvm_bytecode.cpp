@@ -82,6 +82,7 @@ JvmBytecodeEngine& JvmBytecodeEngine::getInstance() {
 void JvmBytecodeEngine::reset() {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_loadedClasses.clear();
+    m_failedClasses.clear();
     m_heapObjects.clear();
     m_heapArrays.clear();
     m_nativeImages.clear();
@@ -495,34 +496,28 @@ std::shared_ptr<ClassFile> JvmBytecodeEngine::findOrLoadClass(const std::string&
     auto it = m_loadedClasses.find(normName);
     if (it != m_loadedClasses.end()) return it->second;
 
-    if (!jar) return nullptr;
+    // Fast-path: if this class already failed to load before, skip scanning JAR!
+    if (m_failedClasses.find(normName) != m_failedClasses.end()) return nullptr;
+
+    if (!jar) {
+        m_failedClasses.insert(normName);
+        return nullptr;
+    }
 
     std::string entryName = normName + ".class";
     std::vector<uint8_t> bytes;
     if (jar->extractEntry(entryName, bytes)) {
         return loadClass(bytes);
     }
+    m_failedClasses.insert(normName);
     return nullptr;
 }
 
-static std::string getFieldKey(std::shared_ptr<ClassFile> cls, uint16_t fIdx) {
-    if (!cls || fIdx >= cls->constantPool.size()) return "";
-    const auto& cp = cls->constantPool[fIdx];
-    std::string cname = cls->thisClassName;
-    std::string fname = "";
-    if (cp.classIndex < cls->constantPool.size() && cls->constantPool[cp.classIndex].nameIndex < cls->constantPool.size()) {
-        cname = cls->constantPool[cls->constantPool[cp.classIndex].nameIndex].strVal;
-    }
-    if (cp.nameAndTypeIndex < cls->constantPool.size()) {
-        const auto& nat = cls->constantPool[cp.nameAndTypeIndex];
-        if (nat.nameIndex < cls->constantPool.size()) fname = cls->constantPool[nat.nameIndex].strVal;
-    }
-    return cname + ":" + fname;
-}
+static inline void ensureFieldCached(std::shared_ptr<ClassFile>& cls, uint16_t fIdx) {
+    if (!cls || fIdx >= cls->constantPool.size()) return;
+    auto& cp = cls->constantPool[fIdx];
+    if (cp.fieldCached) return;
 
-static std::string getFieldName(std::shared_ptr<ClassFile> cls, uint16_t fIdx) {
-    if (!cls || fIdx >= cls->constantPool.size()) return "";
-    const auto& cp = cls->constantPool[fIdx];
     std::string cname = "";
     if (cp.classIndex < cls->constantPool.size() && cls->constantPool[cp.classIndex].nameIndex < cls->constantPool.size()) {
         cname = cls->constantPool[cls->constantPool[cp.classIndex].nameIndex].strVal;
@@ -532,13 +527,28 @@ static std::string getFieldName(std::shared_ptr<ClassFile> cls, uint16_t fIdx) {
         const auto& nat = cls->constantPool[cp.nameAndTypeIndex];
         if (nat.nameIndex < cls->constantPool.size()) fname = cls->constantPool[nat.nameIndex].strVal;
     }
-    return cname.empty() ? fname : (cname + ":" + fname);
+    cp.cachedShortName = fname;
+    cp.cachedFieldKey = cname.empty() ? fname : (cname + ":" + fname);
+    cp.fieldCached = true;
+}
+
+static const std::string& getFieldKey(std::shared_ptr<ClassFile>& cls, uint16_t fIdx) {
+    static const std::string empty;
+    if (!cls || fIdx >= cls->constantPool.size()) return empty;
+    ensureFieldCached(cls, fIdx);
+    return cls->constantPool[fIdx].cachedFieldKey;
+}
+
+static const std::string& getFieldName(std::shared_ptr<ClassFile>& cls, uint16_t fIdx) {
+    static const std::string empty;
+    if (!cls || fIdx >= cls->constantPool.size()) return empty;
+    ensureFieldCached(cls, fIdx);
+    return cls->constantPool[fIdx].cachedFieldKey;
 }
 
 void JvmBytecodeEngine::ensureClinit(std::shared_ptr<ClassFile> cls, LcduiDisplay* display) {
     if (!cls || cls->clinitDone) return;
     cls->clinitDone = true;
-    std::cout << "[JVM] Running <clinit> for " << cls->thisClassName << std::endl;
     if (!cls->superClassName.empty() && cls->superClassName != "java/lang/Object") {
         auto superCls = findOrLoadClass(cls->superClassName, m_activeJar);
         if (superCls && superCls != cls) {
@@ -549,7 +559,6 @@ void JvmBytecodeEngine::ensureClinit(std::shared_ptr<ClassFile> cls, LcduiDispla
     if (clinitIt != cls->methods.end()) {
         executeMethod(cls, "<clinit>", "()V", {}, display);
     }
-    std::cout << "[JVM] Finished <clinit> for " << cls->thisClassName << std::endl;
 }
 
 bool JvmBytecodeEngine::isInstanceOf(const std::string& className, const std::string& targetType) {
@@ -1844,7 +1853,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             int fd = sfi->second.asInt();
             while (avail < needed) {
                 fd_set rs; FD_ZERO(&rs); FD_SET(fd, &rs);
-                struct timeval tv{1, 500000}; // wait up to 1.5s
+                struct timeval tv{0, 20000}; // wait up to 20ms non-stalling
                 int r = select(fd + 1, &rs, nullptr, nullptr, &tv);
                 if (r <= 0 || !FD_ISSET(fd, &rs)) break;
                 uint8_t tmp[4096];
@@ -2643,7 +2652,7 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_GETSTATIC: {
             uint16_t fIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
             frame.pc += 2;
-            std::string fKey = getFieldKey(cls, fIdx);
+            const std::string& fKey = getFieldKey(cls, fIdx);
             size_t colon = fKey.find(':');
             if (colon != std::string::npos) {
                 std::string fClsName = fKey.substr(0, colon);
@@ -2687,7 +2696,7 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_PUTSTATIC: {
             uint16_t fIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
             frame.pc += 2;
-            std::string fKey = getFieldKey(cls, fIdx);
+            const std::string& fKey = getFieldKey(cls, fIdx);
             size_t colon = fKey.find(':');
             if (colon != std::string::npos) {
                 std::string fClsName = fKey.substr(0, colon);
@@ -2700,16 +2709,16 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_GETFIELD: {
             uint16_t fIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
             frame.pc += 2;
-            std::string fKey = getFieldName(cls, fIdx);
-            std::string shortName = fKey;
-            size_t colon = fKey.find(':');
-            if (colon != std::string::npos) shortName = fKey.substr(colon + 1);
+            ensureFieldCached(cls, fIdx);
+            const auto& cp = cls->constantPool[fIdx];
+            const std::string& fKey = cp.cachedFieldKey;
+            const std::string& shortName = cp.cachedShortName;
 
             uint32_t objRef = frame.pop().asRef();
             JavaObject* obj = getObject(objRef);
             if (obj) {
                 auto fit = obj->fields.find(fKey);
-                if (fit == obj->fields.end()) fit = obj->fields.find(shortName);
+                if (fit == obj->fields.end() && !shortName.empty()) fit = obj->fields.find(shortName);
                 frame.push(fit != obj->fields.end() ? fit->second : JavaValue(0));
             } else {
                 frame.push(JavaValue(0));
@@ -2719,10 +2728,10 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_PUTFIELD: {
             uint16_t fIdx = (code[frame.pc] << 8) | code[frame.pc + 1];
             frame.pc += 2;
-            std::string fKey = getFieldName(cls, fIdx);
-            std::string shortName = fKey;
-            size_t colon = fKey.find(':');
-            if (colon != std::string::npos) shortName = fKey.substr(colon + 1);
+            ensureFieldCached(cls, fIdx);
+            const auto& cp = cls->constantPool[fIdx];
+            const std::string& fKey = cp.cachedFieldKey;
+            const std::string& shortName = cp.cachedShortName;
 
             JavaValue val = frame.pop();
             uint32_t objRef = frame.pop().asRef();

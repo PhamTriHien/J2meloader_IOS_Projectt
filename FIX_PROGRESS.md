@@ -16,8 +16,9 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
 8. [Lỗi Giới hạn truy vấn tạm thời khi Cập nhật (GitHub Rate Limit 403)](#8-lỗi-giới-hạn-truy-vấn-tạm-thời-khi-cập-nhật)
 9. [Cảm ứng Vuốt/Kéo & Lặp chu kỳ TimerTask](#9-cảm-ứng-vuốtkéo--lặp-chu-kỳ-timertask)
 10. [Loại bỏ chữ Object, Hoàn thiện Java SE Networking & Server Caching](#10-loại-bỏ-chữ-object-hoàn-thiện-java-se-networking--server-caching)
-11. [CÔNG VIỆC DỞ DANG: Lỗi vào sảnh tự nhấn loạn cảm ứng nút 'Chơi mới' (Ghost Input)](#11-công-việc-dở-dang-lỗi-vào-sảnh-tự-nhấn-loạn-cảm-ứng-nút-chơi-mới)
+11. [Khắc phục Lỗi vào sảnh tự nhấn loạn cảm ứng nút 'Chơi mới' (Ghost Input)](#11-khắc-phục-lỗi-vào-sảnh-tự-nhấn-loạn-cảm-ứng-nút-chơi-mới-ghost-input)
 12. [CÔNG VIỆC DỞ DANG: Bản Android (J2ME-Loader Core) - Treo 24/7, Cửa sổ nổi & Tối ưu RAM](#12-công-việc-dở-dang-bản-android-j2me-loader-core---treo-247-cửa-sổ-nổi--tối-ưu-ram)
+13. [Tối ưu hóa Triệt để 60 FPS, Xóa bỏ Giật Lag, Đơ & Drop Frame Trên Máy Thật (v1.8.5)](#13-tối-ưu-hóa-triệt-để-60-fps-xóa-bỏ-giật-lag-đơ--drop-frame-trên-máy-thật-v185)
 
 ---
 
@@ -120,24 +121,17 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
 
 ---
 
-### 11. CÔNG VIỆC DỞ DANG: Lỗi vào sảnh tự nhấn loạn cảm ứng nút 'Chơi mới'
-* **Hiện tượng đang gặp**:
+### 11. Khắc phục Lỗi vào sảnh tự nhấn loạn cảm ứng nút 'Chơi mới' (Ghost Input)
+* **Hiện tượng**:
   - Vừa khởi động game xong vào màn hình sảnh đăng nhập (màn hình Chú Bé Rồng Online với 3 nút: "Chơi mới", "Đổi tài khoản", "Máy chủ"), game **tự động kích hoạt liên tục vào nút "Chơi mới"**, làm hiện popup *"Xin chờ"* (biểu tượng Ngọc Rồng 1 sao) mà người chơi chưa hề chạm vào màn hình hoặc bấm phím.
-* **Các nghi vấn kỹ thuật & Luồng phân tích đang tiến hành**:
-  1. **Tọa độ cảm ứng ảo lúc Mount MetalView (Initial Touch/Gesture Leak)**:
-     - Khi `GameScreenView` chuyển cảnh mở `MetalView`, kiểm tra xem `TouchGestureRecognizer` hoặc `MetalView` có bị gọi một sự kiện chạm giả lập ban đầu với tọa độ `(0, 0)` hoặc điểm giữa màn hình hay không.
-     - Vị trí nút "Chơi mới" là nút trên cùng (hoặc nút được focus mặc định index 0 trong `b/bD.g(Lb/bD;)[Lb/v;`).
-  2. **Trạng thái khởi tạo `isPressed` trong `KeypadButtonStyle`**:
-     - `VirtualKeypadView` sử dụng `.onChange(of: configuration.isPressed)` trong SwiftUI.
-     - Kiểm tra xem khi SwiftUI khởi tạo và gắn các nút bàn phím vào cây View Hierarchy, sự kiện `onStateChange(isPressed)` có vô tình kích hoạt với giá trị `true` cho nút phím mặc định (như phím **OK / FIRE** mã `-5`, hoặc **LSK** mã `-6`) hay không. Trong DragonBoy, bấm phím OK khi ở sảnh chính sẽ tự kích hoạt ngay nút đầu tiên là "Chơi mới".
-  3. **Biến static lưu trạng thái chạm trong bytecode game (`main/b`)**:
-     - Trong DragonBoy, lớp `main/b` lưu tọa độ con trỏ qua `main/b.aW:I`, `main/b.aZ:I` và cờ nhấn qua `main/b.au:Z`, `main/b.at:Z`, `main/b.aw:Z`.
-     - Phương thức `b/v.wF()Z` kiểm tra va chạm con trỏ với nút bấm. Nếu biến `aW, aZ` có giá trị khởi tạo `0` và cờ con trỏ bị hiểu nhầm là đang nhấn, hàm `wF()` sẽ trả về `true` và kích hoạt hàm hành động của nút (`b/v.wG()V`).
-  4. **Kế hoạch xử lý tiếp theo khi tiếp tục**:
-     - Thêm log debug xem sự kiện `Key` hay `Touch` nào được đẩy vào `m_eventQueue` trong 2 giây đầu tiên lúc boot.
-     - Bổ sung bộ lọc an toàn (**Input Boot Warmup Guard**): Bỏ qua (drop) toàn bộ các sự kiện chạm và phím ảo trong **500ms – 800ms đầu tiên** sau khi game canvas khởi động xong để triệt tiêu mọi sự kiện chạm rác do chuyển cảnh SwiftUI.
-     - Kiểm tra và sửa `KeypadButtonStyle`: Dùng `@State private var lastPressed = false` trong ButtonStyle để chặn việc kích hoạt giả lập khi View vừa xuất hiện.
-      - Khởi tạo giá trị mặc định an toàn cho các biến tọa độ con trỏ (`main/b.aW = -1000`, `main/b.aZ = -1000`, `main/b.au = false`) trong engine lúc nạp lớp `main/b`.
+* **Nguyên nhân**:
+  1. SwiftUI `DragGesture` trên `MetalView` phát sinh các sự kiện chạm mồ côi (ghost touches) với tọa độ `(0, 0)` hoặc điểm giữa màn hình khi chuyển cảnh màn hình.
+  2. Các nút ảo `KeyButton` phát sinh trạng thái `isPressed` giả lập lúc view hierarchy của SwiftUI được render lần đầu, tự động gửi phím Enter/OK vào game.
+* **Giải pháp**:
+  - Xây dựng lớp UIView thuần UIKit `GameMTKView` kế thừa `MTKView` xử lý trực tiếp `touchesBegan`, `touchesMoved`, `touchesEnded`, `touchesCancelled`.
+  - Bộ lọc **Input Boot Warmup Guard**: Bỏ qua toàn bộ sự kiện chạm trong 600ms đầu tiên lúc game khởi chạy.
+  - Quản lý chạm đơn điểm nghiêm ngặt (`activeTouch: UITouch?`), tránh đa chạm gây nhiễu tọa độ.
+  - Tự động nhả phím ảo (Auto Release Orphan Keys) khi touch kết thúc hoặc hủy.
 
 ---
 
@@ -178,7 +172,31 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
 
 ---
 
+### 13. Tối ưu hóa Triệt để 60 FPS, Xóa bỏ Giật Lag, Đơ & Drop Frame Trên Máy Thật (v1.8.5)
+* **Hiện tượng**:
+  - Khi chạy game trên thiết bị iPhone/iPad thật, game thường xuyên bị tụt khung hình (drop FPS xuống 30–35 FPS), giật lag nhẹ khi di chuyển nhân vật và khựng đơ 1-2 giây khi kết nối/giao tiếp mạng với máy chủ.
+* **Nguyên nhân gốc rễ**:
+  1. **Lệch nhịp luồng vẽ (Naive Frame Sleeping)**: Trong `jvm_interpreter.cpp`, luồng game thực thi `paint()` sau đó `sleep_for(16ms)` một cách cứng nhắc. Nếu hàm vẽ của game mất 12ms, tổng chu kỳ khung hình lên tới 28ms (~35 FPS), gây ra hiện tượng drop fps và giật cục liên tục.
+  2. **Nghẽn băng thông Bus GPU (Redundant Metal Texture Uploads)**: `MTKView.draw()` chạy theo nhịp `CADisplayLink` (60Hz hoặc 120Hz ProMotion). Trong `MetalRenderer`, lệnh `texture?.replace` được gọi vô điều kiện ở mỗi tick hiển thị dù LCDUI chưa có khung hình mới, làm bão hòa băng thông bộ nhớ chia sẻ CPU-GPU.
+  3. **Xung đột Mutex trên từng Pixel (Heavy Mutex Lock Contention)**: Toàn bộ các hàm vẽ nguyên thủy trong `lcdui_display.cpp` (`drawLine`, `fillRect`, `drawRGB`, `drawRegion`, `drawChar`, `drawString`...) đều dùng `std::lock_guard<std::mutex> lock(m_mutex)`. Với hàng nghìn lệnh vẽ mỗi khung hình, luồng JVM và luồng Metal liên tục bị lock contention.
+  4. **Phép xử lý điểm ảnh chậm trong `drawRegion`**: Hàm `drawRegion` thực hiện switch-case biến đổi và phép chia từng pixel ngay cả khi ảnh vẽ ở góc thẳng chuẩn (`transform == 0`).
+  5. **Cấp phát chuỗi heap liên tục ở Bytecode Hot-path**: Các lệnh `OP_GETFIELD`, `OP_PUTFIELD`, `OP_GETSTATIC`, `OP_PUTSTATIC` liên tục phân bổ chuỗi `std::string` mới và gọi hàm `substr()` để tách tên trường trên từng opcode, kết hợp tra cứu `std::map` chậm.
+  6. **Quét lặp toàn bộ file JAR khi nạp Class (Negative Class Lookup Miss)**: Khi game yêu cầu kiểm tra các lớp hệ thống không hỗ trợ, hàm `findOrLoadClass` quét toàn bộ danh mục file ZIP của file JAR từ đầu đến cuối lặp đi lặp lại ở mỗi chu kỳ.
+  7. **Tắc nghẽn Socket mạng (Socket Read Stall)**: Hàm `ensureSocketBuffer` đặt thời gian chờ `select()` lên tới 1.5 giây (`tv{1, 500000}`). Khi máy chủ gửi gói tin chưa đủ hoặc phân mảnh, luồng game bị chặn đứng 1.5s gây hiện tượng đơ cứng game khi đăng nhập hoặc chuyển map.
+* **Giải pháp kỹ thuật đã triển khai**:
+  - **Adaptive 60 FPS Frame Pacer**: Đo đạc chính xác thời gian thực thi vẽ (`elapsed`) và chỉ ngủ đúng khoảng thời gian bù đắp `(16666us - elapsed)`. Nếu khung hình bị quá tải (overrun), nhường CPU với `std::this_thread::yield()`.
+  - **Cơ chế Dirty-Flag Metal Upload**: Bổ sung `lastPaintTick` trong `MetalRenderer`. Chỉ thực hiện `texture?.replace` khi `currentTick != lastPaintTick`.
+  - **Zero-Lock LCDUI Rendering**: Loại bỏ toàn bộ mutex lock trong các thao tác vẽ đệm (`m_drawBuffer`), chỉ giữ khóa atomic trong `publishFrame()` khi hoán đổi con trỏ frame sang `m_frameBuffer`.
+  - **Fast-Path 32-bit Blit cho `drawRegion`**: Với ảnh chuẩn `transform == 0`, tối ưu hóa trực tiếp ghi thanh ghi 32-bit `uint32_t` từng hàng, loại bỏ switch-case và tính toán dư thừa.
+  - **O(1) Constant Pool Field Caching & Unordered Maps**: Cache trực tiếp tên trường và offset trong cấu trúc `CpEntry` của hằng số class; chuyển đổi toàn bộ `std::map` quản lý Heap, Array, Class sang `std::unordered_map`.
+  - **Negative Class Lookup Caching**: Lưu trữ các lớp không tồn tại vào bảng băm `m_failedClasses`, chấm dứt việc đọc quét lặp lại file ZIP JAR.
+  - **Non-Stalling Socket Read**: Rút ngắn thời gian timeout `select()` từ 1.5s xuống còn **20ms** (`tv{0, 20000}`), loại bỏ hoàn toàn hiện tượng khựng game khi nhận dữ liệu mạng.
+  - **Tối ưu hóa mã máy Release (`-Os`)**: Cấu hình `GCC_OPTIMIZATION_LEVEL = s` trong `project.pbxproj` cho bản Release iOS.
+
+---
+
 ## 📊 KẾT QUẢ KIỂM THỬ
 * **Khởi động**: DragonBoy, Avatar, Ninja School, Gameloft khởi chạy trực tiếp vào màn hình game.
 * **Đồ họa**: Render 60 FPS mượt mà trên nền tảng Apple Metal 3 (iOS) và Windows Desktop.
 * **Tính ổn định**: Không còn lỗi tràn bộ nhớ `SIGBUS 10`, không còn lỗi đứng màn hình đen, không còn lỗi out form text.
+

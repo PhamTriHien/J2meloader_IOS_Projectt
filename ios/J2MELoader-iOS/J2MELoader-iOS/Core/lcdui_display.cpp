@@ -135,7 +135,6 @@ void LcduiDisplay::resize(int width, int height) {
 }
 
 void LcduiDisplay::clear(uint32_t color) {
-    std::lock_guard<std::mutex> lock(m_mutex);
     std::fill(m_buffer.begin(), m_buffer.end(), color);
 }
 
@@ -182,7 +181,6 @@ void LcduiDisplay::clipRect(int x, int y, int w, int h) {
 }
 
 void LcduiDisplay::drawLine(int x1, int y1, int x2, int y2, uint32_t color) {
-    std::lock_guard<std::mutex> lock(m_mutex);
     int ax1 = x1 + m_transX, ay1 = y1 + m_transY;
     int ax2 = x2 + m_transX, ay2 = y2 + m_transY;
     int dx = std::abs(ax2 - ax1), sx = ax1 < ax2 ? 1 : -1;
@@ -206,22 +204,29 @@ void LcduiDisplay::drawRect(int x, int y, int w, int h, uint32_t color) {
 }
 
 void LcduiDisplay::fillRect(int x, int y, int w, int h, uint32_t color) {
-    std::lock_guard<std::mutex> lock(m_mutex);
     int ax = x + m_transX, ay = y + m_transY;
     int x1 = std::max(m_clip.x, ax);
     int y1 = std::max(m_clip.y, ay);
     int x2 = std::min(m_clip.x + m_clip.width, ax + w);
     int y2 = std::min(m_clip.y + m_clip.height, ay + h);
 
-    for (int cy = y1; cy < y2; ++cy) {
-        for (int cx = x1; cx < x2; ++cx) {
-            setPixelUnsafe(cx, cy, color);
+    uint32_t alpha = (color >> 24) & 0xFF;
+    if (alpha == 255) {
+        // Fast-path: fully opaque fill line by line
+        for (int cy = y1; cy < y2; ++cy) {
+            uint32_t* row = m_buffer.data() + (size_t)cy * m_width;
+            std::fill(row + x1, row + x2, color);
+        }
+    } else {
+        for (int cy = y1; cy < y2; ++cy) {
+            for (int cx = x1; cx < x2; ++cx) {
+                setPixelUnsafe(cx, cy, color);
+            }
         }
     }
 }
 
 void LcduiDisplay::drawRGB(const int32_t* rgbData, int offset, int scanlength, int x, int y, int width, int height, bool processAlpha) {
-    std::lock_guard<std::mutex> lock(m_mutex);
     int ax = x + m_transX, ay = y + m_transY;
     for (int r = 0; r < height; ++r) {
         int cy = ay + r;
@@ -237,7 +242,6 @@ void LcduiDisplay::drawRGB(const int32_t* rgbData, int offset, int scanlength, i
 }
 
 void LcduiDisplay::drawChar(char c, int x, int y, uint32_t color) {
-    std::lock_guard<std::mutex> lock(m_mutex);
     if (c < 32 || c > 126) return;
     int ax = x + m_transX, ay = y + m_transY;
     const uint8_t* glyph = font8x8_basic[c - 32];
@@ -253,7 +257,6 @@ void LcduiDisplay::drawChar(char c, int x, int y, uint32_t color) {
 
 void LcduiDisplay::drawRegion(const uint32_t* srcPixels, int srcW, int srcH, int x_src, int y_src, int width, int height, int transform, int x_dest, int y_dest, int anchor) {
     if (!srcPixels || srcW <= 0 || srcH <= 0 || width <= 0 || height <= 0) return;
-    std::lock_guard<std::mutex> lock(m_mutex);
 
     // MIDP transform constants (same as Sprite): 90/270 family {4,5,6,7} swaps dims.
     int destW = (transform == 4 || transform == 5 || transform == 6 || transform == 7) ? height : width;
@@ -268,13 +271,73 @@ void LcduiDisplay::drawRegion(const uint32_t* srcPixels, int srcW, int srcH, int
     if (anchor & 2) dy -= destH / 2; // VCENTER
     else if (anchor & 32) dy -= destH; // BOTTOM
 
+    // Fast-path: transform == 0 (standard blit without rotation/mirroring, >90% of game draws)
+    if (transform == 0) {
+        int clipMinX = std::max(0, m_clip.x);
+        int clipMaxX = std::min(m_width, m_clip.x + m_clip.width);
+        int clipMinY = std::max(0, m_clip.y);
+        int clipMaxY = std::min(m_height, m_clip.y + m_clip.height);
+
+        int rStart = 0;
+        int rEnd = height;
+        if (dy + rStart < clipMinY) rStart = clipMinY - dy;
+        if (dy + rEnd > clipMaxY) rEnd = clipMaxY - dy;
+        if (y_src + rStart < 0) rStart = -y_src;
+        if (y_src + rEnd > srcH) rEnd = srcH - y_src;
+        if (rStart >= rEnd) return;
+
+        int cStart = 0;
+        int cEnd = width;
+        if (dx + cStart < clipMinX) cStart = clipMinX - dx;
+        if (dx + cEnd > clipMaxX) cEnd = clipMaxX - dx;
+        if (x_src + cStart < 0) cStart = -x_src;
+        if (x_src + cEnd > srcW) cEnd = srcW - x_src;
+        if (cStart >= cEnd) return;
+
+        for (int r = rStart; r < rEnd; ++r) {
+            int sy = y_src + r;
+            int ty = dy + r;
+            const uint32_t* srcRow = srcPixels + (size_t)sy * srcW;
+            uint32_t* dstRow = m_buffer.data() + (size_t)ty * m_width;
+
+            for (int c = cStart; c < cEnd; ++c) {
+                uint32_t pixel = srcRow[x_src + c];
+                uint32_t alpha = (pixel >> 24) & 0xFF;
+                if (alpha == 0) continue;
+
+                int tx = dx + c;
+                if (alpha == 255) {
+                    dstRow[tx] = pixel;
+                } else {
+                    uint32_t dst = dstRow[tx];
+                    uint32_t dstAlpha = (dst >> 24) & 0xFF;
+                    if (dstAlpha == 0) {
+                        dstRow[tx] = pixel;
+                    } else {
+                        uint32_t invAlpha = 255 - alpha;
+                        uint32_t pr = (((pixel >> 16) & 0xFF) * alpha + ((dst >> 16) & 0xFF) * invAlpha) >> 8;
+                        uint32_t pg = (((pixel >> 8) & 0xFF) * alpha + ((dst >> 8) & 0xFF) * invAlpha) >> 8;
+                        uint32_t pb = ((pixel & 0xFF) * alpha + (dst & 0xFF) * invAlpha) >> 8;
+                        uint32_t outAlpha = std::min<uint32_t>(255, alpha + ((dstAlpha * invAlpha) >> 8));
+                        dstRow[tx] = (outAlpha << 24) | (pr << 16) | (pg << 8) | pb;
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    // General path for rotated / mirrored transforms (1..7):
     for (int r = 0; r < height; ++r) {
+        int sy = y_src + r;
+        if (sy < 0 || sy >= srcH) continue;
+        const uint32_t* srcRow = srcPixels + (size_t)sy * srcW;
+
         for (int c = 0; c < width; ++c) {
             int sx = x_src + c;
-            int sy = y_src + r;
-            if (sx < 0 || sx >= srcW || sy < 0 || sy >= srcH) continue;
+            if (sx < 0 || sx >= srcW) continue;
 
-            uint32_t pixel = srcPixels[sy * srcW + sx];
+            uint32_t pixel = srcRow[sx];
             if ((pixel >> 24) == 0) continue;
 
             // MIDP numbering (matches Sprite): 0=none, 1=mirror-rot180 (v-flip),
@@ -306,7 +369,6 @@ void LcduiDisplay::drawRoundRect(int x, int y, int w, int h, int arcWidth, int a
         drawRect(x, y, w, h, color);
         return;
     }
-    std::lock_guard<std::mutex> lock(m_mutex);
     int ax = x + m_transX, ay = y + m_transY;
     // Straight lines
     drawLine(ax + rx, ay, ax + w - rx, ay, color);
@@ -338,7 +400,6 @@ void LcduiDisplay::fillRoundRect(int x, int y, int w, int h, int arcWidth, int a
         fillRect(x, y, w, h, color);
         return;
     }
-    std::lock_guard<std::mutex> lock(m_mutex);
     int ax = x + m_transX, ay = y + m_transY;
     // Middle vertical block
     int x1 = std::max(m_clip.x, ax + rx);
@@ -372,7 +433,6 @@ void LcduiDisplay::fillRoundRect(int x, int y, int w, int h, int arcWidth, int a
 
 void LcduiDisplay::drawArc(int x, int y, int w, int h, int startAngle, int arcAngle, uint32_t color) {
     if (w <= 0 || h <= 0 || arcAngle == 0) return;
-    std::lock_guard<std::mutex> lock(m_mutex);
     float cx = (x + m_transX) + w / 2.0f;
     float cy = (y + m_transY) + h / 2.0f;
     float rx = w / 2.0f;
@@ -393,7 +453,6 @@ void LcduiDisplay::drawArc(int x, int y, int w, int h, int startAngle, int arcAn
 
 void LcduiDisplay::fillArc(int x, int y, int w, int h, int startAngle, int arcAngle, uint32_t color) {
     if (w <= 0 || h <= 0 || arcAngle == 0) return;
-    std::lock_guard<std::mutex> lock(m_mutex);
     int ax = x + m_transX, ay = y + m_transY;
     float cx = ax + w / 2.0f;
     float cy = ay + h / 2.0f;
@@ -441,7 +500,6 @@ void LcduiDisplay::fillArc(int x, int y, int w, int h, int startAngle, int arcAn
 }
 
 void LcduiDisplay::drawString(const std::string& text, int x, int y, int anchor, uint32_t color) {
-    std::lock_guard<std::mutex> lock(m_mutex);
     int ax = x + m_transX, ay = y + m_transY;
     // Unicode path (Vietnamese/CJK): CoreText alpha bitmap blended with LCDUI color
     if (!text.empty() && needsUnicode(text) && native_text_render && native_free) {

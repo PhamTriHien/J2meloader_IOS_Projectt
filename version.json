@@ -1,13 +1,13 @@
 {
-  "id": 392390284,
-  "tag_name": "v1.8.4-j2hienloader",
-  "name": "J2HienLoader iOS v1.8.4 - Bản chính thức Tiếng Việt & Sửa lỗi Mạng, Cảm ứng & Phím ảo 100%",
-  "body": "## J2HienLoader cho iOS (v1.8.4)\n- Khắc phục lỗi hiển thị chữ Object khi load game.\n- Hoàn thiện toàn bộ hệ thống mạng Java SE (Socket, URL, Scanner) cho DragonBoy kết nối máy chủ.\n- Phục vụ danh sách server tức thì 0ms, chống đơ nút Đổi server.\n- Sửa lỗi tự động kích hoạt nút Chơi mới ở màn hình sảnh.\n- Cảm ứng vuốt kéo 60 FPS và bàn phím ảo phản hồi siêu nhạy.",
-  "published_at": "2026-09-22T17:00:00Z",
+  "id": 392390285,
+  "tag_name": "v1.8.5-j2hienloader",
+  "name": "J2HienLoader iOS v1.8.5 - Tối ưu 60 FPS, Xóa bỏ Giật Lag, Đơ & Drop Frame Trên Máy Thật",
+  "body": "## J2HienLoader cho iOS (v1.8.5)\n- Bộ điều phối nhịp khung hình Adaptive 60 FPS Frame Pacer (triệt tiêu tình trạng sleep cứng gây drop fps 30-35).\n- Cơ chế Dirty-Flag Metal Texture Upload: chỉ upload texture khi có frame mới từ LCDUI, tiết kiệm băng thông bus CPU-GPU.\n- Zero-Lock LCDUI Graphics Rendering: giải phóng lock trên từng pixel và lệnh vẽ, chỉ bảo vệ buffer swap.\n- Fast-path 32-bit blit cho drawRegion khi không xoay (transform == 0).\n- Bộ nhớ đệm tra cứu trường O(1) trực tiếp trong Constant Pool (OP_GETFIELD/OP_PUTFIELD không phân bổ chuỗi).\n- Negative class lookup caching chống quét lại toàn bộ JAR file khi class không tồn tại.\n- Khắc phục lỗi khựng giật mạng (Network Stall): giảm timeout select() từ 1.5s xuống 20ms, game chạy mượt mà ngay cả khi kết nối máy chủ.",
+  "published_at": "2026-09-23T00:30:00Z",
   "assets": [
     {
       "name": "J2HienLoader.ipa",
-      "browser_download_url": "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/download/v1.8.4-j2hienloader/J2HienLoader.ipa",
+      "browser_download_url": "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/download/v1.8.5-j2hienloader/J2HienLoader.ipa",
       "size": 3025576
     }
   ]

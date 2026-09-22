@@ -575,7 +575,11 @@ void JvmInterpreter::executionLoop() {
     }
 
     int tickCount = 0;
+    const auto targetFrameDuration = std::chrono::microseconds(1000000 / 60); // 16666 us (target 60 FPS)
+
     while (m_running) {
+        auto frameStart = std::chrono::steady_clock::now();
+
         if (!m_paused) {
             processEvents();
             tickCount++;
@@ -585,7 +589,8 @@ void JvmInterpreter::executionLoop() {
                 std::lock_guard<std::mutex> lk(m_stateMutex);
                 haveCanvas = (m_canvasClass && m_canvasRef != 0);
             }
-            if (!haveCanvas && tickCount > 10) {
+            // Throttle findAndBindCanvas: only scan at most once every 30 ticks (~500ms)
+            if (!haveCanvas && tickCount > 10 && (tickCount % 30 == 0)) {
                 findAndBindCanvas();
             }
 
@@ -627,6 +632,13 @@ void JvmInterpreter::executionLoop() {
             }
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        // Adaptive frame pacing: sleep only the remaining time in the 16.6ms window
+        auto frameEnd = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frameEnd - frameStart);
+        if (elapsed < targetFrameDuration) {
+            std::this_thread::sleep_for(targetFrameDuration - elapsed);
+        } else {
+            std::this_thread::yield();
+        }
     }
 }

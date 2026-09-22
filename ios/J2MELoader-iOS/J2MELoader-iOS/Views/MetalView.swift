@@ -83,6 +83,7 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
     var pipelineState: MTLRenderPipelineState?
     var texture: MTLTexture?
     var config: EmulatorConfig
+    var lastPaintTick: Int32 = -1
     
     init(_ parent: MetalView) {
         self.parent = parent
@@ -141,6 +142,7 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
         // Fetch current RGB buffer from J2ME Core
         let coreW = Int(J2MEBridge.getFrameBufferWidth())
         let coreH = Int(J2MEBridge.getFrameBufferHeight())
+        let currentTick = J2MEBridge.getPaintTick()
         
         if let frameBytes = J2MEBridge.getFrameBufferBytes(), coreW > 0, coreH > 0 {
             if texture == nil || texture?.width != coreW || texture?.height != coreH {
@@ -152,10 +154,15 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
                 )
                 texDesc.usage = [.shaderRead]
                 texture = device?.makeTexture(descriptor: texDesc)
+                lastPaintTick = -1
             }
             
-            let region = MTLRegionMake2D(0, 0, coreW, coreH)
-            texture?.replace(region: region, mipmapLevel: 0, withBytes: frameBytes, bytesPerRow: coreW * 4)
+            // Only update GPU texture when a new frame has actually been rendered
+            if currentTick != lastPaintTick {
+                let region = MTLRegionMake2D(0, 0, coreW, coreH)
+                texture?.replace(region: region, mipmapLevel: 0, withBytes: frameBytes, bytesPerRow: coreW * 4)
+                lastPaintTick = currentTick
+            }
         }
         
         if let pipeline = pipelineState, let tex = texture {

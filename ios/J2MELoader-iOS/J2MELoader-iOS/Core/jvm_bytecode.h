@@ -4,6 +4,8 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 #include <memory>
 #include <atomic>
 #include <mutex>
@@ -247,6 +249,9 @@ struct CpEntry {
     uint16_t nameIndex = 0;
     uint16_t descIndex = 0;
     uint16_t stringIndex = 0;
+    std::string cachedFieldKey;
+    std::string cachedShortName;
+    bool fieldCached = false;
 };
 
 struct ExceptionEntry {
@@ -312,7 +317,7 @@ struct JavaObject {
     uint32_t id = 0;
     std::string className;
     std::string stringVal; // For java/lang/String
-    std::map<std::string, JavaValue> fields;
+    std::unordered_map<std::string, JavaValue> fields;
     void* nativePtr = nullptr;
 };
 
@@ -433,17 +438,18 @@ public:
 private:
     JvmBytecodeEngine();
     mutable std::recursive_mutex m_mutex;
-    std::map<std::string, std::shared_ptr<ClassFile>> m_loadedClasses;
-    std::map<uint32_t, JavaObject> m_heapObjects;
-    std::map<uint32_t, JavaArray> m_heapArrays;
-    std::map<uint32_t, NativeImage> m_nativeImages;
-    std::map<std::string, JavaValue> m_staticFields;
+    std::unordered_map<std::string, std::shared_ptr<ClassFile>> m_loadedClasses;
+    std::unordered_set<std::string> m_failedClasses;
+    std::unordered_map<uint32_t, JavaObject> m_heapObjects;
+    std::unordered_map<uint32_t, JavaArray> m_heapArrays;
+    std::unordered_map<uint32_t, NativeImage> m_nativeImages;
+    std::unordered_map<std::string, JavaValue> m_staticFields;
     JarLoader* m_activeJar = nullptr;
     uint32_t m_nextRef = 1;
     std::atomic<bool> m_cancel{false};
     std::atomic<uint32_t> m_pendingException{0};
-    std::map<uint32_t, std::shared_ptr<LcduiDisplay>> m_offscreens;
-    std::map<uint32_t, uint32_t> m_graphicsTarget;
+    std::unordered_map<uint32_t, std::shared_ptr<LcduiDisplay>> m_offscreens;
+    std::unordered_map<uint32_t, uint32_t> m_graphicsTarget;
 
     // Native Dispatcher (MIDP 2.0 / CLDC 1.1)
     bool dispatchNativeMethod(const std::string& className, const std::string& methodName, const std::string& desc, const std::vector<JavaValue>& args, JavaValue& outResult, LcduiDisplay* display);
