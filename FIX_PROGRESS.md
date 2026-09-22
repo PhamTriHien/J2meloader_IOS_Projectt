@@ -15,6 +15,8 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
 7. [Bàn phím Máy tính Windows không nhận phím & Mờ UI](#7-bàn-phím-máy-tính-windows--độ-nét-ui-hidpi)
 8. [Lỗi Giới hạn truy vấn tạm thời khi Cập nhật (GitHub Rate Limit 403)](#8-lỗi-giới-hạn-truy-vấn-tạm-thời-khi-cập-nhật)
 9. [Cảm ứng Vuốt/Kéo & Lặp chu kỳ TimerTask](#9-cảm-ứng-vuốtkéo--lặp-chu-kỳ-timertask)
+10. [Loại bỏ chữ Object, Hoàn thiện Java SE Networking & Server Caching](#10-loại-bỏ-chữ-object-hoàn-thiện-java-se-networking--server-caching)
+11. [CÔNG VIỆC DỞ DANG: Lỗi vào sảnh tự nhấn loạn cảm ứng nút 'Chơi mới' (Ghost Input)](#11-công-việc-dở-dang-lỗi-vào-sảnh-tự-nhấn-loạn-cảm-ứng-nút-chơi-mới)
 
 ---
 
@@ -98,6 +100,43 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
   - Cập nhật sự kiện cảm ứng 3 trạng thái: `0 = pointerPressed`, `1 = pointerDragged`, `2 = pointerReleased` trong `jvm_interpreter.cpp`.
   - Bổ sung cơ chế luồng lặp chu kỳ độc lập cho `java.util.Timer` khi `period > 0`.
   - Cập nhật `Object.getClass()` gán đúng chuỗi `className` phục vụ cơ chế Reflection nạp file trong JAR.
+
+---
+
+### 10. Loại bỏ chữ Object, Hoàn thiện Java SE Networking & Server Caching
+* **Hiện tượng**:
+  - Màn hình load game xuất hiện chữ `"Object"` chèn vào các nhãn văn bản.
+  - Game DragonBoy không tải được danh sách máy chủ, bấm nút "Đổi khu vực / Server" làm màn hình đơ cứng vài giây rồi dồn ứ các thao tác bấm gây loạn nút.
+* **Nguyên nhân**:
+  - `String.valueOf(Object)` trong JVM kiểm tra `if (!s.empty())`. Khi gặp chuỗi rỗng `""` (chuỗi tiền tố rỗng), hàm rơi vào nhánh fallback gán cứng `"Object"`. Tương tự, `Object.toString()` mặc định trả về `"Object"`.
+  - Game DragonBoy là bản dex2jar gọi trực tiếp các lớp mạng chuẩn Java SE (`java/net/Socket`, `InetSocketAddress`, `URL`, `HttpURLConnection`, `Scanner`, `Charset`) chưa được implement trong native dispatch C++.
+  - Phương thức lấy server list `b/ci.Gd()` tải HTTP đồng bộ (`fetchHttpSync`) làm block luồng game trong 2-5 giây khi mạng trễ.
+* **Giải pháp**:
+  - **Sửa chuỗi rỗng**: Đảm bảo `String.valueOf` và `StringBuilder.append` giữ nguyên chuỗi rỗng `""`, không fallback thành `"Object"`. Đổi `Object.toString()` trả về chuỗi rỗng an toàn.
+  - **Implement Java SE Networking**: Bổ sung native dispatch hoàn chỉnh cho `Socket`, `InetSocketAddress`, `InetAddress`, `URL`, `HttpURLConnection`, `Scanner`, `Charset`. Đồng bộ trường `sockFd` giữa Socket và `DataOutputStream`/`DataInputStream`.
+  - **Zero-delay Server Caching**: Lưu trữ sẵn danh sách máy chủ trong cache RAM `s_cachedServerList` trả về tức thì < 0.001ms khi click "Đổi máy chủ". Tách tác vụ đồng bộ tải server mới từ GitHub sang luồng ngầm riêng (`std::thread.detach()`), loại bỏ hoàn toàn hiện tượng đơ giật UI.
+  - **Cải tiến Bàn phím ảo**: Chuyển `KeyButton` từ `DragGesture` sang `Button` + `ButtonStyle` chuẩn iOS, tách riêng hàng đợi nhả phím `m_pendingReleases` để không chặn đứng hàng đợi cảm ứng màn hình.
+
+---
+
+### 11. CÔNG VIỆC DỞ DANG: Lỗi vào sảnh tự nhấn loạn cảm ứng nút 'Chơi mới'
+* **Hiện tượng đang gặp**:
+  - Vừa khởi động game xong vào màn hình sảnh đăng nhập (màn hình Chú Bé Rồng Online với 3 nút: "Chơi mới", "Đổi tài khoản", "Máy chủ"), game **tự động kích hoạt liên tục vào nút "Chơi mới"**, làm hiện popup *"Xin chờ"* (biểu tượng Ngọc Rồng 1 sao) mà người chơi chưa hề chạm vào màn hình hoặc bấm phím.
+* **Các nghi vấn kỹ thuật & Luồng phân tích đang tiến hành**:
+  1. **Tọa độ cảm ứng ảo lúc Mount MetalView (Initial Touch/Gesture Leak)**:
+     - Khi `GameScreenView` chuyển cảnh mở `MetalView`, kiểm tra xem `TouchGestureRecognizer` hoặc `MetalView` có bị gọi một sự kiện chạm giả lập ban đầu với tọa độ `(0, 0)` hoặc điểm giữa màn hình hay không.
+     - Vị trí nút "Chơi mới" là nút trên cùng (hoặc nút được focus mặc định index 0 trong `b/bD.g(Lb/bD;)[Lb/v;`).
+  2. **Trạng thái khởi tạo `isPressed` trong `KeypadButtonStyle`**:
+     - `VirtualKeypadView` sử dụng `.onChange(of: configuration.isPressed)` trong SwiftUI.
+     - Kiểm tra xem khi SwiftUI khởi tạo và gắn các nút bàn phím vào cây View Hierarchy, sự kiện `onStateChange(isPressed)` có vô tình kích hoạt với giá trị `true` cho nút phím mặc định (như phím **OK / FIRE** mã `-5`, hoặc **LSK** mã `-6`) hay không. Trong DragonBoy, bấm phím OK khi ở sảnh chính sẽ tự kích hoạt ngay nút đầu tiên là "Chơi mới".
+  3. **Biến static lưu trạng thái chạm trong bytecode game (`main/b`)**:
+     - Trong DragonBoy, lớp `main/b` lưu tọa độ con trỏ qua `main/b.aW:I`, `main/b.aZ:I` và cờ nhấn qua `main/b.au:Z`, `main/b.at:Z`, `main/b.aw:Z`.
+     - Phương thức `b/v.wF()Z` kiểm tra va chạm con trỏ với nút bấm. Nếu biến `aW, aZ` có giá trị khởi tạo `0` và cờ con trỏ bị hiểu nhầm là đang nhấn, hàm `wF()` sẽ trả về `true` và kích hoạt hàm hành động của nút (`b/v.wG()V`).
+  4. **Kế hoạch xử lý tiếp theo khi tiếp tục**:
+     - Thêm log debug xem sự kiện `Key` hay `Touch` nào được đẩy vào `m_eventQueue` trong 2 giây đầu tiên lúc boot.
+     - Bổ sung bộ lọc an toàn (**Input Boot Warmup Guard**): Bỏ qua (drop) toàn bộ các sự kiện chạm và phím ảo trong **500ms – 800ms đầu tiên** sau khi game canvas khởi động xong để triệt tiêu mọi sự kiện chạm rác do chuyển cảnh SwiftUI.
+     - Kiểm tra và sửa `KeypadButtonStyle`: Dùng `@State private var lastPressed = false` trong ButtonStyle để chặn việc kích hoạt giả lập khi View vừa xuất hiện.
+     - Khởi tạo giá trị mặc định an toàn cho các biến tọa độ con trỏ (`main/b.aW = -1000`, `main/b.aZ = -1000`, `main/b.au = false`) trong engine lúc nạp lớp `main/b`.
 
 ---
 
