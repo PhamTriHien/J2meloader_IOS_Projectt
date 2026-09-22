@@ -15,8 +15,8 @@ public struct MetalView: UIViewRepresentable {
         MetalRenderer(self)
     }
     
-    public func makeUIView(context: Context) -> MTKView {
-        let mtkView = MTKView()
+    public func makeUIView(context: Context) -> GameMTKView {
+        let mtkView = GameMTKView()
         mtkView.device = MTLCreateSystemDefaultDevice()
         mtkView.delegate = context.coordinator
         mtkView.enableSetNeedsDisplay = false
@@ -24,28 +24,55 @@ public struct MetalView: UIViewRepresentable {
         mtkView.preferredFramesPerSecond = config.targetFps
         mtkView.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         mtkView.isUserInteractionEnabled = config.touchScreenEnabled
-        
-        let touchHandler = TouchGestureRecognizer { point, action in
-            let w = CGFloat(self.config.effectiveWidth)
-            let h = CGFloat(self.config.effectiveHeight)
-            let viewSize = mtkView.bounds.size
-            if viewSize.width > 0 && viewSize.height > 0 {
-                let scaleX = w / viewSize.width
-                let scaleY = h / viewSize.height
-                let rawX = Int32(point.x * scaleX)
-                let rawY = Int32(point.y * scaleY)
-                let jx = max(0, min(Int32(w) - 1, rawX))
-                let jy = max(0, min(Int32(h) - 1, rawY))
-                self.onTouch(jx, jy, action)
-            }
-        }
-        mtkView.addGestureRecognizer(touchHandler)
+        mtkView.config = config
+        mtkView.onTouch = onTouch
         return mtkView
     }
     
-    public func updateUIView(_ uiView: MTKView, context: Context) {
+    public func updateUIView(_ uiView: GameMTKView, context: Context) {
         uiView.preferredFramesPerSecond = config.targetFps
+        uiView.isUserInteractionEnabled = config.touchScreenEnabled
+        uiView.config = config
+        uiView.onTouch = onTouch
         context.coordinator.updateConfig(config)
+    }
+}
+
+public class GameMTKView: MTKView {
+    var onTouch: ((Int32, Int32, Int32) -> Void)?
+    var config: EmulatorConfig?
+    
+    private func handleTouch(_ touch: UITouch?, action: Int32) {
+        guard let touch = touch, let cfg = config else { return }
+        let point = touch.location(in: self)
+        let w = CGFloat(cfg.effectiveWidth)
+        let h = CGFloat(cfg.effectiveHeight)
+        let viewSize = bounds.size
+        if viewSize.width > 0 && viewSize.height > 0 {
+            let scaleX = w / viewSize.width
+            let scaleY = h / viewSize.height
+            let rawX = Int32(point.x * scaleX)
+            let rawY = Int32(point.y * scaleY)
+            let jx = max(0, min(Int32(w) - 1, rawX))
+            let jy = max(0, min(Int32(h) - 1, rawY))
+            onTouch?(jx, jy, action)
+        }
+    }
+    
+    public override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        handleTouch(touches.first, action: 0)
+    }
+    
+    public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        handleTouch(touches.first, action: 1)
+    }
+    
+    public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        handleTouch(touches.first, action: 2)
+    }
+    
+    public override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        handleTouch(touches.first, action: 2)
     }
 }
 
@@ -140,63 +167,5 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
         encoder.endEncoding()
         commandBuffer.present(drawable)
         commandBuffer.commit()
-    }
-}
-
-class TouchGestureRecognizer: UIGestureRecognizer {
-    var onTouch: (CGPoint, Int32) -> Void
-    private weak var activeTouch: UITouch?
-    
-    init(onTouch: @escaping (CGPoint, Int32) -> Void) {
-        self.onTouch = onTouch
-        super.init(target: nil, action: nil)
-        self.cancelsTouchesInView = false
-        self.delaysTouchesBegan = false
-        self.delaysTouchesEnded = false
-    }
-    
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-        state = .began
-        if activeTouch == nil, let touch = touches.first {
-            activeTouch = touch
-            let point = touch.location(in: view)
-            onTouch(point, 0)
-        }
-    }
-    
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-        state = .changed
-        if let at = activeTouch, touches.contains(at) {
-            let point = at.location(in: view)
-            onTouch(point, 1)
-        } else if activeTouch == nil, let touch = touches.first {
-            activeTouch = touch
-            let point = touch.location(in: view)
-            onTouch(point, 1)
-        }
-    }
-    
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
-        state = .ended
-        if let at = activeTouch, touches.contains(at) {
-            let point = at.location(in: view)
-            activeTouch = nil
-            onTouch(point, 2)
-        } else if activeTouch == nil, let touch = touches.first {
-            let point = touch.location(in: view)
-            onTouch(point, 2)
-        }
-    }
-
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
-        state = .cancelled
-        if let at = activeTouch, touches.contains(at) {
-            let point = at.location(in: view)
-            activeTouch = nil
-            onTouch(point, 2)
-        } else if activeTouch == nil, let touch = touches.first {
-            let point = touch.location(in: view)
-            onTouch(point, 2)
-        }
     }
 }

@@ -160,6 +160,12 @@ void JvmInterpreter::shutdown() {
     }
     m_jarLoader->close();
     {
+        std::lock_guard<std::mutex> elk(m_eventMutex);
+        m_pendingReleases.clear();
+        m_keyPressTimes.clear();
+        while (!m_eventQueue.empty()) m_eventQueue.pop();
+    }
+    {
         std::lock_guard<std::mutex> lk(m_stateMutex);
         m_midletClass = nullptr;
         m_canvasClass = nullptr;
@@ -225,13 +231,15 @@ void JvmInterpreter::postKeyEvent(int32_t keyCode, bool isDown) {
         ev.isDownOrAction = 1;
         m_eventQueue.push(ev);
     } else {
-        uint64_t pressTime = nowMs;
         auto it = m_keyPressTimes.find(keyCode);
-        if (it != m_keyPressTimes.end()) {
-            pressTime = it->second;
+        if (it == m_keyPressTimes.end()) {
+            // Key was never pressed down; drop this orphaned release!
+            return;
         }
+        uint64_t pressTime = it->second;
         // If the key has already been held for >= 50ms, release immediately
         if (nowMs >= pressTime + 50) {
+            m_keyPressTimes.erase(it);
             InputEvent ev;
             ev.type = InputEvent::Key;
             ev.codeOrX = keyCode;
@@ -283,6 +291,7 @@ void JvmInterpreter::processEvents() {
         if (it->releaseTimeMs <= nowMs) {
             int32_t code = it->keyCode;
             it = m_pendingReleases.erase(it);
+            m_keyPressTimes.erase(code);
             if (canvasCls && canvasRef != 0) {
                 jvm.executeMethod(canvasCls, "keyReleased", "(I)V", { JavaValue(canvasRef, true), JavaValue(code) }, m_display.get());
             }
@@ -307,6 +316,9 @@ void JvmInterpreter::processEvents() {
             if (canvasCls && canvasRef != 0) {
                 std::string method = (ev.isDownOrAction != 0) ? "keyPressed" : "keyReleased";
                 jvm.executeMethod(canvasCls, method, "(I)V", { JavaValue(canvasRef, true), JavaValue(ev.codeOrX) }, m_display.get());
+            }
+            if (ev.isDownOrAction == 0) {
+                m_keyPressTimes.erase(ev.codeOrX);
             }
         }
         else if (ev.type == InputEvent::Touch) {
