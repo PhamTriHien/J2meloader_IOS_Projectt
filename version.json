@@ -1,14 +1,14 @@
 {
-  "id": 392390285,
-  "tag_name": "v1.8.5-j2hienloader",
-  "name": "J2HienLoader iOS v1.8.5 - Tối ưu 60 FPS, Xóa bỏ Giật Lag, Đơ & Drop Frame Trên Máy Thật",
-  "body": "## J2HienLoader cho iOS (v1.8.5)\n- Bộ điều phối nhịp khung hình Adaptive 60 FPS Frame Pacer (triệt tiêu tình trạng sleep cứng gây drop fps 30-35).\n- Cơ chế Dirty-Flag Metal Texture Upload: chỉ upload texture khi có frame mới từ LCDUI, tiết kiệm băng thông bus CPU-GPU.\n- Zero-Lock LCDUI Graphics Rendering: giải phóng lock trên từng pixel và lệnh vẽ, chỉ bảo vệ buffer swap.\n- Fast-path 32-bit blit cho drawRegion khi không xoay (transform == 0).\n- Bộ nhớ đệm tra cứu trường O(1) trực tiếp trong Constant Pool (OP_GETFIELD/OP_PUTFIELD không phân bổ chuỗi).\n- Negative class lookup caching chống quét lại toàn bộ JAR file khi class không tồn tại.\n- Khắc phục lỗi khựng giật mạng (Network Stall): giảm timeout select() từ 1.5s xuống 20ms, game chạy mượt mà ngay cả khi kết nối máy chủ.",
-  "published_at": "2026-09-23T00:30:00Z",
+  "id": 392390286,
+  "tag_name": "v1.8.6-j2hienloader",
+  "name": "J2HienLoader iOS v1.8.6 - Sửa Toàn Diện 11 Lỗi Logic & Bug Ẩn Cốt Lõi JVM/J2ME",
+  "body": "## J2HienLoader cho iOS (v1.8.6)\n- Sửa lỗi nhảy sai địa chỉ bytecode nghiêm trọng trong OP_LOOKUPSWITCH (bổ sung break tránh đọc nhầm mã đích làm bảng tra cứu).\n- Căn chỉnh chính xác 2 slot biến cục bộ cho kiểu Category 2 (long/double) theo JVMS §2.6.1 trong executeMethod.\n- Sửa lỗi OP_POP2, OP_DUP2, OP_DUP_X2 xử lý sai kiểu 64-bit (Category 2 computational types).\n- Khắc phục lỗi mất dữ liệu lưu game RMS do phân tách sai Suite Name giữa openRecordStore (J2MEApp) và closeRecordStore/addRecord/setRecord (Default).\n- Hoàn thiện đầy đủ API RecordStore (setRecord, deleteRecord, deleteRecordStore, 3-arg getRecord) và RecordEnumeration (hasNextElement, nextRecordId, nextRecord, numRecords, reset, destroy).\n- Hỗ trợ ByteArrayInputStream(byte[], int offset, int length) và đọc trọn vẹn gói tin mạng trong readFully.\n- Ném ngoại lệ EOFException chuẩn thay vì âm thầm trả về 0 khi đọc hết luồng (readByte, readShort, readInt).\n- Kết nối GameCanvas.getKeyStates() vào bàn phím ảo/vật lý JvmInterpreter trả về bitmask chuẩn MIDP 2.0.\n- Triệt tiêu hoàn toàn TimerTask Zombie Thread chạy ngầm vô tận khi MIDlet gọi cancel().\n- Hỗ trợ so sánh khóa boxed object (Integer, Long, String, v.v.) trong Hashtable và dọn dẹp file descriptor socket khi reset.",
+  "published_at": "2026-09-23T01:10:00Z",
   "assets": [
     {
       "name": "J2HienLoader.ipa",
-      "browser_download_url": "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/download/v1.8.5-j2hienloader/J2HienLoader.ipa",
-      "size": 3025576
+      "browser_download_url": "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/download/v1.8.6-j2hienloader/J2HienLoader.ipa",
+      "size": 3030000
     }
   ]
 }

@@ -73,15 +73,22 @@ void RmsStorage::saveToDisk(const std::string& suiteName, const std::string& sto
     }
 }
 
+std::string RmsStorage::getSuite(const std::string& storeName) {
+    auto it = m_storeSuites.find(storeName);
+    return (it != m_storeSuites.end() && !it->second.empty()) ? it->second : "J2MEApp";
+}
+
 bool RmsStorage::openRecordStore(const std::string& suiteName, const std::string& storeName, bool createIfNecessary) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    std::string suite = suiteName.empty() ? "J2MEApp" : suiteName;
+    m_storeSuites[storeName] = suite;
     if (m_openStores.find(storeName) != m_openStores.end()) return true;
 
-    std::string path = getStoreFilePath(suiteName, storeName);
+    std::string path = getStoreFilePath(suite, storeName);
     bool fileExists = std::ifstream(path).good();
     if (!fileExists && !createIfNecessary) return false;
 
-    loadFromDisk(suiteName, storeName);
+    loadFromDisk(suite, storeName);
     if (m_nextRecordIds.find(storeName) == m_nextRecordIds.end()) {
         m_nextRecordIds[storeName] = 1;
     }
@@ -90,8 +97,10 @@ bool RmsStorage::openRecordStore(const std::string& suiteName, const std::string
 
 void RmsStorage::closeRecordStore(const std::string& storeName) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    saveToDisk("Default", storeName);
+    std::string suite = getSuite(storeName);
+    saveToDisk(suite, storeName);
     m_openStores.erase(storeName);
+    m_storeSuites.erase(storeName);
 }
 
 int RmsStorage::addRecord(const std::string& storeName, const uint8_t* data, size_t size) {
@@ -101,7 +110,8 @@ int RmsStorage::addRecord(const std::string& storeName, const uint8_t* data, siz
 
     int recordId = m_nextRecordIds[storeName]++;
     it->second[recordId] = std::vector<uint8_t>(data, data + size);
-    saveToDisk("Default", storeName);
+    std::string suite = getSuite(storeName);
+    saveToDisk(suite, storeName);
     return recordId;
 }
 
@@ -123,7 +133,8 @@ bool RmsStorage::setRecord(const std::string& storeName, int recordId, const uin
     if (it == m_openStores.end()) return false;
 
     it->second[recordId] = std::vector<uint8_t>(data, data + size);
-    saveToDisk("Default", storeName);
+    std::string suite = getSuite(storeName);
+    saveToDisk(suite, storeName);
     return true;
 }
 
@@ -133,7 +144,10 @@ bool RmsStorage::deleteRecord(const std::string& storeName, int recordId) {
     if (it == m_openStores.end()) return false;
 
     bool erased = it->second.erase(recordId) > 0;
-    if (erased) saveToDisk("Default", storeName);
+    if (erased) {
+        std::string suite = getSuite(storeName);
+        saveToDisk(suite, storeName);
+    }
     return erased;
 }
 
@@ -142,4 +156,39 @@ int RmsStorage::getNumRecords(const std::string& storeName) {
     auto it = m_openStores.find(storeName);
     if (it == m_openStores.end()) return 0;
     return (int)it->second.size();
+}
+
+std::vector<int> RmsStorage::getRecordIds(const std::string& storeName) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    std::vector<int> ids;
+    auto it = m_openStores.find(storeName);
+    if (it != m_openStores.end()) {
+        ids.reserve(it->second.size());
+        for (const auto& pair : it->second) {
+            ids.push_back(pair.first);
+        }
+    }
+    return ids;
+}
+
+bool RmsStorage::deleteRecordStore(const std::string& suiteName, const std::string& storeName) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    std::string suite = suiteName.empty() ? getSuite(storeName) : suiteName;
+    m_openStores.erase(storeName);
+    m_storeSuites.erase(storeName);
+    m_nextRecordIds.erase(storeName);
+    std::string path = getStoreFilePath(suite, storeName);
+    return (remove(path.c_str()) == 0);
+}
+
+std::vector<std::string> RmsStorage::listRecordStores(const std::string& suiteName) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    std::vector<std::string> stores;
+    std::string targetSuite = suiteName.empty() ? "J2MEApp" : suiteName;
+    for (const auto& pair : m_storeSuites) {
+        if (pair.second == targetSuite || targetSuite.empty()) {
+            stores.push_back(pair.first);
+        }
+    }
+    return stores;
 }

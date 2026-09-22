@@ -49,21 +49,24 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
-          tag_name: v1.8.5-j2hienloader
-          name: "J2HienLoader iOS v1.8.5 - Tối ưu 60 FPS, Xóa bỏ Giật Lag, Đơ & Drop Frame Trên Máy Thật"
+          tag_name: v1.8.6-j2hienloader
+          name: "J2HienLoader iOS v1.8.6 - Sửa Toàn Diện 11 Lỗi Logic & Bug Ẩn Cốt Lõi JVM/J2ME"
           body: |
-            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.5)
+            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.6)
             Ứng dụng giả lập J2ME chuẩn cho hệ điều hành iOS/iPadOS, nạp và chạy file .jar trực tiếp.
             
-            ### Các cải tiến & tối ưu hiệu năng đột phá trong v1.8.5:
-            - **Adaptive 60 FPS Frame Pacer**: Bộ điều phối nhịp thời gian động trừ đi thời gian vẽ thực tế thay vì sleep cứng 16ms, đưa tốc độ khung hình đạt 60 FPS mượt mà tuyệt đối.
-            - **Cơ chế Dirty-Flag Metal Texture Upload**: Chỉ cập nhật và tải texture lên GPU khi LCDUI có frame mới (currentTick != lastPaintTick), giảm tải 100% việc copy bộ nhớ thừa thãi giữa CPU và GPU.
-            - **Zero-Lock LCDUI Rendering**: Loại bỏ toàn bộ mutex lock trên từng pixel / lệnh vẽ nguyên thuỷ (drawLine, fillRect, drawRegion, drawString...), chỉ khóa atomic khi hoán đổi khung hình (publishFrame).
-            - **Tối ưu Fast-Path drawRegion 32-bit**: Trực tiếp ghi thanh ghi 32-bit bộ nhớ ARGB cho các ảnh không xoay (transform == 0), loại bỏ switch-case và phép chia pixel-by-pixel.
-            - **O(1) Constant Pool Field Resolution**: Cache trực tiếp tên trường và offset trong Constant Pool cho `OP_GETFIELD`/`OP_PUTFIELD`, loại bỏ phân bổ bộ nhớ chuỗi và substr() trên mỗi chu kỳ CPU.
-            - **Negative Class Lookup Caching**: Lưu trữ các lớp hệ thống không tìm thấy vào `m_failedClasses` hash set, chấm dứt việc quét lại toàn bộ file ZIP JAR ở mỗi lần load class.
-            - **Triệt tiêu khựng giật Socket (Network Stall)**: Rút ngắn thời gian timeout `select()` từ 1.5 giây xuống còn 20ms, loại bỏ hoàn toàn hiện tượng khựng đơ khi nhận gói tin mạng từ máy chủ.
-            - **Bật tối ưu hóa biên dịch mã máy `-Os`**: Thêm `GCC_OPTIMIZATION_LEVEL = s` trong Xcode release build config.
+            ### Các sửa đổi toàn diện & triệt để trong v1.8.6:
+            - **Sửa lỗi OP_LOOKUPSWITCH**: Bổ sung `break;` ngăn việc đọc nhầm mã đích của lệnh switch làm bảng tra cứu offset.
+            - **Chuẩn hóa 64-bit Parameter Mapping (JVMS §2.6.1)**: Tăng 2 slot biến cục bộ cho kiểu `long` và `double`, đảm bảo các tham số phía sau không bị lệch vị trí.
+            - **Sửa lỗi OP_POP2, OP_DUP2, OP_DUP_X2**: Xử lý đúng kiểu Category 2 (long/double) thay vì pop hoặc duplicate sai số lượng phần tử.
+            - **Đồng bộ Suite Name trong RMS**: Khắc phục lỗi lưu file RMS vào `Default_` trong khi mở từ `J2MEApp_`, đảm bảo dữ liệu lưu game không bị biến mất khi khởi động lại.
+            - **Hoàn thiện đầy đủ API RecordStore & RecordEnumeration**: Hỗ trợ `setRecord`, `deleteRecord`, `deleteRecordStore`, `getRecord(int, byte[], int)` và duyệt qua danh sách bản ghi đã lưu.
+            - **Nâng cấp ByteArrayInputStream & readFully**: Hỗ trợ constructor 3 tham số `(byte[], offset, len)` và đọc trọn vẹn gói tin mạng thay vì đọc dở dang.
+            - **Ném ngoại lệ EOFException chuẩn**: `readByte`, `readShort`, `readInt` ném `EOFException` khi hết luồng thay vì trả về 0 gây lỗi logic ngầm.
+            - **Kết nối GameCanvas.getKeyStates()**: Trả về bitmask phím thực tế từ `JvmInterpreter` giúp các game hành động nhận diện phím bấm chính xác.
+            - **Triệt tiêu TimerTask Zombie Threads**: Hủy bỏ luồng chạy ngầm vô tận khi MIDlet gọi `Timer.cancel()` hoặc `TimerTask.cancel()`.
+            - **Hashtable Boxed Object Matching**: Hỗ trợ so sánh khóa `Integer`, `Long`, `String` theo giá trị thay vì chỉ so sánh con trỏ/reference.
+            - **Dọn dẹp Socket FD**: Tự động đóng tất cả các socket mở trong `FullApis::reset()` tránh rò rỉ tài nguyên hệ thống.
             
             - **Cài lên iPhone/iPad thật**: Tải file `J2HienLoader.ipa`.
             - **Test trên Web (Appetize.io)**: Tải file `J2HienLoader-Simulator-iPad.zip`.

@@ -1,4 +1,4 @@
-﻿#ifndef RMS_STORAGE_H
+#ifndef RMS_STORAGE_H
 #define RMS_STORAGE_H
 
 #include <string>
@@ -22,6 +22,7 @@ public:
     bool setRecord(const std::string& storeName, int recordId, const uint8_t* data, size_t size);
     bool deleteRecord(const std::string& storeName, int recordId);
     int getNumRecords(const std::string& storeName);
+    std::vector<int> getRecordIds(const std::string& storeName);
 
     std::vector<std::string> listRecordStores(const std::string& suiteName);
 
@@ -33,7 +34,9 @@ private:
     std::mutex m_mutex;
     std::map<std::string, std::map<int, std::vector<uint8_t>>> m_openStores;
     std::map<std::string, int> m_nextRecordIds;
+    std::map<std::string, std::string> m_storeSuites;
 
+    std::string getSuite(const std::string& storeName);
     std::string getStoreFilePath(const std::string& suiteName, const std::string& storeName);
     void loadFromDisk(const std::string& suiteName, const std::string& storeName);
     void saveToDisk(const std::string& suiteName, const std::string& storeName);

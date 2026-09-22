@@ -238,6 +238,36 @@ static std::map<uint32_t, std::vector<uint8_t>> g_baos; // ByteArrayOutputStream
 static std::map<uint32_t, std::vector<std::pair<uint32_t,uint32_t>>> g_hashtable; // keyRef->valRef
 struct EnumData { std::vector<uint32_t> items; size_t idx=0; };
 static std::map<uint32_t, EnumData> g_enums;
+
+static std::map<uint32_t, std::shared_ptr<std::atomic<bool>>> g_taskCancelFlags;
+static std::map<uint32_t, std::vector<std::shared_ptr<std::atomic<bool>>>> g_timerTaskFlags;
+static std::mutex g_timerMutex;
+
+struct RecordEnumState {
+    std::string storeName;
+    std::vector<int> recordIds;
+    size_t cursor = 0;
+};
+static std::map<uint32_t, RecordEnumState> g_recordEnums;
+static std::mutex g_enumMutex;
+
+static bool keysEqual(uint32_t k1, uint32_t k2) {
+    if (k1 == k2) return true;
+    if (k1 == 0 || k2 == 0) return false;
+    JavaObject* a = ENG().getObject(k1);
+    JavaObject* b = ENG().getObject(k2);
+    if (!a || !b) return false;
+    if (a->className != b->className) return false;
+    if (a->className == "java/lang/String") return a->stringVal == b->stringVal;
+    if (a->fields.count("value") && b->fields.count("value")) {
+        const auto& va = a->fields["value"];
+        const auto& vb = b->fields["value"];
+        if (va.type == JavaValue::LONG || vb.type == JavaValue::LONG) return va.asLong() == vb.asLong();
+        return va.asInt() == vb.asInt();
+    }
+    if (!a->stringVal.empty() && a->stringVal == b->stringVal) return true;
+    return false;
+}
 struct PlayerData { std::vector<uint8_t> data; std::string ctype; std::string locator; int loop=1; bool playing=false; };
 static std::map<uint32_t, PlayerData> g_players;
 struct ConnData { std::string url; std::string kind; std::string method="GET"; std::vector<uint8_t> body; std::vector<uint8_t> postBody; int code=0; std::string mime; bool fetched=false; };
@@ -334,8 +364,24 @@ static std::string getServerListText() {
 
 void FullApis::reset(){
     g_screens.clear(); g_sprites.clear(); g_tiled.clear(); g_layerMgr.clear();
-    g_m3gType.clear(); g_m3gWorlds.clear(); g_microFig.clear(); g_microTex.clear(); g_micro3dGfx.clear(); g_m3dTarget.clear(); g_sockFd.clear();
+    g_m3gType.clear(); g_m3gWorlds.clear(); g_microFig.clear(); g_microTex.clear(); g_micro3dGfx.clear(); g_m3dTarget.clear();
+    for (const auto& pair : g_sockFd) {
+        if (pair.second >= 0) tcpClose(pair.second);
+    }
+    g_sockFd.clear();
     g_baos.clear(); g_hashtable.clear(); g_enums.clear();
+    {
+        std::lock_guard<std::mutex> lk(g_timerMutex);
+        for (auto& pair : g_taskCancelFlags) {
+            if (pair.second) pair.second->store(true);
+        }
+        g_taskCancelFlags.clear();
+        g_timerTaskFlags.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_enumMutex);
+        g_recordEnums.clear();
+    }
     g_players.clear(); g_conns.clear(); g_currentScreen=0;
     if(hasNative((const void*)native_background_keepalive_stop)) native_background_keepalive_stop();
     // Pre-seed static constants used via GETSTATIC fallback (also patched in jvm_bytecode)
@@ -713,20 +759,44 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="put"&&args.size()>=3){
             uint32_t k=args[1].asRef(), v=args[2].asRef();
             auto &vec=g_hashtable[self];
-            for(auto &p:vec){ bool eq=false; if(p.first==k) eq=true; else { JavaObject*a=ENG().getObject(p.first),*b=ENG().getObject(k); if(a&&b&&!a->stringVal.empty()&&a->stringVal==b->stringVal) eq=true; } if(eq){ uint32_t old=p.second; p.second=v; outResult=JavaValue(old,true); return true; } }
+            for(auto &p:vec){
+                if(keysEqual(p.first, k)){
+                    uint32_t old=p.second; p.second=v; outResult=JavaValue(old,true); return true;
+                }
+            }
             vec.emplace_back(k,v); outResult=JavaValue(0,true); return true;
         }
         if(methodName=="get"&&args.size()>=2){
             uint32_t k=args[1].asRef(); auto it=g_hashtable.find(self);
-            if(it!=g_hashtable.end()) for(auto &p:it->second){ if(p.first==k){outResult=JavaValue(p.second,true);return true;} JavaObject*a=ENG().getObject(p.first),*b=ENG().getObject(k); if(a&&b&&!a->stringVal.empty()&&a->stringVal==b->stringVal){outResult=JavaValue(p.second,true);return true;} }
+            if(it!=g_hashtable.end()){
+                for(auto &p:it->second){
+                    if(keysEqual(p.first, k)){
+                        outResult=JavaValue(p.second,true); return true;
+                    }
+                }
+            }
             outResult=JavaValue(0,true); return true;
         }
         if(methodName=="remove"&&args.size()>=2){
             uint32_t k=args[1].asRef(); auto it=g_hashtable.find(self);
-            if(it!=g_hashtable.end()) for(size_t i=0;i<it->second.size();i++) if(it->second[i].first==k){ uint32_t old=it->second[i].second; it->second.erase(it->second.begin()+i); outResult=JavaValue(old,true); return true; }
+            if(it!=g_hashtable.end()){
+                for(size_t i=0;i<it->second.size();i++){
+                    if(keysEqual(it->second[i].first, k)){
+                        uint32_t old=it->second[i].second; it->second.erase(it->second.begin()+i); outResult=JavaValue(old,true); return true;
+                    }
+                }
+            }
             outResult=JavaValue(0,true); return true;
         }
-        if(methodName=="containsKey"&&args.size()>=2){ uint32_t k=args[1].asRef(); auto it=g_hashtable.find(self); bool f=false; if(it!=g_hashtable.end()) for(auto&p:it->second) if(p.first==k) f=true; outResult=JavaValue(f?1:0); return true; }
+        if(methodName=="containsKey"&&args.size()>=2){
+            uint32_t k=args[1].asRef(); auto it=g_hashtable.find(self); bool f=false;
+            if(it!=g_hashtable.end()){
+                for(auto&p:it->second){
+                    if(keysEqual(p.first, k)){ f=true; break; }
+                }
+            }
+            outResult=JavaValue(f?1:0); return true;
+        }
         if(methodName=="contains"&&args.size()>=2){ uint32_t v=args[1].asRef(); auto it=g_hashtable.find(self); bool f=false; if(it!=g_hashtable.end()) for(auto&p:it->second) if(p.second==v) f=true; outResult=JavaValue(f?1:0); return true; }
         if(methodName=="keys"||methodName=="elements"){
             auto it=g_hashtable.find(self); uint32_t er=ENG().allocObject("java/util/Enumeration"); EnumData e;
@@ -775,20 +845,39 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     if(className=="java/util/Timer"||className=="java/util/TimerTask"){
         if(methodName=="<init>") return true;
         if((methodName=="schedule"||methodName=="scheduleAtFixedRate")&&args.size()>=2){
-            uint32_t task=args[1].asRef();
-            JavaObject*to=ENG().getObject(task);
+            uint32_t timerRef = args[0].asRef();
+            uint32_t task = args[1].asRef();
+            JavaObject* to = ENG().getObject(task);
             int64_t delayMs = args.size() >= 3 ? args[2].asLong() : 0;
             int64_t periodMs = args.size() >= 4 ? args[3].asLong() : 0;
-            if(to&&!to->className.empty()){
-                auto cls=ENG().findOrLoadClass(to->className, ENG().getJarLoader());
+            if(to && !to->className.empty()){
+                auto cls = ENG().findOrLoadClass(to->className, ENG().getJarLoader());
                 if(cls) {
                     if (periodMs > 0) {
-                        JvmThread::spawnDetached([task, cls, delayMs, periodMs]() {
-                            if (delayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(std::min<int64_t>(delayMs, 5000)));
+                        auto cancelFlag = std::make_shared<std::atomic<bool>>(false);
+                        {
+                            std::lock_guard<std::mutex> lk(g_timerMutex);
+                            g_taskCancelFlags[task] = cancelFlag;
+                            g_timerTaskFlags[timerRef].push_back(cancelFlag);
+                        }
+                        JvmThread::spawnDetached([task, cls, delayMs, periodMs, cancelFlag]() {
                             auto& jvm = JvmBytecodeEngine::getInstance();
-                            while (!jvm.isCancelled()) {
+                            // Non-stalling cancellable initial delay
+                            int64_t d = std::min<int64_t>(std::max<int64_t>(0, delayMs), 5000);
+                            while (d > 0 && !jvm.isCancelled() && !cancelFlag->load()) {
+                                int64_t step = std::min<int64_t>(50, d);
+                                std::this_thread::sleep_for(std::chrono::milliseconds(step));
+                                d -= step;
+                            }
+                            while (!jvm.isCancelled() && !cancelFlag->load()) {
                                 jvm.executeMethod(cls, "run", "()V", { JavaValue(task, true) }, nullptr);
-                                std::this_thread::sleep_for(std::chrono::milliseconds(std::max<int64_t>(periodMs, 10)));
+                                // Non-stalling cancellable periodic sleep
+                                int64_t p = std::max<int64_t>(periodMs, 10);
+                                while (p > 0 && !jvm.isCancelled() && !cancelFlag->load()) {
+                                    int64_t step = std::min<int64_t>(50, p);
+                                    std::this_thread::sleep_for(std::chrono::milliseconds(step));
+                                    p -= step;
+                                }
                             }
                         });
                     } else {
@@ -798,7 +887,24 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             }
             return true;
         }
-        if(methodName=="cancel") return true;
+        if(methodName=="cancel"){
+            uint32_t target = args.empty() ? 0 : args[0].asRef();
+            if (target != 0) {
+                std::lock_guard<std::mutex> lk(g_timerMutex);
+                auto itTask = g_taskCancelFlags.find(target);
+                if (itTask != g_taskCancelFlags.end() && itTask->second) {
+                    itTask->second->store(true);
+                }
+                auto itTimer = g_timerTaskFlags.find(target);
+                if (itTimer != g_timerTaskFlags.end()) {
+                    for (auto& flag : itTimer->second) {
+                        if (flag) flag->store(true);
+                    }
+                }
+            }
+            outResult = JavaValue(1);
+            return true;
+        }
     }
     // ============ java/io extended ============
     if(className=="java/io/ByteArrayOutputStream"||className=="java/io/OutputStream"){
@@ -1031,7 +1137,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             // Continuous 60 FPS refresh loop handles frame presentation without recursive stack exhaustion
             return true;
         }
-        if(methodName=="getKeyStates"){ outResult=JavaValue(0); return true; }
+        if(methodName=="getKeyStates"){ outResult=JavaValue(JvmInterpreter::getInstance().getKeyStates()); return true; }
         if(methodName=="getWidth"){ outResult=JavaValue(display?display->getWidth():240); return true; }
         if(methodName=="getHeight"){ outResult=JavaValue(display?display->getHeight():320); return true; }
     }
@@ -2386,20 +2492,135 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     }
     // ============ RMS extended ============
     if(className=="javax/microedition/rms/RecordStore"){
-        if(methodName=="listRecordStores"){ uint32_t arr=ENG().allocArray(0,0); outResult=JavaValue(arr,true); return true; }
-        if(methodName=="deleteRecordStore"||methodName=="closeRecordStore") return true;
+        if(methodName=="listRecordStores"){
+            auto list = RmsStorage::getInstance().listRecordStores("J2MEApp");
+            uint32_t arr = ENG().allocArray(0, (int)list.size());
+            JavaArray* ja = ENG().getArray(arr);
+            if (ja) {
+                for (size_t i = 0; i < list.size(); ++i) {
+                    ja->refData[i] = ENG().createString(list[i]);
+                }
+            }
+            outResult = JavaValue(arr, true);
+            return true;
+        }
+        if(methodName=="deleteRecordStore"&&args.size()>=1){
+            std::string name = (args[0].asRef() != 0) ? ENG().getString(args[0].asRef()) : "";
+            if(!name.empty()) RmsStorage::getInstance().deleteRecordStore("J2MEApp", name);
+            return true;
+        }
+        if(methodName=="closeRecordStore"&&args.size()>=1){
+            JavaObject* obj = ENG().getObject(args[0].asRef());
+            if (obj && !obj->stringVal.empty()) RmsStorage::getInstance().closeRecordStore(obj->stringVal);
+            return true;
+        }
         if(methodName=="getSize"||methodName=="getSizeAvailable"){ outResult=JavaValue(1024*1024); return true; }
         if(methodName=="getVersion"||methodName=="getLastModified"){ outResult=JavaValue(1); return true; }
-        if(methodName=="setRecord"||methodName=="deleteRecord"||methodName=="addRecordListener"||methodName=="removeRecordListener") return true;
-        if(methodName=="enumerateRecords"||methodName=="getRecord"){ // getRecord(int,byte[],int) variant
-            if(methodName=="enumerateRecords"){ uint32_t r=ENG().allocObject("javax/microedition/rms/RecordEnumeration"); outResult=JavaValue(r,true); return true; }
+        if(methodName=="setRecord"&&args.size()>=5){
+            JavaObject* obj = ENG().getObject(args[0].asRef());
+            int recId = args[1].asInt();
+            JavaArray* arr = ENG().getArray(args[2].asRef());
+            int off = args[3].asInt(), len = args[4].asInt();
+            if (obj && arr && off >= 0 && off + len <= (int)arr->byteData.size()) {
+                RmsStorage::getInstance().setRecord(obj->stringVal, recId, arr->byteData.data() + off, len);
+            }
+            return true;
+        }
+        if(methodName=="deleteRecord"&&args.size()>=2){
+            JavaObject* obj = ENG().getObject(args[0].asRef());
+            int recId = args[1].asInt();
+            if (obj) RmsStorage::getInstance().deleteRecord(obj->stringVal, recId);
+            return true;
+        }
+        if(methodName=="addRecordListener"||methodName=="removeRecordListener") return true;
+        if(methodName=="enumerateRecords"&&args.size()>=1){
+            JavaObject* rsObj = ENG().getObject(args[0].asRef());
+            std::string storeName = rsObj ? rsObj->stringVal : "";
+            uint32_t r = ENG().allocObject("javax/microedition/rms/RecordEnumeration");
+            RecordEnumState state;
+            state.storeName = storeName;
+            state.recordIds = RmsStorage::getInstance().getRecordIds(storeName);
+            state.cursor = 0;
+            {
+                std::lock_guard<std::mutex> lk(g_enumMutex);
+                g_recordEnums[r] = std::move(state);
+            }
+            outResult = JavaValue(r, true);
+            return true;
+        }
+        if(methodName=="getRecord"){
+            JavaObject* obj = ENG().getObject(args[0].asRef());
+            int recId = args.size() >= 2 ? args[1].asInt() : 0;
+            std::vector<uint8_t> data;
+            if (obj && RmsStorage::getInstance().getRecord(obj->stringVal, recId, data)) {
+                if (args.size() >= 4) {
+                    JavaArray* dst = ENG().getArray(args[2].asRef());
+                    int off = args[3].asInt();
+                    if (dst && off >= 0) {
+                        int copyLen = std::min((int)data.size(), (int)dst->byteData.size() - off);
+                        for (int i = 0; i < copyLen; ++i) dst->byteData[off + i] = data[i];
+                        outResult = JavaValue((int32_t)data.size());
+                    } else {
+                        outResult = JavaValue(0);
+                    }
+                } else {
+                    uint32_t arrRef = ENG().allocArray(8, (int)data.size());
+                    JavaArray* arr = ENG().getArray(arrRef);
+                    if (arr) arr->byteData = std::move(data);
+                    outResult = JavaValue(arrRef, true);
+                }
+            } else {
+                outResult = (args.size() >= 4) ? JavaValue(0) : JavaValue(0, true);
+            }
+            return true;
         }
         return true;
     }
     if(className.find("RecordEnumeration")!=std::string::npos){
-        if(methodName=="hasNextElement"||methodName=="hasPreviousElement"){ outResult=JavaValue(0); return true; }
-        if(methodName=="nextRecordId"||methodName=="numRecords"){ outResult=JavaValue(0); return true; }
-        if(methodName=="destroy"||methodName=="reset"||methodName=="keepUpdated") return true;
+        uint32_t self = args.empty() ? 0 : args[0].asRef();
+        std::lock_guard<std::mutex> lk(g_enumMutex);
+        auto it = g_recordEnums.find(self);
+        if(methodName=="hasNextElement"){
+            bool has = (it != g_recordEnums.end() && it->second.cursor < it->second.recordIds.size());
+            outResult = JavaValue(has ? 1 : 0);
+            return true;
+        }
+        if(methodName=="hasPreviousElement"){
+            bool has = (it != g_recordEnums.end() && it->second.cursor > 0);
+            outResult = JavaValue(has ? 1 : 0);
+            return true;
+        }
+        if(methodName=="nextRecordId"){
+            int id = (it != g_recordEnums.end() && it->second.cursor < it->second.recordIds.size()) ? it->second.recordIds[it->second.cursor++] : 0;
+            outResult = JavaValue(id);
+            return true;
+        }
+        if(methodName=="nextRecord"){
+            int id = (it != g_recordEnums.end() && it->second.cursor < it->second.recordIds.size()) ? it->second.recordIds[it->second.cursor++] : 0;
+            std::vector<uint8_t> data;
+            if (it != g_recordEnums.end() && id > 0 && RmsStorage::getInstance().getRecord(it->second.storeName, id, data)) {
+                uint32_t aRef = ENG().allocArray(8, (int)data.size());
+                JavaArray* a = ENG().getArray(aRef);
+                if (a) a->byteData = std::move(data);
+                outResult = JavaValue(aRef, true);
+            } else {
+                outResult = JavaValue(0, true);
+            }
+            return true;
+        }
+        if(methodName=="numRecords"){
+            outResult = JavaValue(it != g_recordEnums.end() ? (int32_t)it->second.recordIds.size() : 0);
+            return true;
+        }
+        if(methodName=="reset"){
+            if (it != g_recordEnums.end()) it->second.cursor = 0;
+            return true;
+        }
+        if(methodName=="destroy"){
+            g_recordEnums.erase(self);
+            return true;
+        }
+        if(methodName=="keepUpdated") return true;
         return true;
     }
     // ============ Bluetooth thật (CoreBluetooth) ============

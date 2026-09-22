@@ -56,6 +56,7 @@ public:
 
     void registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> cls);
     void startRunnableThread();
+    int getKeyStates();
 
     void triggerTone(int freq, int durationMs, int volume) {
         if (m_soundEnabled && m_playToneCallback && freq > 0 && durationMs > 0) {

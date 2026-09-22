@@ -253,6 +253,24 @@ void JvmInterpreter::postKeyEvent(int32_t keyCode, bool isDown) {
     }
 }
 
+int JvmInterpreter::getKeyStates() {
+    std::lock_guard<std::mutex> lock(m_eventMutex);
+    int mask = 0;
+    for (const auto& pair : m_keyPressTimes) {
+        int code = pair.first;
+        if (code == -1 || code == '2') mask |= (1 << 1); // UP_PRESSED
+        else if (code == -3 || code == '4') mask |= (1 << 2); // LEFT_PRESSED
+        else if (code == -4 || code == '6') mask |= (1 << 5); // RIGHT_PRESSED
+        else if (code == -2 || code == '8') mask |= (1 << 6); // DOWN_PRESSED
+        else if (code == -5 || code == '5') mask |= (1 << 8); // FIRE_PRESSED
+        else if (code == -6 || code == '7') mask |= (1 << 9); // GAME_A_PRESSED
+        else if (code == -7 || code == '9') mask |= (1 << 10); // GAME_B_PRESSED
+        else if (code == '*' || code == '1') mask |= (1 << 11); // GAME_C_PRESSED
+        else if (code == '#' || code == '3') mask |= (1 << 12); // GAME_D_PRESSED
+    }
+    return mask;
+}
+
 void JvmInterpreter::postTouchEvent(int32_t x, int32_t y, int32_t action) {
     std::lock_guard<std::mutex> lock(m_eventMutex);
     // Touch Drag Coalescing:

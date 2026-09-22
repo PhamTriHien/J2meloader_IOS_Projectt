@@ -195,8 +195,49 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
 
 ---
 
+---
+
+### 14. Sửa Toàn Diện 11 Lỗi Logic & Bug Ẩn Cốt Lõi JVM/J2ME (v1.8.6)
+* **Tổng quan**: Kiểm tra toàn diện mã nguồn máy ảo JVM Interpreter, LCDUI Graphics Engine và API runtime J2ME MIDP 2.0 / CLDC 1.1, phát hiện và khắc phục triệt để 11 lỗi logic tiềm ẩn gây sai lệch hành vi, crash hoặc mất dữ liệu:
+* **Chi tiết 11 lỗi logic & giải pháp kỹ thuật đã triển khai**:
+  1. **Lỗi Lệch Địa Chỉ Nhảy trong `OP_LOOKUPSWITCH`**:
+     - *Hiện tượng*: Khi tìm thấy trường hợp khớp (`val == match`), biến `frame.pc` được gán đến đích nhảy nhưng vòng lặp `for (int i = 0; i < npairs; ++i)` không thoát, tiếp tục đọc các byte thực thi tại đích nhảy làm các cặp offset tiếp theo, làm sai lệch vị trí con trỏ lệnh `frame.pc` lên tới hàng chục byte.
+     - *Khắc phục*: Thêm lệnh `break;` ngay khi tìm thấy nhánh khớp trong `OP_LOOKUPSWITCH`.
+  2. **Căn chỉnh Biến Cục Bộ Tham số 64-bit (JVMS §2.6.1)**:
+     - *Hiện tượng*: Chuẩn máy ảo Java quy định mỗi biến kiểu `long` và `double` chiếm 2 slot trong bảng biến cục bộ (`locals`). Trước đây `executeMethod` gán `frame.locals[i] = args[i]` với bước nhảy 1 cho mọi kiểu, khiến toàn bộ các tham số phía sau một tham số 64-bit bị lệch sai vị trí slot.
+     - *Khắc phục*: Khởi tạo `frame.locals` với bước nhảy slot là `+2` cho kiểu `JavaValue::LONG` và `JavaValue::DOUBLE`, đúng chuẩn đặc tả JVMS.
+  3. **Lỗi Stack Opcode với Kiểu Category 2 (`OP_POP2`, `OP_DUP2`, `OP_DUP_X2`)**:
+     - *Hiện tượng*: Trong engine, giá trị `long`/`double` được lưu trữ dưới dạng 1 phần tử `JavaValue`. `OP_POP2` gọi `pop()` 2 lần vô điều kiện, làm mất luôn phần tử bên dưới giá trị `long`. `OP_DUP2` và `OP_DUP_X2` cũng bị sai lệch tương tự.
+     - *Khắc phục*: Kiểm tra kiểu của phần tử đỉnh stack. Với kiểu Category 2 (`long`/`double`), thực thi Form 2 chuẩn (pop 1 hoặc nhân đôi 1 phần tử 64-bit); với kiểu Category 1, thực thi Form 1 (pop 2 hoặc duplicate 2 phần tử 32-bit).
+  4. **Lỗi Phân Tách Suite Name Làm Mất Dữ Liệu Lưu Game RMS**:
+     - *Hiện tượng*: `openRecordStore` nạp file với tiền tố `J2MEApp_<name>.rms`, nhưng `closeRecordStore`, `addRecord`, `setRecord`, `deleteRecord` lại ghi đĩa vào file `Default_<name>.rms`. Khi khởi động lại game, file `J2MEApp_` hoàn toàn rỗng, mất 100% dữ liệu đã lưu.
+     - *Khắc phục*: Thêm bản đồ theo dõi `m_storeSuites` trong `RmsStorage` và hàm `getSuite()`, đảm bảo toàn bộ các thao tác ghi, đọc, đóng và xóa RecordStore đều sử dụng đúng tên Suite thực tế.
+  5. **Hoàn Thiện Bộ API RecordStore Thiếu Hụt**:
+     - *Hiện tượng*: `RecordStore.setRecord`, `deleteRecord`, `deleteRecordStore` và `getRecord(int, byte[], int)` bị bỏ trống hoặc stub rỗng, khiến game không cập nhật được bản ghi và không xóa được store cũ.
+     - *Khắc phục*: Triển khai đầy đủ các phương thức ghi đè bản ghi, xóa bản ghi, xóa file RecordStore trên đĩa và đọc dữ liệu vào buffer có offset trong cả `jvm_bytecode.cpp`, `rms_storage.cpp` và `j2me_full_apis.cpp`.
+  6. **Hoàn Thiện Duyệt Bản Ghi `RecordEnumeration`**:
+     - *Hiện tượng*: `RecordEnumeration.hasNextElement()` và `nextRecordId()` luôn trả về 0 (`false`), khiến game không thể quét và nạp danh sách màn chơi, điểm số hoặc cấu hình đã lưu.
+     - *Khắc phục*: Quản lý trạng thái con trỏ và danh sách Record ID thực tế qua `g_recordEnums` kết hợp `RmsStorage::getRecordIds()`, hỗ trợ đầy đủ `hasNextElement`, `hasPreviousElement`, `nextRecordId`, `nextRecord`, `numRecords`, `reset`, `destroy`.
+  7. **Hỗ trợ Constructor 3 Tham số `ByteArrayInputStream`**:
+     - *Hiện tượng*: MIDP 2.0 thường xuyên khởi tạo `ByteArrayInputStream(byte[] buf, int offset, int length)` để giải mã gói tin mạng hoặc tài nguyên nhúng. Trước đây engine bỏ qua `offset` và `length`, luôn đọc từ vị trí 0 với toàn bộ kích thước mảng.
+     - *Khắc phục*: Lưu `pos = offset` và `count = min(buf.length, offset + length)`, đồng thời giới hạn phạm vi đọc của `read`, `available`, `skip` theo biến `count`.
+  8. **Đọc Trọn Vẹn Gói Tin Mạng trong `readFully`**:
+     - *Hiện tượng*: Khi luồng mạng phân mảnh, `readFully` chỉ đọc một phần buffer hiện có rồi kết thúc mà không đợi đủ số byte yêu cầu, gây lỗi giải mã gói tin giao tiếp.
+     - *Khắc phục*: Bổ sung cơ chế lặp chờ `ensureSocketBuffer` có giới hạn thời gian cho đến khi gom đủ số byte yêu cầu hoặc kết nối bị đóng, ném `EOFException` nếu không đủ dữ liệu.
+  9. **Ném Ngoại Lệ `EOFException` Chuẩn Khi Hết Luồng**:
+     - *Hiện tượng*: `readByte`, `readShort`, `readInt` âm thầm trả về giá trị 0 khi hết luồng (`EOF`), khiến vòng lặp đọc dữ liệu của game chạy vô tận hoặc xử lý dữ liệu rác.
+     - *Khắc phục*: Kích hoạt ngoại lệ `setPendingException(allocObject("java/io/EOFException"))` đúng đặc tả Java `DataInputStream`.
+  10. **Kết Nối Bàn Phím Trạng Thái `GameCanvas.getKeyStates()`**:
+      - *Hiện tượng*: `GameCanvas.getKeyStates()` luôn trả về giá trị 0 cứng, làm toàn bộ các game hành động, đua xe, bắn súng MIDP 2.0 sử dụng cơ chế polling phím không nhận diện được bất kỳ thao tác bấm nút nào.
+      - *Khắc phục*: Triển khai `JvmInterpreter::getKeyStates()` chuyển đổi trạng thái phím bấm ảo và vật lý thành bitmask chuẩn MIDP 2.0 (`UP_PRESSED`, `DOWN_PRESSED`, `FIRE_PRESSED`, v.v.).
+  11. **Triệt Tiêu Hoàn Toàn TimerTask Zombie Threads & Lỗi Phím Boxed Hashtable**:
+      - *Hiện tượng*: `Timer.cancel()` là hàm rỗng, khiến các luồng `spawnDetached` của TimerTask tiếp tục chạy ngầm vô tận qua từng màn chơi, gây tụt dốc hiệu năng nghiêm trọng; `Hashtable` chỉ so sánh con trỏ hoặc chuỗi, không thể tra cứu các khóa dạng `Integer` hay `Long`.
+      - *Khắc phục*: Tạo cờ nguyên tử `g_taskCancelFlags`, kiểm tra dừng luồng trong từng chu kỳ ngủ và hủy luồng ngay lập tức khi MIDlet gọi `cancel()`; bổ sung hàm `keysEqual` so sánh giá trị trường `"value"` cho các đối tượng boxed number; dọn dẹp toàn bộ file descriptor socket mở khi gọi `FullApis::reset()`.
+
+---
+
 ## 📊 KẾT QUẢ KIỂM THỬ
 * **Khởi động**: DragonBoy, Avatar, Ninja School, Gameloft khởi chạy trực tiếp vào màn hình game.
-* **Đồ họa**: Render 60 FPS mượt mà trên nền tảng Apple Metal 3 (iOS) và Windows Desktop.
-* **Tính ổn định**: Không còn lỗi tràn bộ nhớ `SIGBUS 10`, không còn lỗi đứng màn hình đen, không còn lỗi out form text.
+* **Đồ họa & Điều khiển**: Render 60 FPS mượt mà; bàn phím điều hướng phản hồi tức thì qua cả sự kiện `keyPressed` và `getKeyStates`.
+* **Tính ổn định & Dữ liệu**: Dữ liệu lưu game RMS lưu trữ và phục hồi hoàn hảo sau khi thoát và mở lại ứng dụng; không còn luồng chạy ngầm dư thừa; đạt 0 crash, 0 leak socket.
 

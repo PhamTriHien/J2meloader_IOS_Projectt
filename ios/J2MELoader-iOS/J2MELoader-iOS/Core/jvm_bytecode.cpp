@@ -72,6 +72,37 @@ private:
     size_t m_pos;
 };
 
+thread_local uint32_t t_pendingException = 0;
+
+void JvmBytecodeEngine::setPendingException(uint32_t ex) {
+    t_pendingException = ex;
+}
+
+uint32_t JvmBytecodeEngine::getPendingException() {
+    return t_pendingException;
+}
+
+void JvmBytecodeEngine::clearPendingException() {
+    t_pendingException = 0;
+}
+
+bool JvmBytecodeEngine::hasPendingException() {
+    return t_pendingException != 0;
+}
+
+static inline void appendUtf8Char(std::string& s, uint16_t ch) {
+    if (ch < 0x80) {
+        s.push_back((char)ch);
+    } else if (ch < 0x800) {
+        s.push_back((char)(0xC0 | (ch >> 6)));
+        s.push_back((char)(0x80 | (ch & 0x3F)));
+    } else {
+        s.push_back((char)(0xE0 | (ch >> 12)));
+        s.push_back((char)(0x80 | ((ch >> 6) & 0x3F)));
+        s.push_back((char)(0x80 | (ch & 0x3F)));
+    }
+}
+
 JvmBytecodeEngine::JvmBytecodeEngine() {}
 
 JvmBytecodeEngine& JvmBytecodeEngine::getInstance() {
@@ -92,7 +123,7 @@ void JvmBytecodeEngine::reset() {
     m_activeJar = nullptr;
     m_nextRef = 1;
     m_cancel.store(false);
-    m_pendingException.store(0);
+    clearPendingException();
 }
 
 uint32_t JvmBytecodeEngine::graphicsForImage(uint32_t imgRef) {
@@ -962,17 +993,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                     if (arr && off >= 0 && off + len <= (int)arr->charData.size()) {
                         std::string s = "";
                         for (int i = 0; i < len; ++i) {
-                            uint16_t ch = arr->charData[off + i];
-                            if (ch < 0x80) {
-                                s += (char)ch;
-                            } else if (ch < 0x800) {
-                                s += (char)(0xC0 | (ch >> 6));
-                                s += (char)(0x80 | (ch & 0x3F));
-                            } else {
-                                s += (char)(0xE0 | (ch >> 12));
-                                s += (char)(0x80 | ((ch >> 6) & 0x3F));
-                                s += (char)(0x80 | (ch & 0x3F));
-                            }
+                            appendUtf8Char(s, arr->charData[off + i]);
                         }
                         obj->stringVal = std::move(s);
                     }
@@ -1187,7 +1208,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             JavaObject* obj = getObject(args[0].asRef());
             if (obj && args.size() >= 2) {
                 if (desc.find("(C)") != std::string::npos) {
-                    obj->stringVal += (char)args[1].asInt();
+                    appendUtf8Char(obj->stringVal, (uint16_t)args[1].asInt());
                 } else if (desc.find("(Z)") != std::string::npos) {
                     obj->stringVal += args[1].asInt() ? "true" : "false";
                 } else if (desc.find("(J)") != std::string::npos) {
@@ -1201,14 +1222,14 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                     int off = args[2].asInt(), len = args[3].asInt();
                     if (ca) {
                         for (int i = 0; i < len && off + i < (int)ca->charData.size(); ++i) {
-                            obj->stringVal += (char)(ca->charData[off + i] & 0xFF);
+                            appendUtf8Char(obj->stringVal, ca->charData[off + i]);
                         }
                     }
                 } else if (desc.find("([C)") != std::string::npos) {
                     JavaArray* ca = getArray(args[1].asRef());
                     if (ca) {
                         for (size_t i = 0; i < ca->charData.size(); ++i) {
-                            obj->stringVal += (char)(ca->charData[i] & 0xFF);
+                            appendUtf8Char(obj->stringVal, ca->charData[i]);
                         }
                     }
                 } else if (args[1].type == JavaValue::OBJ_REF) {
@@ -1744,7 +1765,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             return true;
         }
         if (methodName == "getKeyStates") {
-            outResult = JavaValue(0);
+            outResult = JavaValue(JvmInterpreter::getInstance().getKeyStates());
             return true;
         }
         if (methodName == "getGameAction") {
@@ -1829,12 +1850,18 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 JavaArray* arr = getArray(args[1].asRef());
                 if (arr) {
                     obj->fields["buf"] = args[1];
-                    obj->fields["pos"] = JavaValue(0);
+                    int off = (args.size() >= 4) ? args[2].asInt() : 0;
+                    int len = (args.size() >= 4) ? args[3].asInt() : (int)arr->byteData.size();
+                    obj->fields["pos"] = JavaValue(std::max(0, off));
+                    obj->fields["count"] = JavaValue(std::min((int)arr->byteData.size(), std::max(0, off) + std::max(0, len)));
                 } else {
                     JavaObject* innerStream = getObject(args[1].asRef());
                     if (innerStream) {
                         obj->fields["buf"] = innerStream->fields["buf"];
                         obj->fields["pos"] = innerStream->fields["pos"];
+                        if (innerStream->fields.count("count")) {
+                            obj->fields["count"] = innerStream->fields["count"];
+                        }
                     }
                 }
             }
@@ -1851,11 +1878,16 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
 
 #if !defined(_WIN32) && !defined(_WIN64)
             int fd = sfi->second.asInt();
-            while (avail < needed) {
+            int retries = 0;
+            while (avail < needed && retries < 150) { // wait up to 3 seconds for requested bytes
                 fd_set rs; FD_ZERO(&rs); FD_SET(fd, &rs);
-                struct timeval tv{0, 20000}; // wait up to 20ms non-stalling
+                struct timeval tv{0, 20000}; // wait up to 20ms
                 int r = select(fd + 1, &rs, nullptr, nullptr, &tv);
-                if (r <= 0 || !FD_ISSET(fd, &rs)) break;
+                if (r < 0) break;
+                if (r == 0) {
+                    retries++;
+                    continue;
+                }
                 uint8_t tmp[4096];
                 ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
                 if (n <= 0) break;
@@ -1885,14 +1917,18 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
 
             JavaArray* arr = getArray(obj->fields["buf"].asRef());
             int pos = obj->fields["pos"].asInt();
-            if (arr && pos >= 0 && pos < (int)arr->byteData.size()) {
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            auto cit = obj->fields.find("count");
+            if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+
+            if (arr && pos >= 0 && pos < limit) {
                 if (args.size() == 1) {
                     outResult = JavaValue((int32_t)(uint8_t)arr->byteData[pos]);
                     obj->fields["pos"] = JavaValue(pos + 1);
                 } else if (args.size() == 2) {
                     JavaArray* dst = getArray(args[1].asRef());
                     int len = dst ? (int)dst->byteData.size() : 0;
-                    int available = (int)arr->byteData.size() - pos;
+                    int available = limit - pos;
                     int count = std::min(len, available);
                     if (count <= 0) { outResult = JavaValue(-1); return true; }
                     for (int i = 0; i < count; ++i) dst->byteData[i] = arr->byteData[pos + i];
@@ -1901,7 +1937,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 } else if (args.size() >= 4) {
                     JavaArray* dst = getArray(args[1].asRef());
                     int off = args[2].asInt(), len = args[3].asInt();
-                    int available = (int)arr->byteData.size() - pos;
+                    int available = limit - pos;
                     int count = std::min(len, available);
                     if (count <= 0) { outResult = JavaValue(-1); return true; }
                     if (dst) {
@@ -1922,11 +1958,17 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             ensureSocketBuffer(obj, 1);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
-            if (arr && pos >= 0 && pos < (int)arr->byteData.size()) {
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            if (obj) {
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+            }
+            if (arr && pos >= 0 && pos < limit) {
                 uint8_t b = arr->byteData[pos];
                 obj->fields["pos"] = JavaValue(pos + 1);
                 outResult = JavaValue(methodName == "readByte" ? (int32_t)(int8_t)b : (int32_t)b);
             } else {
+                setPendingException(allocObject("java/io/EOFException"));
                 outResult = JavaValue(0);
             }
             return true;
@@ -1936,11 +1978,17 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             ensureSocketBuffer(obj, 1);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
-            if (arr && pos >= 0 && pos < (int)arr->byteData.size()) {
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            if (obj) {
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+            }
+            if (arr && pos >= 0 && pos < limit) {
                 uint8_t b = arr->byteData[pos];
                 obj->fields["pos"] = JavaValue(pos + 1);
                 outResult = JavaValue(b != 0 ? 1 : 0);
             } else {
+                setPendingException(allocObject("java/io/EOFException"));
                 outResult = JavaValue(0);
             }
             return true;
@@ -1950,11 +1998,17 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             ensureSocketBuffer(obj, 2);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
-            if (arr && pos + 1 < (int)arr->byteData.size()) {
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            if (obj) {
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+            }
+            if (arr && pos + 1 < limit) {
                 uint16_t s = ((uint16_t)arr->byteData[pos] << 8) | arr->byteData[pos + 1];
                 obj->fields["pos"] = JavaValue(pos + 2);
                 outResult = JavaValue(methodName == "readShort" ? (int32_t)(int16_t)s : (int32_t)s);
             } else {
+                setPendingException(allocObject("java/io/EOFException"));
                 outResult = JavaValue(0);
             }
             return true;
@@ -1964,11 +2018,17 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             ensureSocketBuffer(obj, 2);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
-            if (arr && pos + 1 < (int)arr->byteData.size()) {
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            if (obj) {
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+            }
+            if (arr && pos + 1 < limit) {
                 uint16_t s = ((uint16_t)arr->byteData[pos] << 8) | arr->byteData[pos + 1];
                 obj->fields["pos"] = JavaValue(pos + 2);
                 outResult = JavaValue((int32_t)s);
             } else {
+                setPendingException(allocObject("java/io/EOFException"));
                 outResult = JavaValue(0);
             }
             return true;
@@ -1978,7 +2038,12 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             ensureSocketBuffer(obj, 4);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
-            if (arr && pos + 3 < (int)arr->byteData.size()) {
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            if (obj) {
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+            }
+            if (arr && pos + 3 < limit) {
                 uint32_t val = ((uint32_t)arr->byteData[pos] << 24) |
                                ((uint32_t)arr->byteData[pos + 1] << 16) |
                                ((uint32_t)arr->byteData[pos + 2] << 8) |
@@ -1988,6 +2053,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 std::memcpy(&f, &val, 4);
                 outResult = JavaValue(f);
             } else {
+                setPendingException(allocObject("java/io/EOFException"));
                 outResult = JavaValue(0.0f);
             }
             return true;
@@ -1997,7 +2063,12 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             ensureSocketBuffer(obj, 8);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
-            if (arr && pos + 7 < (int)arr->byteData.size()) {
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            if (obj) {
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+            }
+            if (arr && pos + 7 < limit) {
                 uint64_t val = 0;
                 for (int i = 0; i < 8; ++i) val = (val << 8) | arr->byteData[pos + i];
                 obj->fields["pos"] = JavaValue(pos + 8);
@@ -2005,6 +2076,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 std::memcpy(&d, &val, 8);
                 outResult = JavaValue(d);
             } else {
+                setPendingException(allocObject("java/io/EOFException"));
                 outResult = JavaValue(0.0);
             }
             return true;
@@ -2014,7 +2086,12 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             ensureSocketBuffer(obj, 4);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
-            if (arr && pos + 3 < (int)arr->byteData.size()) {
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            if (obj) {
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+            }
+            if (arr && pos + 3 < limit) {
                 int32_t val = ((int32_t)arr->byteData[pos] << 24) |
                               ((int32_t)arr->byteData[pos + 1] << 16) |
                               ((int32_t)arr->byteData[pos + 2] << 8) |
@@ -2022,6 +2099,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 obj->fields["pos"] = JavaValue(pos + 4);
                 outResult = JavaValue(val);
             } else {
+                setPendingException(allocObject("java/io/EOFException"));
                 outResult = JavaValue(0);
             }
             return true;
@@ -2031,12 +2109,18 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             ensureSocketBuffer(obj, 8);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
-            if (arr && pos + 7 < (int)arr->byteData.size()) {
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            if (obj) {
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+            }
+            if (arr && pos + 7 < limit) {
                 int64_t val = 0;
                 for (int i = 0; i < 8; ++i) val = (val << 8) | arr->byteData[pos + i];
                 obj->fields["pos"] = JavaValue(pos + 8);
                 outResult = JavaValue(val);
             } else {
+                setPendingException(allocObject("java/io/EOFException"));
                 outResult = JavaValue((int64_t)0);
             }
             return true;
@@ -2046,13 +2130,23 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             ensureSocketBuffer(obj, 2);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
-            if (arr && pos + 1 < (int)arr->byteData.size()) {
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            if (obj) {
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+            }
+            if (arr && pos + 1 < limit) {
                 uint16_t len = ((uint16_t)arr->byteData[pos] << 8) | arr->byteData[pos + 1];
                 pos += 2;
                 ensureSocketBuffer(obj, len);
                 arr = getArray(obj->fields["buf"].asRef());
+                limit = arr ? (int)arr->byteData.size() : 0;
+                if (obj) {
+                    auto cit2 = obj->fields.find("count");
+                    if (cit2 != obj->fields.end()) limit = std::min(limit, cit2->second.asInt());
+                }
                 std::string s = "";
-                if (arr && pos + len <= (int)arr->byteData.size()) {
+                if (arr && pos + len <= limit) {
                     s = std::string((char*)(arr->byteData.data() + pos), len);
                     pos += len;
                 }
@@ -2071,14 +2165,22 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             ensureSocketBuffer(obj, len);
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
-            if (arr && dst) {
-                int count = std::min(len, (int)arr->byteData.size() - pos);
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            if (obj) {
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+            }
+            if (arr && dst && len > 0) {
+                int count = std::min(len, limit - pos);
                 for (int i = 0; i < count; ++i) {
-                    if (off + i < (int)dst->byteData.size() && pos + i < (int)arr->byteData.size()) {
+                    if (off + i < (int)dst->byteData.size() && pos + i < limit) {
                         dst->byteData[off + i] = arr->byteData[pos + i];
                     }
                 }
                 obj->fields["pos"] = JavaValue(pos + count);
+                if (count < len) {
+                    setPendingException(allocObject("java/io/EOFException"));
+                }
             }
             return true;
         }
@@ -2089,7 +2191,10 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             int skipped = 0;
             if (obj && arr && n > 0) {
                 int pos = obj->fields["pos"].asInt();
-                int maxSkip = (int)arr->byteData.size() - pos;
+                int limit = (int)arr->byteData.size();
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+                int maxSkip = limit - pos;
                 skipped = std::max(0, std::min((int)n, maxSkip));
                 obj->fields["pos"] = JavaValue(pos + skipped);
             }
@@ -2100,7 +2205,12 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             JavaObject* obj = getObject(args[0].asRef());
             JavaArray* arr = obj ? getArray(obj->fields["buf"].asRef()) : nullptr;
             int pos = obj ? obj->fields["pos"].asInt() : 0;
-            int avail = arr ? std::max(0, (int)arr->byteData.size() - pos) : 0;
+            int limit = arr ? (int)arr->byteData.size() : 0;
+            if (obj) {
+                auto cit = obj->fields.find("count");
+                if (cit != obj->fields.end()) limit = std::min(limit, cit->second.asInt());
+            }
+            int avail = std::max(0, limit - pos);
 #if !defined(_WIN32) && !defined(_WIN64)
             // Socket streams: peek kernel buffer so game loops see live data
             if (avail == 0 && obj) {
@@ -2189,6 +2299,11 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             if (obj) RmsStorage::getInstance().closeRecordStore(obj->stringVal);
             return true;
         }
+        if (methodName == "deleteRecordStore") {
+            std::string name = (args.size() > 0 && args[0].asRef() != 0) ? getString(args[0].asRef()) : "";
+            if (!name.empty()) RmsStorage::getInstance().deleteRecordStore("J2MEApp", name);
+            return true;
+        }
         if (methodName == "addRecord") {
             JavaObject* obj = getObject(args[0].asRef());
             JavaArray* arr = getArray(args[1].asRef());
@@ -2201,17 +2316,47 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             }
             return true;
         }
+        if (methodName == "setRecord" && args.size() >= 5) {
+            JavaObject* obj = getObject(args[0].asRef());
+            int recId = args[1].asInt();
+            JavaArray* arr = getArray(args[2].asRef());
+            int off = args[3].asInt(), len = args[4].asInt();
+            if (obj && arr && off >= 0 && off + len <= (int)arr->byteData.size()) {
+                RmsStorage::getInstance().setRecord(obj->stringVal, recId, arr->byteData.data() + off, len);
+            }
+            return true;
+        }
+        if (methodName == "deleteRecord" && args.size() >= 2) {
+            JavaObject* obj = getObject(args[0].asRef());
+            int recId = args[1].asInt();
+            if (obj) {
+                RmsStorage::getInstance().deleteRecord(obj->stringVal, recId);
+            }
+            return true;
+        }
         if (methodName == "getRecord") {
             JavaObject* obj = getObject(args[0].asRef());
             int recId = args[1].asInt();
             std::vector<uint8_t> data;
             if (obj && RmsStorage::getInstance().getRecord(obj->stringVal, recId, data)) {
-                uint32_t arrRef = allocArray(8, (int)data.size());
-                JavaArray* arr = getArray(arrRef);
-                if (arr) arr->byteData = std::move(data);
-                outResult = JavaValue(arrRef, true);
+                if (args.size() >= 4) {
+                    JavaArray* dst = getArray(args[2].asRef());
+                    int off = args[3].asInt();
+                    if (dst && off >= 0) {
+                        int copyLen = std::min((int)data.size(), (int)dst->byteData.size() - off);
+                        for (int i = 0; i < copyLen; ++i) dst->byteData[off + i] = data[i];
+                        outResult = JavaValue((int32_t)data.size());
+                    } else {
+                        outResult = JavaValue(0);
+                    }
+                } else {
+                    uint32_t arrRef = allocArray(8, (int)data.size());
+                    JavaArray* arr = getArray(arrRef);
+                    if (arr) arr->byteData = std::move(data);
+                    outResult = JavaValue(arrRef, true);
+                }
             } else {
-                outResult = JavaValue(0, true);
+                outResult = (args.size() >= 4) ? JavaValue(0) : JavaValue(0, true);
             }
             return true;
         }
@@ -2310,8 +2455,18 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
     StackFrame frame;
     frame.classRef = curCls;
     frame.method = &method;
-    frame.locals.resize(std::max<size_t>(method.maxLocals, args.size()), JavaValue(0));
-    for (size_t i = 0; i < args.size(); ++i) frame.locals[i] = args[i];
+    size_t localSlot = 0;
+    for (size_t i = 0; i < args.size(); ++i) {
+        localSlot += (args[i].type == JavaValue::LONG || args[i].type == JavaValue::DOUBLE) ? 2 : 1;
+    }
+    frame.locals.resize(std::max<size_t>(method.maxLocals, localSlot), JavaValue(0));
+    localSlot = 0;
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (localSlot < frame.locals.size()) {
+            frame.locals[localSlot] = args[i];
+        }
+        localSlot += (args[i].type == JavaValue::LONG || args[i].type == JavaValue::DOUBLE) ? 2 : 1;
+    }
 
     const uint8_t* code = method.code.data();
     size_t codeLen = method.code.size();
@@ -2527,16 +2682,52 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
 
         // Stack Ops
         case OP_POP: frame.pop(); break;
-        case OP_POP2: frame.pop(); frame.pop(); break;
+        case OP_POP2: {
+            if (!frame.stack.empty()) {
+                JavaValue v = frame.pop();
+                if (v.type != JavaValue::LONG && v.type != JavaValue::DOUBLE) {
+                    if (!frame.stack.empty()) frame.pop();
+                }
+            }
+            break;
+        }
         case OP_DUP: { JavaValue v = frame.peek(); frame.push(v); break; }
         case OP_DUP_X1: { JavaValue v1 = frame.pop(); JavaValue v2 = frame.pop(); frame.push(v1); frame.push(v2); frame.push(v1); break; }
-        case OP_DUP_X2: { JavaValue v1 = frame.pop(); JavaValue v2 = frame.pop(); JavaValue v3 = frame.pop(); frame.push(v1); frame.push(v3); frame.push(v2); frame.push(v1); break; }
-        case OP_DUP2: {
+        case OP_DUP_X2: {
             if (frame.stack.size() >= 2) {
-                JavaValue v1 = frame.stack[frame.stack.size() - 1];
-                JavaValue v2 = frame.stack[frame.stack.size() - 2];
-                frame.push(v2);
-                frame.push(v1);
+                JavaValue v1 = frame.pop();
+                JavaValue v2 = frame.pop();
+                if (v2.type == JavaValue::LONG || v2.type == JavaValue::DOUBLE) {
+                    // Form 2: v1 is Category 1, v2 is Category 2
+                    frame.push(v1);
+                    frame.push(v2);
+                    frame.push(v1);
+                } else if (!frame.stack.empty()) {
+                    // Form 1: v1, v2, v3 are Category 1
+                    JavaValue v3 = frame.pop();
+                    frame.push(v1);
+                    frame.push(v3);
+                    frame.push(v2);
+                    frame.push(v1);
+                } else {
+                    frame.push(v2);
+                    frame.push(v1);
+                }
+            }
+            break;
+        }
+        case OP_DUP2: {
+            if (!frame.stack.empty()) {
+                JavaValue v1 = frame.stack.back();
+                if (v1.type == JavaValue::LONG || v1.type == JavaValue::DOUBLE) {
+                    // Form 2: Category 2 type (duplicate single 64-bit value)
+                    frame.push(v1);
+                } else if (frame.stack.size() >= 2) {
+                    // Form 1: Category 1 types (duplicate two 32-bit values)
+                    JavaValue v2 = frame.stack[frame.stack.size() - 2];
+                    frame.push(v2);
+                    frame.push(v1);
+                }
             }
             break;
         }
@@ -2803,9 +2994,10 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             for (int i = 0; i < npairs; ++i) {
                 int32_t match = (int32_t)((code[frame.pc] << 24) | (code[frame.pc+1] << 16) | (code[frame.pc+2] << 8) | code[frame.pc+3]); frame.pc += 4;
                 int32_t off = (int32_t)((code[frame.pc] << 24) | (code[frame.pc+1] << 16) | (code[frame.pc+2] << 8) | code[frame.pc+3]); frame.pc += 4;
-                if (!matched && val == match) {
+                if (val == match) {
                     frame.pc = switchStart + off;
                     matched = true;
+                    break;
                 }
             }
             if (!matched) {
