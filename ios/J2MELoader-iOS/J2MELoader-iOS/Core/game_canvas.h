@@ -1,4 +1,4 @@
-﻿#ifndef GAME_CANVAS_H
+#ifndef GAME_CANVAS_H
 #define GAME_CANVAS_H
 
 #include "lcdui_display.h"
@@ -99,6 +99,11 @@ public:
     void setAnimatedTile(int animatedTileIndex, int staticTileIndex);
     int getAnimatedTile(int animatedTileIndex) const;
 
+    int getColumns() const { return m_cols; }
+    int getRows() const { return m_rows; }
+    int getCellWidth() const { return m_tileWidth; }
+    int getCellHeight() const { return m_tileHeight; }
+
     void paint(LcduiDisplay* display) override;
 
 private:
@@ -120,6 +125,11 @@ public:
     void append(std::shared_ptr<Layer> layer);
     void insert(std::shared_ptr<Layer> layer, int index);
     void remove(std::shared_ptr<Layer> layer);
+    int getSize() const { return (int)m_layers.size(); }
+    std::shared_ptr<Layer> getLayerAt(int index) const {
+        if (index >= 0 && index < (int)m_layers.size()) return m_layers[index];
+        return nullptr;
+    }
     void setViewWindow(int x, int y, int width, int height);
     void paint(LcduiDisplay* display, int x, int y);
 

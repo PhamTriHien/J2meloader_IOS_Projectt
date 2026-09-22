@@ -49,24 +49,28 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
-          tag_name: v1.8.6-j2hienloader
-          name: "J2HienLoader iOS v1.8.6 - Sửa Toàn Diện 11 Lỗi Logic & Bug Ẩn Cốt Lõi JVM/J2ME"
+          tag_name: v1.8.7-j2hienloader
+          name: "J2HienLoader iOS v1.8.7 - Sửa Toàn Diện 15 Lỗi Logic & Ngoại Lệ Runtime Cốt Lõi JVM/LCDUI/RMS"
           body: |
-            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.6)
+            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.7)
             Ứng dụng giả lập J2ME chuẩn cho hệ điều hành iOS/iPadOS, nạp và chạy file .jar trực tiếp.
             
-            ### Các sửa đổi toàn diện & triệt để trong v1.8.6:
-            - **Sửa lỗi OP_LOOKUPSWITCH**: Bổ sung `break;` ngăn việc đọc nhầm mã đích của lệnh switch làm bảng tra cứu offset.
-            - **Chuẩn hóa 64-bit Parameter Mapping (JVMS §2.6.1)**: Tăng 2 slot biến cục bộ cho kiểu `long` và `double`, đảm bảo các tham số phía sau không bị lệch vị trí.
-            - **Sửa lỗi OP_POP2, OP_DUP2, OP_DUP_X2**: Xử lý đúng kiểu Category 2 (long/double) thay vì pop hoặc duplicate sai số lượng phần tử.
-            - **Đồng bộ Suite Name trong RMS**: Khắc phục lỗi lưu file RMS vào `Default_` trong khi mở từ `J2MEApp_`, đảm bảo dữ liệu lưu game không bị biến mất khi khởi động lại.
-            - **Hoàn thiện đầy đủ API RecordStore & RecordEnumeration**: Hỗ trợ `setRecord`, `deleteRecord`, `deleteRecordStore`, `getRecord(int, byte[], int)` và duyệt qua danh sách bản ghi đã lưu.
-            - **Nâng cấp ByteArrayInputStream & readFully**: Hỗ trợ constructor 3 tham số `(byte[], offset, len)` và đọc trọn vẹn gói tin mạng thay vì đọc dở dang.
-            - **Ném ngoại lệ EOFException chuẩn**: `readByte`, `readShort`, `readInt` ném `EOFException` khi hết luồng thay vì trả về 0 gây lỗi logic ngầm.
-            - **Kết nối GameCanvas.getKeyStates()**: Trả về bitmask phím thực tế từ `JvmInterpreter` giúp các game hành động nhận diện phím bấm chính xác.
-            - **Triệt tiêu TimerTask Zombie Threads**: Hủy bỏ luồng chạy ngầm vô tận khi MIDlet gọi `Timer.cancel()` hoặc `TimerTask.cancel()`.
-            - **Hashtable Boxed Object Matching**: Hỗ trợ so sánh khóa `Integer`, `Long`, `String` theo giá trị thay vì chỉ so sánh con trỏ/reference.
-            - **Dọn dẹp Socket FD**: Tự động đóng tất cả các socket mở trong `FullApis::reset()` tránh rò rỉ tài nguyên hệ thống.
+            ### Các sửa đổi toàn diện & triệt để trong v1.8.7:
+            - **Dọn dẹp Pending Exception**: Triệt tiêu rò rỉ ngoại lệ chưa bắt tại ranh giới executeMethod (`DepthGuard`), ngăn chặn ô nhiễm trạng thái luồng game giữa các tick render và sự kiện phím/chuột.
+            - **Xử lý triệt để phép chia số học 0 & SIGFPE**: Ném `ArithmeticException` và chặn crash phần cứng SIGFPE khi chia cho 0 hoặc chia `INT_MIN` cho `-1` trong `OP_IDIV`, `OP_IREM`, `OP_LDIV`, `OP_LREM`.
+            - **Ném NullPointerException trong OP_ARRAYLENGTH**: Ném `NullPointerException` chuẩn khi đối tượng mảng null thay vì âm thầm trả về 0.
+            - **Hỗ trợ kiểm tra mảng trong OP_INSTANCEOF**: Kiểm tra chuẩn xác các kiểu mảng (`JavaArray`) với `[B`, `[I`, `java/lang/Object` v.v.
+            - **Ném NullPointerException trong OP_ATHROW**: Tự động cấp phát và dispatch `NullPointerException` nếu đối tượng ngoại lệ ném ra là null.
+            - **Chuẩn hóa Unicode trong String.substring & getChars**: Tính toán chính xác vị trí ký tự UTF-16 sang byte offset UTF-8, khắc phục hoàn toàn lỗi vỡ chuỗi tiếng Việt có dấu.
+            - **Chuẩn hóa StringBuffer.append(null)**: Nối chuỗi `"null"` đúng đặc tả Java SE/ME khi nối đối tượng null.
+            - **Ném EOFException trong DataInputStream.readUTF**: Ném `EOFException` chuẩn khi luồng dữ liệu UTF bị kết thúc sớm.
+            - **Tối ưu hóa JavaArray::length() O(1)**: Chuyển đổi sang switch-case theo `elemType`, giảm độ trễ truy cập độ dài mảng.
+            - **Bù trừ Translation trong Graphics.getClipX/getClipY**: Trả về tọa độ tương đối theo `m_transX/m_transY` đúng chuẩn MIDP 2.0.
+            - **Khắc phục lỗi vẽ Graphics.drawRoundRect & fillRoundRect**: Loại bỏ dịch chuyển tọa độ bị cộng 2 lần trong `drawRoundRect` và sửa cận lặp trong `fillRoundRect`.
+            - **Bảo toàn Clip trong LayerManager.paint()**: Lưu và khôi phục chính xác vùng clip gốc của Graphics trước và sau khi vẽ các layer.
+            - **Hoàn thiện đầy đủ API TiledLayer & LayerManager**: Triển khai `getColumns`, `getRows`, `getCellWidth`, `getCellHeight`, `getSize`, `getLayerAt` thực tế thay vì các giá trị ước lượng.
+            - **Hoàn thiện API RMS getNextRecordID & getRecordSize**: Bổ sung hỗ trợ đầy đủ và an toàn đa luồng cho RecordStore.
+            - **Chuẩn hóa kiểu Math.min/max (FF)F**: Trả về đúng giá trị kiểu Float, tránh nhầm lẫn sang Integer.
             
             - **Cài lên iPhone/iPad thật**: Tải file `J2HienLoader.ipa`.
             - **Test trên Web (Appetize.io)**: Tải file `J2HienLoader-Simulator-iPad.zip`.

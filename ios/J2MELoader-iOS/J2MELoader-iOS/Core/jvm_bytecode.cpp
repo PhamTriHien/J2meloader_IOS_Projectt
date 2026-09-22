@@ -103,6 +103,21 @@ static inline void appendUtf8Char(std::string& s, uint16_t ch) {
     }
 }
 
+static inline size_t utf8CharToByteOffset(const std::string& s, int charIndex) {
+    if (charIndex <= 0) return 0;
+    int cur = 0;
+    size_t i = 0;
+    while (i < s.size() && cur < charIndex) {
+        uint8_t b = (uint8_t)s[i++];
+        if ((b & 0x80) == 0) { /* 1 byte */ }
+        else if ((b & 0xE0) == 0xC0 && i < s.size()) { i += 1; }
+        else if ((b & 0xF0) == 0xE0 && i + 1 < s.size()) { i += 2; }
+        else if ((b & 0xF8) == 0xF0 && i + 2 < s.size()) { i += 3; }
+        cur++;
+    }
+    return i;
+}
+
 JvmBytecodeEngine::JvmBytecodeEngine() {}
 
 JvmBytecodeEngine& JvmBytecodeEngine::getInstance() {
@@ -1101,12 +1116,14 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "substring" && args.size() >= 2) {
             std::string s = getString(args[0].asRef());
-            int begin = args[1].asInt();
-            int end = args.size() >= 3 ? args[2].asInt() : (int)s.length();
-            if (begin >= 0 && begin <= (int)s.length() && end >= begin && end <= (int)s.length()) {
-                outResult = JavaValue(createString(s.substr(begin, end - begin)), true);
+            int begin = std::max(0, args[1].asInt());
+            size_t bStart = utf8CharToByteOffset(s, begin);
+            if (args.size() >= 3) {
+                int end = std::max(begin, args[2].asInt());
+                size_t bEnd = utf8CharToByteOffset(s, end);
+                outResult = JavaValue(createString(s.substr(bStart, bEnd - bStart)), true);
             } else {
-                outResult = JavaValue(createString(""), true);
+                outResult = JavaValue(createString(s.substr(bStart)), true);
             }
             return true;
         }
@@ -1234,7 +1251,9 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                     }
                 } else if (args[1].type == JavaValue::OBJ_REF) {
                     uint32_t r = args[1].asRef();
-                    if (r != 0) {
+                    if (r == 0) {
+                        obj->stringVal += "null";
+                    } else {
                         JavaObject* argObj = getObject(r);
                         if (argObj && (argObj->className == "java/lang/String" || argObj->className == "java/lang/StringBuffer" || argObj->className == "java/lang/StringBuilder")) {
                             obj->stringVal += argObj->stringVal;
@@ -2153,6 +2172,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
                 obj->fields["pos"] = JavaValue(pos);
                 outResult = JavaValue(createString(s), true);
             } else {
+                setPendingException(allocObject("java/io/EOFException"));
                 outResult = JavaValue(createString(""), true);
             }
             return true;
@@ -2365,6 +2385,17 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
             outResult = JavaValue(obj ? RmsStorage::getInstance().getNumRecords(obj->stringVal) : 0);
             return true;
         }
+        if (methodName == "getNextRecordID") {
+            JavaObject* obj = getObject(args[0].asRef());
+            outResult = JavaValue(obj ? RmsStorage::getInstance().getNextRecordID(obj->stringVal) : 1);
+            return true;
+        }
+        if (methodName == "getRecordSize" && args.size() >= 2) {
+            JavaObject* obj = getObject(args[0].asRef());
+            int recId = args[1].asInt();
+            outResult = JavaValue(obj ? RmsStorage::getInstance().getRecordSize(obj->stringVal, recId) : 0);
+            return true;
+        }
     }
 
     if (className == "javax/microedition/media/Manager") {
@@ -2408,13 +2439,21 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
     if (!cls || m_cancel.load()) return JavaValue(0);
 
     thread_local int t_callDepth = 0;
+    if (t_callDepth == 0) {
+        clearPendingException();
+    }
     if (t_callDepth > 128) {
         return JavaValue(0);
     }
     struct DepthGuard {
         int& d;
         DepthGuard(int& depth) : d(depth) { ++d; }
-        ~DepthGuard() { --d; }
+        ~DepthGuard() {
+            --d;
+            if (d == 0 && JvmBytecodeEngine::hasPendingException()) {
+                JvmBytecodeEngine::clearPendingException();
+            }
+        }
     } depthGuard(t_callDepth);
 
     // Run static class initializer (<clinit>) once when class is first accessed
@@ -2470,6 +2509,44 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
 
     const uint8_t* code = method.code.data();
     size_t codeLen = method.code.size();
+
+    auto throwEngineException = [&](uint32_t exRef, int throwPc) -> bool {
+        bool handled = false;
+        JavaObject* exObj = getObject(exRef);
+        std::string exCls = exObj ? exObj->className : "";
+        for (auto &e : method.exTable) {
+            if (throwPc >= e.startPc && throwPc < e.endPc) {
+                bool match = (e.catchType == 0);
+                if (!match && e.catchType < cls->constantPool.size()) {
+                    const auto& cp = cls->constantPool[e.catchType];
+                    std::string cn;
+                    if (cp.tag == 7 && cp.nameIndex < cls->constantPool.size()) cn = cls->constantPool[cp.nameIndex].strVal;
+                    else if (!cp.strVal.empty()) cn = cp.strVal;
+                    if (!cn.empty() && (cn == exCls || exCls.find(cn) != std::string::npos || cn.find("Throwable") != std::string::npos || cn.find("Exception") != std::string::npos)) match = true;
+                    if (!match && exObj) {
+                        auto ec = findOrLoadClass(exCls, m_activeJar);
+                        std::string sup = ec ? ec->superClassName : "";
+                        for (int d = 0; d < 4 && !sup.empty(); d++) {
+                            if (sup == cn) { match = true; break; }
+                            auto sc = findOrLoadClass(sup, m_activeJar);
+                            sup = sc ? sc->superClassName : "";
+                        }
+                    }
+                }
+                if (match) {
+                    frame.stack.clear();
+                    frame.push(JavaValue(exRef, true));
+                    frame.pc = e.handlerPc;
+                    handled = true;
+                    break;
+                }
+            }
+        }
+        if (!handled) {
+            setPendingException(exRef);
+        }
+        return handled;
+    };
 
     while (!m_cancel.load() && frame.pc >= 0 && (size_t)frame.pc < codeLen) {
         uint8_t op = code[frame.pc++];
@@ -2675,7 +2752,20 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             break;
         }
         case OP_ARRAYLENGTH: {
-            JavaArray* arr = getArray(frame.pop().asRef());
+            uint32_t aRef = frame.pop().asRef();
+            JavaArray* arr = getArray(aRef);
+            if (!arr && aRef == 0) {
+                bool hasHandler = false;
+                int throwPc = frame.pc - 1;
+                for (auto &e : method.exTable) {
+                    if (throwPc >= e.startPc && throwPc < e.endPc) { hasHandler = true; break; }
+                }
+                if (hasHandler) {
+                    uint32_t ex = allocObject("java/lang/NullPointerException");
+                    if (!throwEngineException(ex, throwPc)) return JavaValue(0);
+                    break;
+                }
+            }
             frame.push(JavaValue(arr ? arr->length() : 0));
             break;
         }
@@ -2737,8 +2827,30 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_IADD: { int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); frame.push(JavaValue(a + b)); break; }
         case OP_ISUB: { int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); frame.push(JavaValue(a - b)); break; }
         case OP_IMUL: { int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); frame.push(JavaValue(a * b)); break; }
-        case OP_IDIV: { int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); frame.push(JavaValue(b != 0 ? a / b : 0)); break; }
-        case OP_IREM: { int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); frame.push(JavaValue(b != 0 ? a % b : 0)); break; }
+        case OP_IDIV: {
+            int32_t b = frame.pop().asInt(), a = frame.pop().asInt();
+            if (b == 0) {
+                uint32_t ex = allocObject("java/lang/ArithmeticException");
+                if (!throwEngineException(ex, frame.pc - 1)) return JavaValue(0);
+            } else if (a == INT32_MIN && b == -1) {
+                frame.push(JavaValue((int32_t)INT32_MIN));
+            } else {
+                frame.push(JavaValue(a / b));
+            }
+            break;
+        }
+        case OP_IREM: {
+            int32_t b = frame.pop().asInt(), a = frame.pop().asInt();
+            if (b == 0) {
+                uint32_t ex = allocObject("java/lang/ArithmeticException");
+                if (!throwEngineException(ex, frame.pc - 1)) return JavaValue(0);
+            } else if (a == INT32_MIN && b == -1) {
+                frame.push(JavaValue((int32_t)0));
+            } else {
+                frame.push(JavaValue(a % b));
+            }
+            break;
+        }
         case OP_INEG: { frame.push(JavaValue(-frame.pop().asInt())); break; }
         case OP_ISHL: { int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); frame.push(JavaValue(a << (b & 0x1F))); break; }
         case OP_ISHR: { int32_t b = frame.pop().asInt(), a = frame.pop().asInt(); frame.push(JavaValue(a >> (b & 0x1F))); break; }
@@ -2758,8 +2870,30 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         case OP_LADD: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(a + b)); break; }
         case OP_LSUB: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(a - b)); break; }
         case OP_LMUL: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(a * b)); break; }
-        case OP_LDIV: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(b != 0 ? a / b : 0)); break; }
-        case OP_LREM: { int64_t b = frame.pop().asLong(), a = frame.pop().asLong(); frame.push(JavaValue(b != 0 ? a % b : 0)); break; }
+        case OP_LDIV: {
+            int64_t b = frame.pop().asLong(), a = frame.pop().asLong();
+            if (b == 0) {
+                uint32_t ex = allocObject("java/lang/ArithmeticException");
+                if (!throwEngineException(ex, frame.pc - 1)) return JavaValue(0);
+            } else if (a == INT64_MIN && b == -1) {
+                frame.push(JavaValue((int64_t)INT64_MIN));
+            } else {
+                frame.push(JavaValue(a / b));
+            }
+            break;
+        }
+        case OP_LREM: {
+            int64_t b = frame.pop().asLong(), a = frame.pop().asLong();
+            if (b == 0) {
+                uint32_t ex = allocObject("java/lang/ArithmeticException");
+                if (!throwEngineException(ex, frame.pc - 1)) return JavaValue(0);
+            } else if (a == INT64_MIN && b == -1) {
+                frame.push(JavaValue((int64_t)0));
+            } else {
+                frame.push(JavaValue(a % b));
+            }
+            break;
+        }
         case OP_LNEG: { frame.push(JavaValue(-frame.pop().asLong())); break; }
         case OP_LSHL: { int32_t b = frame.pop().asInt(); int64_t a = frame.pop().asLong(); frame.push(JavaValue(a << (b & 0x3F))); break; }
         case OP_LSHR: { int32_t b = frame.pop().asInt(); int64_t a = frame.pop().asLong(); frame.push(JavaValue(a >> (b & 0x3F))); break; }
@@ -3047,10 +3181,28 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
                     targetClass = cls->constantPool[cls->constantPool[cpIdx].nameIndex].strVal;
                 }
                 JavaObject* obj = getObject(ref);
-                if (!obj || targetClass.empty()) {
-                    frame.push(JavaValue(0));
-                } else {
+                if (obj && !targetClass.empty()) {
                     frame.push(JavaValue(isInstanceOf(obj->className, targetClass) ? 1 : 0));
+                } else {
+                    JavaArray* arr = getArray(ref);
+                    if (arr && !targetClass.empty()) {
+                        bool match = false;
+                        if (targetClass == "java/lang/Object" || targetClass == "java/lang/Cloneable" || targetClass == "java/io/Serializable") {
+                            match = true;
+                        } else if (!targetClass.empty() && targetClass[0] == '[') {
+                            if ((arr->elemType == 8 || arr->elemType == 4) && (targetClass == "[B" || targetClass == "[Z")) match = true;
+                            else if (arr->elemType == 5 && targetClass == "[C") match = true;
+                            else if (arr->elemType == 9 && targetClass == "[S") match = true;
+                            else if (arr->elemType == 10 && targetClass == "[I") match = true;
+                            else if (arr->elemType == 11 && targetClass == "[J") match = true;
+                            else if (arr->elemType == 6 && targetClass == "[F") match = true;
+                            else if (arr->elemType == 7 && targetClass == "[D") match = true;
+                            else if (arr->elemType == 0 && targetClass.rfind("[L", 0) == 0) match = true;
+                        }
+                        frame.push(JavaValue(match ? 1 : 0));
+                    } else {
+                        frame.push(JavaValue(0));
+                    }
                 }
             }
             break;
@@ -3062,39 +3214,11 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
         }
         case OP_ATHROW: {
             JavaValue ex = frame.pop();
-            int throwPc = frame.pc - 1;
-            // Search exception table for handler in current method
-            bool handled = false;
-            JavaObject* exObj = getObject(ex.asRef());
-            std::string exCls = exObj ? exObj->className : "";
-            for (auto &e : method.exTable) {
-                if (throwPc >= e.startPc && throwPc < e.endPc) {
-                    bool match = (e.catchType == 0);
-                    if (!match && e.catchType < cls->constantPool.size()) {
-                        // catchType is CP Class index -> resolve name
-                        const auto& cp = cls->constantPool[e.catchType];
-                        std::string cn;
-                        if (cp.tag == 7 && cp.nameIndex < cls->constantPool.size()) cn = cls->constantPool[cp.nameIndex].strVal;
-                        else if (!cp.strVal.empty()) cn = cp.strVal;
-                        if (!cn.empty() && (cn == exCls || exCls.find(cn) != std::string::npos || cn.find("Throwable") != std::string::npos || cn.find("Exception") != std::string::npos)) match = true;
-                        // subclass walk via superClass chain (best-effort)
-                        if (!match && exObj) {
-                            auto ec = findOrLoadClass(exCls, m_activeJar);
-                            std::string sup = ec ? ec->superClassName : "";
-                            for (int d = 0; d < 4 && !sup.empty(); d++) { if (sup == cn) { match = true; break; } auto sc = findOrLoadClass(sup, m_activeJar); sup = sc ? sc->superClassName : ""; }
-                        }
-                    }
-                    if (match) {
-                        frame.stack.clear();
-                        frame.push(ex);
-                        frame.pc = e.handlerPc;
-                        handled = true;
-                        break;
-                    }
-                }
+            uint32_t exRef = ex.asRef();
+            if (exRef == 0) {
+                exRef = allocObject("java/lang/NullPointerException");
             }
-            if (!handled) {
-                setPendingException(ex.asRef() != 0 ? ex.asRef() : 1);
+            if (!throwEngineException(exRef, frame.pc - 1)) {
                 return JavaValue(0);
             }
             break;
@@ -3263,43 +3387,12 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             // Check if callee threw an uncaught exception -> unwind here
             if (hasPendingException()) {
                 uint32_t exRef = getPendingException();
-                int invokePc = frame.pc - 1;
-                bool handled = false;
-                JavaObject* exObj = getObject(exRef);
-                std::string exCls = exObj ? exObj->className : "";
-                for (auto &e : method.exTable) {
-                    if (invokePc >= e.startPc && invokePc < e.endPc) {
-                        bool match = (e.catchType == 0);
-                        if (!match && e.catchType < cls->constantPool.size()) {
-                            const auto& cp = cls->constantPool[e.catchType];
-                            std::string cn;
-                            if (cp.tag == 7 && cp.nameIndex < cls->constantPool.size()) cn = cls->constantPool[cp.nameIndex].strVal;
-                            else if (!cp.strVal.empty()) cn = cp.strVal;
-                            if (!cn.empty() && (cn == exCls || exCls.find(cn) != std::string::npos || cn.find("Throwable") != std::string::npos || cn.find("Exception") != std::string::npos)) match = true;
-                            if (!match && exObj) {
-                                auto ec = findOrLoadClass(exCls, m_activeJar);
-                                std::string sup = ec ? ec->superClassName : "";
-                                for (int d = 0; d < 4 && !sup.empty(); d++) {
-                                    if (sup == cn) { match = true; break; }
-                                    auto sc = findOrLoadClass(sup, m_activeJar);
-                                    sup = sc ? sc->superClassName : "";
-                                }
-                            }
-                        }
-                        if (match) {
-                            frame.stack.clear();
-                            frame.push(JavaValue(exRef, true));
-                            frame.pc = e.handlerPc;
-                            handled = true;
-                            clearPendingException();
-                            break;
-                        }
-                    }
-                }
-                if (!handled) {
-                    // Propagate uncaught exception to caller
+                if (throwEngineException(exRef, frame.pc - 1)) {
+                    clearPendingException();
+                } else {
                     return JavaValue(0);
                 }
+                break;
             }
             break;
         }

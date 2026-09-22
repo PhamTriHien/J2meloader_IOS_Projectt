@@ -1,13 +1,13 @@
 {
-  "id": 392390286,
-  "tag_name": "v1.8.6-j2hienloader",
-  "name": "J2HienLoader iOS v1.8.6 - Sửa Toàn Diện 11 Lỗi Logic & Bug Ẩn Cốt Lõi JVM/J2ME",
-  "body": "## J2HienLoader cho iOS (v1.8.6)\n- Sửa lỗi nhảy sai địa chỉ bytecode nghiêm trọng trong OP_LOOKUPSWITCH (bổ sung break tránh đọc nhầm mã đích làm bảng tra cứu).\n- Căn chỉnh chính xác 2 slot biến cục bộ cho kiểu Category 2 (long/double) theo JVMS §2.6.1 trong executeMethod.\n- Sửa lỗi OP_POP2, OP_DUP2, OP_DUP_X2 xử lý sai kiểu 64-bit (Category 2 computational types).\n- Khắc phục lỗi mất dữ liệu lưu game RMS do phân tách sai Suite Name giữa openRecordStore (J2MEApp) và closeRecordStore/addRecord/setRecord (Default).\n- Hoàn thiện đầy đủ API RecordStore (setRecord, deleteRecord, deleteRecordStore, 3-arg getRecord) và RecordEnumeration (hasNextElement, nextRecordId, nextRecord, numRecords, reset, destroy).\n- Hỗ trợ ByteArrayInputStream(byte[], int offset, int length) và đọc trọn vẹn gói tin mạng trong readFully.\n- Ném ngoại lệ EOFException chuẩn thay vì âm thầm trả về 0 khi đọc hết luồng (readByte, readShort, readInt).\n- Kết nối GameCanvas.getKeyStates() vào bàn phím ảo/vật lý JvmInterpreter trả về bitmask chuẩn MIDP 2.0.\n- Triệt tiêu hoàn toàn TimerTask Zombie Thread chạy ngầm vô tận khi MIDlet gọi cancel().\n- Hỗ trợ so sánh khóa boxed object (Integer, Long, String, v.v.) trong Hashtable và dọn dẹp file descriptor socket khi reset.",
-  "published_at": "2026-09-23T01:10:00Z",
+  "id": 392390287,
+  "tag_name": "v1.8.7-j2hienloader",
+  "name": "J2HienLoader iOS v1.8.7 - Sửa Toàn Diện 15 Lỗi Logic & Ngoại Lệ Runtime Cốt Lõi JVM/LCDUI/RMS",
+  "body": "## J2HienLoader cho iOS (v1.8.7)\n- Dọn dẹp ngoại lệ chưa bắt (Pending Exception) tại ranh giới executeMethod (DepthGuard), ngăn ngừa ô nhiễm trạng thái luồng game giữa các tick render/event.\n- Ném ArithmeticException chuẩn và chặn triệt để crash phần cứng SIGFPE khi chia cho 0 hoặc chia INT_MIN/-1 trong OP_IDIV, OP_IREM, OP_LDIV, OP_LREM.\n- OP_ARRAYLENGTH ném NullPointerException chuẩn khi mảng null thay vì âm thầm trả về 0.\n- OP_INSTANCEOF hỗ trợ kiểm tra kiểu mảng JavaArray (arr instanceof Object[], byte[], v.v.) chuẩn JVM.\n- OP_ATHROW tự động cấp phát và ném NullPointerException khi tham số ngoại lệ là null.\n- String.substring và String.getChars chuyển đổi chính xác chỉ số ký tự UTF-16 sang byte offset UTF-8, khắc phục lỗi cắt vụn chuỗi có dấu tiếng Việt.\n- StringBuffer.append(Object null) nối chuỗi \"null\" đúng chuẩn Java specification.\n- DataInputStream.readUTF ném EOFException khi gặp luồng đọc dở dang.\n- Tối ưu hóa JavaArray::length() đạt hiệu năng O(1) qua switch-case elemType thay vì duyệt tuần tự.\n- Graphics.getClipX() và getClipY() bù trừ chính xác translation (m_clip - m_trans) theo đặc tả MIDP 2.0.\n- Sửa lỗi nhân đôi translation trong Graphics.drawRoundRect() và cận lặp trong fillRoundRect().\n- LayerManager.paint() bảo toàn và phục hồi vùng clip gốc của Graphics sau khi vẽ layers.\n- Hoàn thiện TiledLayer.getColumns/getRows/getCellWidth/getCellHeight và LayerManager.getSize/getLayerAt thay thế các giá trị giả lập.\n- Hoàn thiện RMS RecordStore.getNextRecordID() và getRecordSize() an toàn đa luồng (thread-safe).\n- Math.min/max (FF)F trả về đúng kiểu Float tránh nhầm lẫn sang Integer.",
+  "published_at": "2026-09-23T02:50:00Z",
   "assets": [
     {
       "name": "J2HienLoader.ipa",
-      "browser_download_url": "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/download/v1.8.6-j2hienloader/J2HienLoader.ipa",
+      "browser_download_url": "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/download/v1.8.7-j2hienloader/J2HienLoader.ipa",
       "size": 3030000
     }
   ]

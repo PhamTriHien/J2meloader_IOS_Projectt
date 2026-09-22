@@ -370,11 +370,11 @@ void LcduiDisplay::drawRoundRect(int x, int y, int w, int h, int arcWidth, int a
         return;
     }
     int ax = x + m_transX, ay = y + m_transY;
-    // Straight lines
-    drawLine(ax + rx, ay, ax + w - rx, ay, color);
-    drawLine(ax + rx, ay + h, ax + w - rx, ay + h, color);
-    drawLine(ax, ay + ry, ax, ay + h - ry, color);
-    drawLine(ax + w, ay + ry, ax + w, ay + h - ry, color);
+    // Straight lines (pass x, y because drawLine adds m_transX and m_transY internally)
+    drawLine(x + rx, y, x + w - rx, y, color);
+    drawLine(x + rx, y + h, x + w - rx, y + h, color);
+    drawLine(x, y + ry, x, y + h - ry, color);
+    drawLine(x + w, y + ry, x + w, y + h - ry, color);
 
     // 4 corner arcs
     float step = 1.0f / (float)std::max(rx, ry);
@@ -406,15 +406,15 @@ void LcduiDisplay::fillRoundRect(int x, int y, int w, int h, int arcWidth, int a
     int x2 = std::min(m_clip.x + m_clip.width, ax + w - rx);
     int y1 = std::max(m_clip.y, ay);
     int y2 = std::min(m_clip.y + m_clip.height, ay + h);
-    for (int cy = y1; cy <= y2; ++cy) {
-        for (int cx = x1; cx <= x2; ++cx) setPixelUnsafe(cx, cy, color);
+    for (int cy = y1; cy < y2; ++cy) {
+        for (int cx = x1; cx < x2; ++cx) setPixelUnsafe(cx, cy, color);
     }
     // Left & right middle blocks
     int my1 = std::max(m_clip.y, ay + ry);
     int my2 = std::min(m_clip.y + m_clip.height, ay + h - ry);
-    for (int cy = my1; cy <= my2; ++cy) {
+    for (int cy = my1; cy < my2; ++cy) {
         for (int cx = std::max(m_clip.x, ax); cx < ax + rx && cx < m_clip.x + m_clip.width; ++cx) setPixelUnsafe(cx, cy, color);
-        for (int cx = std::max(m_clip.x, ax + w - rx); cx <= ax + w && cx < m_clip.x + m_clip.width; ++cx) setPixelUnsafe(cx, cy, color);
+        for (int cx = std::max(m_clip.x, ax + w - rx); cx < ax + w && cx < m_clip.x + m_clip.width; ++cx) setPixelUnsafe(cx, cy, color);
     }
     // Corner rounded quadrants
     for (int dy = 0; dy <= ry; ++dy) {

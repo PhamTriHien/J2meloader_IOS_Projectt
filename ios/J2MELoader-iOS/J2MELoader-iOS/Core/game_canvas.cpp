@@ -1,4 +1,4 @@
-﻿#include "game_canvas.h"
+#include "game_canvas.h"
 #include <algorithm>
 #include <cmath>
 
@@ -238,6 +238,12 @@ void LayerManager::setViewWindow(int x, int y, int width, int height) {
 }
 
 void LayerManager::paint(LcduiDisplay* display, int x, int y) {
+    if (!display) return;
+    int oldX = display->getClipX();
+    int oldY = display->getClipY();
+    int oldW = display->getClipWidth();
+    int oldH = display->getClipHeight();
+
     display->setClip(x, y, m_viewW, m_viewH);
     for (auto it = m_layers.rbegin(); it != m_layers.rend(); ++it) {
         if ((*it)->isVisible()) {
@@ -248,5 +254,5 @@ void LayerManager::paint(LcduiDisplay* display, int x, int y) {
             (*it)->setPosition(origX, origY);
         }
     }
-    display->resetClip();
+    display->setClip(oldX, oldY, oldW, oldH);
 }

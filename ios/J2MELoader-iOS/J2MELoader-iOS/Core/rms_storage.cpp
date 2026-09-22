@@ -171,6 +171,20 @@ std::vector<int> RmsStorage::getRecordIds(const std::string& storeName) {
     return ids;
 }
 
+int RmsStorage::getNextRecordID(const std::string& storeName) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_nextRecordIds.find(storeName);
+    return (it != m_nextRecordIds.end()) ? it->second : 1;
+}
+
+int RmsStorage::getRecordSize(const std::string& storeName, int recordId) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_openStores.find(storeName);
+    if (it == m_openStores.end()) return 0;
+    auto recIt = it->second.find(recordId);
+    return (recIt != it->second.end()) ? (int)recIt->second.size() : 0;
+}
+
 bool RmsStorage::deleteRecordStore(const std::string& suiteName, const std::string& storeName) {
     std::lock_guard<std::mutex> lock(m_mutex);
     std::string suite = suiteName.empty() ? getSuite(storeName) : suiteName;

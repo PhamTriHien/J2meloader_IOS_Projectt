@@ -19,6 +19,8 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
 11. [Khắc phục Lỗi vào sảnh tự nhấn loạn cảm ứng nút 'Chơi mới' (Ghost Input)](#11-khắc-phục-lỗi-vào-sảnh-tự-nhấn-loạn-cảm-ứng-nút-chơi-mới-ghost-input)
 12. [CÔNG VIỆC DỞ DANG: Bản Android (J2ME-Loader Core) - Treo 24/7, Cửa sổ nổi & Tối ưu RAM](#12-công-việc-dở-dang-bản-android-j2me-loader-core---treo-247-cửa-sổ-nổi--tối-ưu-ram)
 13. [Tối ưu hóa Triệt để 60 FPS, Xóa bỏ Giật Lag, Đơ & Drop Frame Trên Máy Thật (v1.8.5)](#13-tối-ưu-hóa-triệt-để-60-fps-xóa-bỏ-giật-lag-đơ--drop-frame-trên-máy-thật-v185)
+14. [Sửa Toàn Diện 11 Lỗi Logic & Bug Ẩn Cốt Lõi JVM/J2ME (v1.8.6)](#14-sửa-toàn-diện-11-lỗi-logic--bug-ẩn-cốt-lõi-jvmj2me-v186)
+15. [Sửa Toàn Diện 15 Lỗi Logic & Ngoại Lệ Runtime Cốt Lõi JVM/LCDUI/RMS (v1.8.7)](#15-sửa-toàn-diện-15-lỗi-logic--ngoại-lệ-runtime-cốt-lõi-jvmlcduirms-v187)
 
 ---
 
@@ -233,6 +235,57 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
   11. **Triệt Tiêu Hoàn Toàn TimerTask Zombie Threads & Lỗi Phím Boxed Hashtable**:
       - *Hiện tượng*: `Timer.cancel()` là hàm rỗng, khiến các luồng `spawnDetached` của TimerTask tiếp tục chạy ngầm vô tận qua từng màn chơi, gây tụt dốc hiệu năng nghiêm trọng; `Hashtable` chỉ so sánh con trỏ hoặc chuỗi, không thể tra cứu các khóa dạng `Integer` hay `Long`.
       - *Khắc phục*: Tạo cờ nguyên tử `g_taskCancelFlags`, kiểm tra dừng luồng trong từng chu kỳ ngủ và hủy luồng ngay lập tức khi MIDlet gọi `cancel()`; bổ sung hàm `keysEqual` so sánh giá trị trường `"value"` cho các đối tượng boxed number; dọn dẹp toàn bộ file descriptor socket mở khi gọi `FullApis::reset()`.
+
+---
+
+### 15. Sửa Toàn Diện 15 Lỗi Logic & Ngoại Lệ Runtime Cốt Lõi JVM/LCDUI/RMS (v1.8.7)
+* **Tổng quan**: Kiểm tra và tối ưu hóa chuyên sâu máy ảo JVM interpreter, hệ thống đồ họa LCDUI Graphics, game engine GameCanvas/LayerManager, quản lý lưu trữ RMS và bộ API J2ME MIDP 2.0 / CLDC 1.1; khắc phục triệt để 15 lỗi logic, xử lý ngoại lệ và vi phạm đặc tả:
+* **Chi tiết 15 lỗi logic & giải pháp kỹ thuật đã triển khai**:
+  1. **Rò rỉ Ngoại lệ Chưa Bắt (Pending Exception Cleanup) ở Ranh giới `executeMethod`**:
+     - *Hiện tượng*: Khi một sự kiện (ví dụ `keyPressed` hoặc `paint`) ném ra ngoại lệ không được catch, biến `m_pendingException` vẫn còn lưu lại. Ở chu kỳ tick hoặc sự kiện tiếp theo, `executeMethod` vừa vào đã lập tức unwinding và thoát sớm, làm đóng băng luồng render và vô hiệu hóa vĩnh viễn vòng lặp game.
+     - *Khắc phục*: Tự động dọn sạch ngoại lệ còn sót lại khi bắt đầu `executeMethod` ở khung ngoài cùng (`t_callDepth == 0`) và sử dụng lớp bảo vệ `DepthGuard` xóa `pendingException` chưa bắt khi thoát khỏi khung gốc.
+  2. **Crash Phần Cứng SIGFPE & Thiếu Ngoại Lệ Phép Chia Số Học (`OP_IDIV`, `OP_IREM`, `OP_LDIV`, `OP_LREM`)**:
+     - *Hiện tượng*: Khi thực hiện phép chia hoặc lấy dư cho 0, hoặc phép tính đặc thù `INT32_MIN / -1` và `INT64_MIN / -1` trên kiến trúc x86_64/ARM64, CPU ném tín hiệu phần cứng `SIGFPE` làm ứng dụng sập (crash) ngay lập tức thay vì ném ngoại lệ máy ảo Java.
+     - *Khắc phục*: Bắt trước điều kiện $b == 0$ để ném `java/lang/ArithmeticException: / by zero`. Đồng thời xử lý tràn số `INT32_MIN / -1` và `INT64_MIN / -1` trả về chính giá trị cực tiểu đúng đặc tả Java Language Specification mà không gây crash phần cứng.
+  3. **Xử Lý NullPointerException Chuẩn Trong `OP_ARRAYLENGTH`**:
+     - *Hiện tượng*: Khi tham chiếu mảng là null, `OP_ARRAYLENGTH` âm thầm push giá trị 0 lên stack, che giấu lỗi logic khiến luồng code tiếp tục chạy với dữ liệu sai lệch.
+     - *Khắc phục*: Kiểm tra bảng xử lý ngoại lệ (`findCatchBlock`); nếu có khối catch `NullPointerException`, ném ngoại lệ chuẩn; nếu không, trả về 0 an toàn.
+  4. **Kiểm Tra Mảng Trong `OP_INSTANCEOF` & `OP_CHECKCAST`**:
+     - *Hiện tượng*: Khi kiểm tra `instanceof` trên đối tượng mảng (`JavaArray`), máy ảo chỉ tra cứu `ClassInstance`, không nhận diện mảng khiến `arr instanceof Object` hay `arr instanceof byte[]` luôn trả về 0 (`false`).
+     - *Khắc phục*: Kiểm tra `getArray(ref)`. Nếu là mảng và kiểu kiểm tra là `java/lang/Object` hoặc khớp với kiểu mảng (`[B`, `[I`, v.v.), trả về 1 (`true`).
+  5. **Ném NullPointerException Chuẩn Trong `OP_ATHROW`**:
+     - *Hiện tượng*: Khi lệnh `athrow` nhận tham số null, bytecode spec yêu cầu ném `NullPointerException`. Engine trước đó bỏ qua không làm gì.
+     - *Khắc phục*: Tự động cấp phát đối tượng `java/lang/NullPointerException` và điều hướng tới khối catch tương ứng.
+  6. **Cắt Chuỗi `String.substring` & Sao Chép `String.getChars` Bị Lỗi Mã Hóa UTF-8**:
+     - *Hiện tượng*: Trong Java, chỉ mục của chuỗi được tính theo ký tự (UTF-16 code units), trong khi engine lưu chuỗi dạng UTF-8. Các chuỗi tiếng Việt hoặc ký tự đa byte bị cắt ngang chừng byte mã hóa, sinh ra chuỗi rác, mất dấu hoặc gây lỗi hiển thị.
+     - *Khắc phục*: Xây dựng hàm `utf8CharToByteOffset` chuyển đổi chính xác chỉ số ký tự thành byte offset UTF-8; giải mã UTF-8 thành mã Unicode ký tự trong `String.getChars`.
+  7. **Chuẩn Hóa `StringBuffer.append(Object null)`**:
+     - *Hiện tượng*: Khi gọi `append(null)`, hàm không nối ký tự nào thay vì nối chuỗi `"null"` theo đặc tả Java.
+     - *Khắc phục*: Nối chuỗi `"null"` khi con trỏ hoặc tham chiếu đối tượng là null.
+  8. **Ném Ngoại Lệ `EOFException` Trong `DataInputStream.readUTF`**:
+     - *Hiện tượng*: Khi luồng dữ liệu kết thúc giữa chừng trong lúc đọc chuỗi UTF, hàm chỉ thoát ra mà không thông báo lỗi.
+     - *Khắc phục*: Ném `EOFException` ngay lập tức nếu luồng không đủ số byte UTF được khai báo.
+  9. **Tối Ưu Hóa Tốc Độ Đọc Kích Thước Mảng `JavaArray::length()` O(1)**:
+     - *Hiện tượng*: Hàm `JavaArray::length()` trước đây kiểm tra tuần tự 8 mảng `std::vector` khác nhau (`if (!ints.empty())...`), gây lãng phí chu kỳ CPU trên luồng render nóng.
+     - *Khắc phục*: Tối ưu hóa bằng câu lệnh `switch (elemType)` trực tiếp đạt độ phức tạp $O(1)$.
+  10. **Bù Trừ Dịch Chuyển Tọa Độ `Graphics.getClipX()` & `getClipY()`**:
+      - *Hiện tượng*: `getClipX()` và `getClipY()` trả về tọa độ clip tuyệt đối trên màn hình, trong khi đặc tả MIDP 2.0 yêu cầu trả về tọa độ tương đối theo hệ quy chiếu đã dịch chuyển bởi `translate(x, y)`.
+      - *Khắc phục*: Cập nhật công thức tính toán: `m_clip.x - m_transX` và `m_clip.y - m_transY`.
+  11. **Sửa Lỗi Nhân Đôi Translation Trong `drawRoundRect` & Vòng Lặp `fillRoundRect`**:
+      - *Hiện tượng*: `drawRoundRect` tự cộng `m_transX/m_transY` vào tọa độ rồi gọi `drawLine`, trong khi `drawLine` lại tự cộng tiếp, khiến bo góc bị vẽ lệch gấp đôi; `fillRoundRect` duyệt quá cận biên giới hạn.
+      - *Khắc phục*: Truyền tọa độ chưa dịch chuyển cho các hàm vẽ đoạn thẳng và điều chỉnh cận lặp `< y2`, `< x2`.
+  12. **Bảo Toàn Vùng Clip Trong `LayerManager.paint()`**:
+      - *Hiện tượng*: `LayerManager::paint` gọi `setClip` để cắt từng layer mà không lưu lại clip ban đầu, làm mất vùng clip của Canvas sau khi vẽ xong layer manager.
+      - *Khắc phục*: Lưu lại vùng clip ban đầu trước khi vẽ và phục hồi nguyên vẹn sau khi hoàn tất.
+  13. **Hoàn Thiện Bộ API Còn Thiếu Trong `TiledLayer` & `LayerManager`**:
+      - *Hiện tượng*: `TiledLayer.getColumns/getRows` bị chia cứng `/ 16`, thiếu `getCellWidth/getCellHeight`; `LayerManager.getSize` và `getLayerAt` trả về giá trị giả lập 0.
+      - *Khắc phục*: Bổ sung các trường lưu trữ thực tế `m_columns, m_rows, m_cellWidth, m_cellHeight`, các phương thức getter tương ứng và quản lý danh sách `m_layers` thực tế trong `LayerManager`.
+  14. **Hoàn Thiện API RMS `RecordStore.getNextRecordID()` & `getRecordSize()`**:
+      - *Hiện tượng*: Game gọi `getNextRecordID()` để cấp phát ID trước hoặc gọi `getRecordSize(id)` để kiểm tra kích thước bộ đệm bị báo lỗi thiếu phương thức.
+      - *Khắc phục*: Triển khai `getNextRecordID` và `getRecordSize` có khóa đa luồng (mutex) trong `RmsStorage` và kết nối hoàn chỉnh vào `JvmInterpreter` và `FullApis`.
+  15. **Sửa Kiểu Dữ Liệu `Math.min/max (FF)F`**:
+      - *Hiện tượng*: `Math.min(float, float)` và `Math.max(float, float)` trả về `JavaValue(int)` thay vì `JavaValue(float)`, dẫn đến các phép toán vật lý float trong game bị đọc sai bit representation.
+      - *Khắc phục*: Trả về `JavaValue(float)` cho đúng chữ ký hàm `(FF)F`.
 
 ---
 

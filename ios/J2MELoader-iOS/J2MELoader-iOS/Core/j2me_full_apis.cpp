@@ -659,7 +659,29 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             outResult = JavaValue(r, true);
             return true;
         }
-        if(methodName=="getChars"&&args.size()>=5){ JavaArray*a=ENG().getArray(args[4].asRef()); int sb=args[1].asInt(),eb=args[2].asInt(),db=args[3].asInt(); if(a)for(int i=sb;i<eb&&i<(int)s0.size()&&db+i-sb<(int)a->charData.size();i++)a->charData[db+i-sb]=(uint16_t)(uint8_t)s0[i]; return true; }
+        if(methodName=="getChars"&&args.size()>=5){
+            JavaArray* a = ENG().getArray(args[4].asRef());
+            int sb = args[1].asInt(), eb = args[2].asInt(), db = args[3].asInt();
+            if (a) {
+                std::vector<uint16_t> utf16;
+                for (size_t i = 0; i < s0.size();) {
+                    uint32_t cp = 0;
+                    uint8_t b0 = (uint8_t)s0[i++];
+                    if (b0 < 0x80) cp = b0;
+                    else if ((b0 & 0xE0) == 0xC0 && i < s0.size()) {
+                        cp = ((b0 & 0x1F) << 6) | ((uint8_t)s0[i++] & 0x3F);
+                    } else if ((b0 & 0xF0) == 0xE0 && i + 1 < s0.size()) {
+                        cp = ((b0 & 0x0F) << 12) | (((uint8_t)s0[i] & 0x3F) << 6) | ((uint8_t)s0[i + 1] & 0x3F);
+                        i += 2;
+                    } else cp = b0;
+                    utf16.push_back((uint16_t)cp);
+                }
+                for (int i = sb; i < eb && i < (int)utf16.size() && db + (i - sb) < (int)a->charData.size(); ++i) {
+                    a->charData[db + (i - sb)] = utf16[i];
+                }
+            }
+            return true;
+        }
         if(methodName=="getBytes"&&args.size()>=2){ // getBytes(String enc)
             uint32_t r=ENG().allocArray(8,(int)s0.size()); JavaArray*a=ENG().getArray(r); if(a)for(size_t i=0;i<s0.size();i++)a->byteData[i]=(uint8_t)s0[i]; outResult=JavaValue(r,true); return true; }
         if(methodName=="valueOf"&&args.size()>=1){
@@ -695,7 +717,13 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         }
         if(methodName=="min"||methodName=="max"){
             bool isMin=(methodName=="min");
-            if(desc.find("(DD)")!=std::string::npos||desc.find("(FF)")!=std::string::npos){double a=D(0),b=D(1);outResult=JavaValue(isMin?std::min(a,b):std::max(a,b));return true;}
+            if(desc.find("(FF)")!=std::string::npos){
+                float a = args.size() >= 1 ? args[0].asFloat() : 0.0f;
+                float b = args.size() >= 2 ? args[1].asFloat() : 0.0f;
+                outResult = JavaValue(isMin ? std::min(a, b) : std::max(a, b));
+                return true;
+            }
+            if(desc.find("(DD)")!=std::string::npos){double a=D(0),b=D(1);outResult=JavaValue(isMin?std::min(a,b):std::max(a,b));return true;}
             if(desc.find("(JJ)")!=std::string::npos){int64_t a=args[0].asLong(),b=args[1].asLong();outResult=JavaValue(isMin?std::min(a,b):std::max(a,b));return true;}
             outResult=JavaValue(isMin?std::min(I(0),I(1)):std::max(I(0),I(1)));return true;
         }
@@ -811,6 +839,45 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     }
     if(className=="java/util/Vector"){
         JavaObject* o=args.empty()?nullptr:ENG().getObject(args[0].asRef());
+        if(methodName=="elements"&&o){
+            uint32_t arr=o->fields["elements"].asRef();
+            JavaArray*a=ENG().getArray(arr);
+            int cnt=o->fields["elementCount"].asInt();
+            uint32_t er=ENG().allocObject("java/util/Enumeration");
+            EnumData e;
+            if(a)for(int i=0;i<cnt&&i<(int)a->refData.size();i++) e.items.push_back(a->refData[i]);
+            g_enums[er]=std::move(e);
+            outResult=JavaValue(er,true);
+            return true;
+        }
+        if(methodName=="copyInto"&&args.size()>=2&&o){
+            uint32_t arr=o->fields["elements"].asRef();
+            JavaArray*a=ENG().getArray(arr);
+            int cnt=o->fields["elementCount"].asInt();
+            JavaArray*dst=ENG().getArray(args[1].asRef());
+            if(a&&dst)for(int i=0;i<cnt&&i<(int)dst->refData.size();i++) dst->refData[i]=a->refData[i];
+            return true;
+        }
+        if(methodName=="capacity"&&o){
+            uint32_t arr=o->fields["elements"].asRef();
+            JavaArray*a=ENG().getArray(arr);
+            outResult=JavaValue(a?(int32_t)a->refData.size():0);
+            return true;
+        }
+        if(methodName=="ensureCapacity"&&args.size()>=2&&o){
+            uint32_t arr=o->fields["elements"].asRef();
+            JavaArray*a=ENG().getArray(arr);
+            int minCap=args[1].asInt();
+            if(a&&minCap>(int)a->refData.size()) a->refData.resize(minCap,0);
+            return true;
+        }
+        if(methodName=="trimToSize"&&o){
+            uint32_t arr=o->fields["elements"].asRef();
+            JavaArray*a=ENG().getArray(arr);
+            int cnt=o->fields["elementCount"].asInt();
+            if(a&&cnt<(int)a->refData.size()) a->refData.resize(std::max(0,cnt),0);
+            return true;
+        }
         if(methodName=="removeElement"&&args.size()>=2&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); uint32_t t=args[1].asRef(); bool f=false; if(a) for(int i=0;i<cnt;i++) if(a->refData[i]==t){ for(int j=i;j<cnt-1;j++)a->refData[j]=a->refData[j+1]; o->fields["elementCount"]=JavaValue(cnt-1); f=true; break; } outResult=JavaValue(f?1:0); return true; }
         if(methodName=="contains"&&args.size()>=2&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); uint32_t t=args[1].asRef(); bool f=false; if(a) for(int i=0;i<cnt;i++) if(a->refData[i]==t) f=true; outResult=JavaValue(f?1:0); return true; }
         if(methodName=="indexOf"&&args.size()>=2&&o){ uint32_t arr=o->fields["elements"].asRef(); JavaArray*a=ENG().getArray(arr); int cnt=o->fields["elementCount"].asInt(); uint32_t t=args[1].asRef(); int r=-1; if(a) for(int i=0;i<cnt;i++) if(a->refData[i]==t){r=i;break;} outResult=JavaValue(r); return true; }
@@ -1213,8 +1280,10 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         if(methodName=="getY"){ outResult=JavaValue(tl->getY()); return true; }
         if(methodName=="getWidth"){ outResult=JavaValue(tl->getWidth()); return true; }
         if(methodName=="getHeight"){ outResult=JavaValue(tl->getHeight()); return true; }
-        if(methodName=="getColumns"){ outResult=JavaValue(tl->getWidth()/16); return true; }
-        if(methodName=="getRows"){ outResult=JavaValue(tl->getHeight()/16); return true; }
+        if(methodName=="getColumns"){ outResult=JavaValue(tl->getColumns()); return true; }
+        if(methodName=="getRows"){ outResult=JavaValue(tl->getRows()); return true; }
+        if(methodName=="getCellWidth"){ outResult=JavaValue(tl->getCellWidth()); return true; }
+        if(methodName=="getCellHeight"){ outResult=JavaValue(tl->getCellHeight()); return true; }
         if(methodName=="paint"&&args.size()>=2&&display){
             LcduiDisplay* tgt = (args[1].type==JavaValue::OBJ_REF) ? ENG().resolveGraphics(args[1].asRef(), display) : display;
             if(tgt) tl->paint(tgt); return true;
@@ -1237,8 +1306,19 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             LcduiDisplay* tgt = (args[1].type==JavaValue::OBJ_REF) ? ENG().resolveGraphics(args[1].asRef(), display) : display;
             if(tgt) lm->paint(tgt, args[2].asInt(), args[3].asInt()); return true;
         }
-        if(methodName=="getSize"){ outResult=JavaValue(0); return true; }
-        if(methodName=="getLayerAt"){ outResult=JavaValue(0,true); return true; }
+        if(methodName=="getSize"){ outResult=JavaValue(lm->getSize()); return true; }
+        if(methodName=="getLayerAt"&&args.size()>=2){
+            auto lay = lm->getLayerAt(args[1].asInt());
+            uint32_t r = 0;
+            if (lay) {
+                for (const auto& sp : g_sprites) { if (sp.second == lay) { r = sp.first; break; } }
+                if (r == 0) {
+                    for (const auto& tl : g_tiled) { if (tl.second == lay) { r = tl.first; break; } }
+                }
+            }
+            outResult = JavaValue(r, true);
+            return true;
+        }
     }
     if(className=="javax/microedition/lcdui/game/Layer"){
         if(methodName=="setPosition"||methodName=="move"||methodName=="setVisible") return true;
@@ -2572,6 +2652,15 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             } else {
                 outResult = (args.size() >= 4) ? JavaValue(0) : JavaValue(0, true);
             }
+        if(methodName=="getNextRecordID"&&args.size()>=1){
+            JavaObject* obj = ENG().getObject(args[0].asRef());
+            outResult = JavaValue(obj ? RmsStorage::getInstance().getNextRecordID(obj->stringVal) : 1);
+            return true;
+        }
+        if(methodName=="getRecordSize"&&args.size()>=2){
+            JavaObject* obj = ENG().getObject(args[0].asRef());
+            int recId = args[1].asInt();
+            outResult = JavaValue(obj ? RmsStorage::getInstance().getRecordSize(obj->stringVal, recId) : 0);
             return true;
         }
         return true;

@@ -333,14 +333,17 @@ struct JavaArray {
     std::vector<double> doubleData;
     std::vector<uint32_t> refData;
     int length() const {
-        if (!intData.empty()) return (int)intData.size();
-        if (!byteData.empty()) return (int)byteData.size();
-        if (!charData.empty()) return (int)charData.size();
-        if (!shortData.empty()) return (int)shortData.size();
-        if (!longData.empty()) return (int)longData.size();
-        if (!floatData.empty()) return (int)floatData.size();
-        if (!doubleData.empty()) return (int)doubleData.size();
-        return (int)refData.size();
+        switch (elemType) {
+        case 10: return (int)intData.size();
+        case 8:
+        case 4: return (int)byteData.size();
+        case 5: return (int)charData.size();
+        case 9: return (int)shortData.size();
+        case 11: return (int)longData.size();
+        case 6: return (int)floatData.size();
+        case 7: return (int)doubleData.size();
+        default: return (int)refData.size();
+        }
     }
 };
 

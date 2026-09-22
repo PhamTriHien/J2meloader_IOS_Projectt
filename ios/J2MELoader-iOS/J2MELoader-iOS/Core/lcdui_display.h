@@ -32,10 +32,10 @@ public:
     void setClip(int x, int y, int w, int h);
     void clipRect(int x, int y, int w, int h);
     ClipRect getClip() const { return m_clip; }
-    int getClipX() const { return m_origClipX; }
-    int getClipY() const { return m_origClipY; }
-    int getClipWidth() const { return m_origClipW; }
-    int getClipHeight() const { return m_origClipH; }
+    int getClipX() const { return m_clip.x - m_transX; }
+    int getClipY() const { return m_clip.y - m_transY; }
+    int getClipWidth() const { return m_clip.width; }
+    int getClipHeight() const { return m_clip.height; }
     void resetClip();
 
     void drawLine(int x1, int y1, int x2, int y2, uint32_t color);
