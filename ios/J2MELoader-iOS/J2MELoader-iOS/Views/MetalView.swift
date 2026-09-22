@@ -32,8 +32,10 @@ public struct MetalView: UIViewRepresentable {
             if viewSize.width > 0 && viewSize.height > 0 {
                 let scaleX = w / viewSize.width
                 let scaleY = h / viewSize.height
-                let jx = Int32(point.x * scaleX)
-                let jy = Int32(point.y * scaleY)
+                let rawX = Int32(point.x * scaleX)
+                let rawY = Int32(point.y * scaleY)
+                let jx = max(0, min(Int32(w) - 1, rawX))
+                let jy = max(0, min(Int32(h) - 1, rawY))
                 self.onTouch(jx, jy, action)
             }
         }
@@ -143,15 +145,20 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
 
 class TouchGestureRecognizer: UIGestureRecognizer {
     var onTouch: (CGPoint, Int32) -> Void
+    private weak var activeTouch: UITouch?
     
     init(onTouch: @escaping (CGPoint, Int32) -> Void) {
         self.onTouch = onTouch
         super.init(target: nil, action: nil)
+        self.cancelsTouchesInView = false
+        self.delaysTouchesBegan = false
+        self.delaysTouchesEnded = false
     }
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         state = .began
-        if let touch = touches.first {
+        if activeTouch == nil, let touch = touches.first {
+            activeTouch = touch
             let point = touch.location(in: view)
             onTouch(point, 0)
         }
@@ -159,7 +166,11 @@ class TouchGestureRecognizer: UIGestureRecognizer {
     
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
         state = .changed
-        if let touch = touches.first {
+        if let at = activeTouch, touches.contains(at) {
+            let point = at.location(in: view)
+            onTouch(point, 1)
+        } else if activeTouch == nil, let touch = touches.first {
+            activeTouch = touch
             let point = touch.location(in: view)
             onTouch(point, 1)
         }
@@ -167,7 +178,11 @@ class TouchGestureRecognizer: UIGestureRecognizer {
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
         state = .ended
-        if let touch = touches.first {
+        if let at = activeTouch, touches.contains(at) {
+            let point = at.location(in: view)
+            activeTouch = nil
+            onTouch(point, 2)
+        } else if activeTouch == nil, let touch = touches.first {
             let point = touch.location(in: view)
             onTouch(point, 2)
         }
@@ -175,7 +190,11 @@ class TouchGestureRecognizer: UIGestureRecognizer {
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
         state = .cancelled
-        if let touch = touches.first {
+        if let at = activeTouch, touches.contains(at) {
+            let point = at.location(in: view)
+            activeTouch = nil
+            onTouch(point, 2)
+        } else if activeTouch == nil, let touch = touches.first {
             let point = touch.location(in: view)
             onTouch(point, 2)
         }

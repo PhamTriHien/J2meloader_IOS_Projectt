@@ -234,6 +234,18 @@ void JvmInterpreter::postKeyEvent(int32_t keyCode, bool isDown) {
 
 void JvmInterpreter::postTouchEvent(int32_t x, int32_t y, int32_t action) {
     std::lock_guard<std::mutex> lock(m_eventMutex);
+    // Touch Drag Coalescing:
+    // If the last queued event is already an unprocessed Drag (action == 1),
+    // update its coordinates instead of accumulating redundant intermediate positions.
+    // This prevents drag backlog/lag and ensures smooth 60 FPS touch tracking.
+    if (action == 1 && !m_eventQueue.empty()) {
+        InputEvent& lastEv = m_eventQueue.back();
+        if (lastEv.type == InputEvent::Touch && lastEv.isDownOrAction == 1) {
+            lastEv.codeOrX = x;
+            lastEv.extraOrY = y;
+            return;
+        }
+    }
     InputEvent ev;
     ev.type = InputEvent::Touch;
     ev.codeOrX = x;
