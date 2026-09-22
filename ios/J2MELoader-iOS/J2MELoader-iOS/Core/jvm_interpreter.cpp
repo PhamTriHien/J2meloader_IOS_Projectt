@@ -208,11 +208,27 @@ std::string JvmInterpreter::getBootStatus() {
 
 void JvmInterpreter::postKeyEvent(int32_t keyCode, bool isDown) {
     std::lock_guard<std::mutex> lock(m_eventMutex);
+    auto nowMs = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
     InputEvent ev;
     ev.type = InputEvent::Key;
     ev.codeOrX = keyCode;
     ev.extraOrY = 0;
-    ev.isDownOrAction = isDown;
+    ev.isDownOrAction = isDown ? 1 : 0;
+    if (isDown) {
+        m_keyPressTimes[keyCode] = nowMs;
+        ev.readyTimeMs = nowMs;
+    } else {
+        uint64_t pressTime = nowMs;
+        auto it = m_keyPressTimes.find(keyCode);
+        if (it != m_keyPressTimes.end()) {
+            pressTime = it->second;
+        }
+        // Ensure keys stay down for at least 80ms (roughly 2-3 game ticks)
+        // so that polling-based game loops (like DragonBoy) never miss taps!
+        uint64_t minReleaseTime = pressTime + 80;
+        ev.readyTimeMs = (nowMs < minReleaseTime) ? minReleaseTime : nowMs;
+    }
     m_eventQueue.push(ev);
 }
 
@@ -223,15 +239,23 @@ void JvmInterpreter::postTouchEvent(int32_t x, int32_t y, int32_t action) {
     ev.codeOrX = x;
     ev.extraOrY = y;
     ev.isDownOrAction = action;
+    ev.readyTimeMs = 0;
     m_eventQueue.push(ev);
 }
 
 void JvmInterpreter::processEvents() {
     std::lock_guard<std::mutex> lock(m_eventMutex);
     auto& jvm = JvmBytecodeEngine::getInstance();
+    auto nowMs = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
 
     while (!m_eventQueue.empty()) {
-        InputEvent ev = m_eventQueue.front();
+        const InputEvent& frontEv = m_eventQueue.front();
+        if (frontEv.readyTimeMs > nowMs) {
+            // Event not ready to be processed yet (minimum key hold duration)
+            break;
+        }
+        InputEvent ev = frontEv;
         m_eventQueue.pop();
         
         if (ev.type == InputEvent::Key) {

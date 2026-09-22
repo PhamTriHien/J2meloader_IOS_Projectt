@@ -219,9 +219,6 @@ struct KeyButton: View {
     let haptic: Bool
     let onEvent: (Int32, Bool) -> Void
     
-    @State private var isPressed: Bool = false
-    private let generator = UIImpactFeedbackGenerator(style: .medium)
-    
     init(title: String, sub: String? = nil, key: J2MEKey, color: Color = Color(.systemGray5), haptic: Bool, onEvent: @escaping (Int32, Bool) -> Void) {
         self.title = title
         self.sub = sub
@@ -232,45 +229,50 @@ struct KeyButton: View {
     }
     
     var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isPressed ? Color.accentColor : color)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                    )
-                    .shadow(color: Color.black.opacity(isPressed ? 0.0 : 0.08), radius: 2, x: 0, y: 1)
+        Button(action: {}) {
+            VStack(spacing: 0.5) {
+                Text(title)
+                    .font(.system(size: sub != nil ? 15 : 12.5, weight: .bold, design: .rounded))
                 
-                VStack(spacing: 0.5) {
-                    Text(title)
-                        .font(.system(size: sub != nil ? 15 : 12.5, weight: .bold, design: .rounded))
-                        .foregroundColor(isPressed ? .white : .primary)
-                    
-                    if let sub = sub {
-                        Text(sub)
-                            .font(.system(size: 7.5, weight: .bold, design: .rounded))
-                            .foregroundColor(isPressed ? .white.opacity(0.8) : .secondary)
-                    }
+                if let sub = sub {
+                    Text(sub)
+                        .font(.system(size: 7.5, weight: .bold, design: .rounded))
+                        .opacity(0.8)
                 }
             }
-            .scaleEffect(isPressed ? 0.94 : 1.0)
-            .animation(.easeInOut(duration: 0.08), value: isPressed)
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        if !isPressed {
-                            isPressed = true
-                            if haptic { generator.impactOccurred() }
-                            onEvent(key.rawValue, true)
-                        }
-                    }
-                    .onEnded { _ in
-                        isPressed = false
-                        onEvent(key.rawValue, false)
-                    }
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(KeypadButtonStyle(color: color, haptic: haptic) { isDown in
+            onEvent(key.rawValue, isDown)
+        })
         .frame(height: sub != nil ? 38 : nil)
+    }
+}
+
+struct KeypadButtonStyle: ButtonStyle {
+    let color: Color
+    let haptic: Bool
+    let onStateChange: (Bool) -> Void
+    private let generator = UIImpactFeedbackGenerator(style: .medium)
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(configuration.isPressed ? .white : .primary)
+            .background(configuration.isPressed ? Color.accentColor : color)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(configuration.isPressed ? 0.0 : 0.08), radius: 2, x: 0, y: 1)
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.easeInOut(duration: 0.08), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { pressed in
+                if pressed && haptic {
+                    generator.impactOccurred()
+                }
+                onStateChange(pressed)
+            }
     }
 }

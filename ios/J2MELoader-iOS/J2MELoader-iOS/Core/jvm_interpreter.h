@@ -25,6 +25,7 @@ struct InputEvent {
     int32_t codeOrX;
     int32_t extraOrY;
     int32_t isDownOrAction;
+    uint64_t readyTimeMs = 0;
 };
 
 class JvmInterpreter {
@@ -97,6 +98,7 @@ private:
 
     std::mutex m_eventMutex;
     std::queue<InputEvent> m_eventQueue;
+    std::map<int32_t, uint64_t> m_keyPressTimes;
 
     std::function<void(const uint8_t*, size_t)> m_playMidiCallback;
     std::function<void(int, int)> m_playToneCallback;
