@@ -210,26 +210,39 @@ void JvmInterpreter::postKeyEvent(int32_t keyCode, bool isDown) {
     std::lock_guard<std::mutex> lock(m_eventMutex);
     auto nowMs = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
-    InputEvent ev;
-    ev.type = InputEvent::Key;
-    ev.codeOrX = keyCode;
-    ev.extraOrY = 0;
-    ev.isDownOrAction = isDown ? 1 : 0;
+    
     if (isDown) {
+        // Cancel any pending release for this key
+        for (auto it = m_pendingReleases.begin(); it != m_pendingReleases.end(); ) {
+            if (it->keyCode == keyCode) it = m_pendingReleases.erase(it);
+            else ++it;
+        }
         m_keyPressTimes[keyCode] = nowMs;
-        ev.readyTimeMs = nowMs;
+        InputEvent ev;
+        ev.type = InputEvent::Key;
+        ev.codeOrX = keyCode;
+        ev.extraOrY = 0;
+        ev.isDownOrAction = 1;
+        m_eventQueue.push(ev);
     } else {
         uint64_t pressTime = nowMs;
         auto it = m_keyPressTimes.find(keyCode);
         if (it != m_keyPressTimes.end()) {
             pressTime = it->second;
         }
-        // Ensure keys stay down for at least 80ms (roughly 2-3 game ticks)
-        // so that polling-based game loops (like DragonBoy) never miss taps!
-        uint64_t minReleaseTime = pressTime + 80;
-        ev.readyTimeMs = (nowMs < minReleaseTime) ? minReleaseTime : nowMs;
+        // If the key has already been held for >= 50ms, release immediately
+        if (nowMs >= pressTime + 50) {
+            InputEvent ev;
+            ev.type = InputEvent::Key;
+            ev.codeOrX = keyCode;
+            ev.extraOrY = 0;
+            ev.isDownOrAction = 0;
+            m_eventQueue.push(ev);
+        } else {
+            // Schedule delayed release without blocking the queue!
+            m_pendingReleases.push_back({ keyCode, pressTime + 50 });
+        }
     }
-    m_eventQueue.push(ev);
 }
 
 void JvmInterpreter::postTouchEvent(int32_t x, int32_t y, int32_t action) {
@@ -251,7 +264,6 @@ void JvmInterpreter::postTouchEvent(int32_t x, int32_t y, int32_t action) {
     ev.codeOrX = x;
     ev.extraOrY = y;
     ev.isDownOrAction = action;
-    ev.readyTimeMs = 0;
     m_eventQueue.push(ev);
 }
 
@@ -261,13 +273,27 @@ void JvmInterpreter::processEvents() {
     auto nowMs = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
 
-    while (!m_eventQueue.empty()) {
-        const InputEvent& frontEv = m_eventQueue.front();
-        if (frontEv.readyTimeMs > nowMs) {
-            // Event not ready to be processed yet (minimum key hold duration)
-            break;
+    // Snapshot canvas under lock
+    std::shared_ptr<ClassFile> canvasCls;
+    uint32_t canvasRef = 0;
+    { std::lock_guard<std::mutex> slk(m_stateMutex); canvasCls = m_canvasClass; canvasRef = m_canvasRef; }
+
+    // 1. Dispatch any pending key releases whose hold duration has expired
+    for (auto it = m_pendingReleases.begin(); it != m_pendingReleases.end(); ) {
+        if (it->releaseTimeMs <= nowMs) {
+            int32_t code = it->keyCode;
+            it = m_pendingReleases.erase(it);
+            if (canvasCls && canvasRef != 0) {
+                jvm.executeMethod(canvasCls, "keyReleased", "(I)V", { JavaValue(canvasRef, true), JavaValue(code) }, m_display.get());
+            }
+        } else {
+            ++it;
         }
-        InputEvent ev = frontEv;
+    }
+
+    // 2. Process all queued events immediately (ZERO DELAY for touch and key events)
+    while (!m_eventQueue.empty()) {
+        InputEvent ev = m_eventQueue.front();
         m_eventQueue.pop();
         
         if (ev.type == InputEvent::Key) {
@@ -277,11 +303,6 @@ void JvmInterpreter::processEvents() {
 
             // High-level Form/List softkey -> CommandListener
             FullApis::onKey(ev.codeOrX, ev.isDownOrAction != 0, m_display.get());
-            // Snapshot canvas under lock; execute outside it (engine calls back
-            // into setCurrentCanvas which takes the same mutex).
-            std::shared_ptr<ClassFile> canvasCls;
-            uint32_t canvasRef = 0;
-            { std::lock_guard<std::mutex> slk(m_stateMutex); canvasCls = m_canvasClass; canvasRef = m_canvasRef; }
             // Dispatch directly to active MIDP Canvas bytecode
             if (canvasCls && canvasRef != 0) {
                 std::string method = (ev.isDownOrAction != 0) ? "keyPressed" : "keyReleased";
@@ -289,9 +310,6 @@ void JvmInterpreter::processEvents() {
             }
         }
         else if (ev.type == InputEvent::Touch) {
-            std::shared_ptr<ClassFile> canvasCls;
-            uint32_t canvasRef = 0;
-            { std::lock_guard<std::mutex> slk(m_stateMutex); canvasCls = m_canvasClass; canvasRef = m_canvasRef; }
             // Dispatch directly to active MIDP Canvas touch bytecode
             if (canvasCls && canvasRef != 0) {
                 std::string method = (ev.isDownOrAction == 0) ? "pointerPressed" : ((ev.isDownOrAction == 1) ? "pointerDragged" : "pointerReleased");

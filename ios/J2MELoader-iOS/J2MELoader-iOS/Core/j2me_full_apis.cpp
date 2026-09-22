@@ -300,6 +300,38 @@ static std::vector<uint8_t> fetchHttpSync(const std::string& url){
     return result;
 }
 
+static std::string s_cachedServerList = 
+    "Vũ trụ 1:dragon1.teamobi.com:14445:0:0:0,"
+    "Vũ trụ 2:dragon2.teamobi.com:14445:0:0:0,"
+    "Vũ trụ 3:dragon3.teamobi.com:14445:0:0:0,"
+    "Vũ trụ 4:dragon4.teamobi.com:14445:0:0:0,"
+    "Vũ trụ 5:dragon5.teamobi.com:14445:0:0:0,"
+    "Vũ trụ 6:dragon6.teamobi.com:14445:0:0:0,"
+    "Vũ trụ 7:dragon7.teamobi.com:14445:0:0:0,"
+    "Vũ trụ 8:dragon8.teamobi.com:14445:0:0:0,"
+    "Vũ trụ 9:dragon9.teamobi.com:14445:0:0:0,"
+    "Vũ trụ 10:dragon10.teamobi.com:14445:0:0:0,"
+    "Võ Đài Liên Vũ Trụ:dragonwar.teamobi.com:14445:0:0:0,"
+    "Đông Nam Á:dragonsea.teamobi.com:14445:0:0:0";
+static std::atomic<bool> s_serverListUpdating{false};
+
+static std::string getServerListText() {
+    if (!s_serverListUpdating.exchange(true)) {
+        std::thread([]() {
+            std::string url = "https://raw.githubusercontent.com/2chinese2onetopup/chinese/refs/heads/main/ServerListScreen.txt";
+            auto body = fetchHttpSync(url);
+            if (!body.empty()) {
+                std::string text(body.begin(), body.end());
+                if (!text.empty() && text.find("dragon") != std::string::npos) {
+                    s_cachedServerList = text;
+                }
+            }
+            s_serverListUpdating.store(false);
+        }).detach();
+    }
+    return s_cachedServerList;
+}
+
 void FullApis::reset(){
     g_screens.clear(); g_sprites.clear(); g_tiled.clear(); g_layerMgr.clear();
     g_m3gType.clear(); g_m3gWorlds.clear(); g_microFig.clear(); g_microTex.clear(); g_micro3dGfx.clear(); g_m3dTarget.clear(); g_sockFd.clear();
@@ -1901,13 +1933,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
 
     // ============ DragonBoy Server List Method b/ci.Gd ============
     if(className=="b/ci" && methodName=="Gd"){
-        std::string url = "https://raw.githubusercontent.com/2chinese2onetopup/chinese/refs/heads/main/ServerListScreen.txt";
-        std::vector<uint8_t> body = fetchHttpSync(url);
-        std::string text(body.begin(), body.end());
-        if(text.empty()){
-            text = "Vũ trụ 1:dragon1.teamobi.com:14445:0:0:0,Vũ trụ 2:dragon2.teamobi.com:14445:0:0:0,Vũ trụ 3:dragon3.teamobi.com:14445:0:0:0,Vũ trụ 4:dragon4.teamobi.com:14445:0:0:0,Vũ trụ 5:dragon5.teamobi.com:14445:0:0:0,Vũ trụ 6:dragon6.teamobi.com:14445:0:0:0,Vũ trụ 7:dragon7.teamobi.com:14445:0:0:0,Vũ trụ 8:dragon8.teamobi.com:14445:0:0:0,Vũ trụ 9:dragon9.teamobi.com:14445:0:0:0,Vũ trụ 10:dragon10.teamobi.com:14445:0:0:0,Võ Đài Liên Vũ Trụ:dragonwar.teamobi.com:14445:0:0:0,Đông Nam Á:dragonsea.teamobi.com:14445:0:0:0";
-        }
-        outResult = JavaValue(ENG().createString(text), true);
+        outResult = JavaValue(ENG().createString(getServerListText()), true);
         return true;
     }
 
@@ -2077,10 +2103,15 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
             std::string url = so ? so->stringVal : "";
             std::vector<uint8_t> body;
             if(!url.empty()){
-                body = fetchHttpSync(url);
+                if(url.find("ServerListScreen") != std::string::npos || url.find("raw.githubusercontent.com") != std::string::npos){
+                    std::string s = getServerListText();
+                    body.assign(s.begin(), s.end());
+                } else {
+                    body = fetchHttpSync(url);
+                }
             }
             if(body.empty() && (url.find("ServerListScreen") != std::string::npos || url.find("raw.githubusercontent.com") != std::string::npos)){
-                std::string fallback = "Vũ trụ 1:dragon1.teamobi.com:14445:0:0:0,Vũ trụ 2:dragon2.teamobi.com:14445:0:0:0,Vũ trụ 3:dragon3.teamobi.com:14445:0:0:0,Vũ trụ 4:dragon4.teamobi.com:14445:0:0:0,Vũ trụ 5:dragon5.teamobi.com:14445:0:0:0,Vũ trụ 6:dragon6.teamobi.com:14445:0:0:0,Vũ trụ 7:dragon7.teamobi.com:14445:0:0:0,Vũ trụ 8:dragon8.teamobi.com:14445:0:0:0,Vũ trụ 9:dragon9.teamobi.com:14445:0:0:0,Vũ trụ 10:dragon10.teamobi.com:14445:0:0:0,Võ Đài Liên Vũ Trụ:dragonwar.teamobi.com:14445:0:0:0,Đông Nam Á:dragonsea.teamobi.com:14445:0:0:0";
+                std::string fallback = getServerListText();
                 body.assign(fallback.begin(), fallback.end());
             }
             uint32_t r = ENG().allocObject("java/io/InputStream");
