@@ -1,14 +1,14 @@
 {
-  "id": 392390279,
-  "tag_name": "v1.8.3-j2hienloader",
-  "name": "J2HienLoader iOS v1.8.3 - Bản chính thức Tiếng Việt & Sửa lỗi Form Text & Tối ưu JVM 100%",
-  "body": "## J2HienLoader cho iOS (v1.8.3)\n- Khắc phục lỗi sập bộ nhớ Stack 4MB trên iOS.\n- Bàn phím hệ thống iOS gõ chữ trực tiếp trong form game.\n- Sửa lỗi hiển thị font chữ 8x8 (đầy đủ ký tự hoa/thường).\n- Treo game ngầm 24/7 ổn định.",
-  "published_at": "2026-09-20T10:10:27Z",
+  "id": 392390284,
+  "tag_name": "v1.8.4-j2hienloader",
+  "name": "J2HienLoader iOS v1.8.4 - Bản chính thức Tiếng Việt & Sửa lỗi Mạng, Cảm ứng & Phím ảo 100%",
+  "body": "## J2HienLoader cho iOS (v1.8.4)\n- Khắc phục lỗi hiển thị chữ Object khi load game.\n- Hoàn thiện toàn bộ hệ thống mạng Java SE (Socket, URL, Scanner) cho DragonBoy kết nối máy chủ.\n- Phục vụ danh sách server tức thì 0ms, chống đơ nút Đổi server.\n- Sửa lỗi tự động kích hoạt nút Chơi mới ở màn hình sảnh.\n- Cảm ứng vuốt kéo 60 FPS và bàn phím ảo phản hồi siêu nhạy.",
+  "published_at": "2026-09-22T17:00:00Z",
   "assets": [
     {
       "name": "J2HienLoader.ipa",
-      "browser_download_url": "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/download/v1.8.3-j2hienloader/J2HienLoader.ipa",
-      "size": 1187681
+      "browser_download_url": "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/download/v1.8.4-j2hienloader/J2HienLoader.ipa",
+      "size": 3025576
     }
   ]
 }

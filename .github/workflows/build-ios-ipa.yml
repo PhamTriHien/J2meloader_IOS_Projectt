@@ -49,11 +49,18 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
-          tag_name: v1.8.3-j2hienloader
-          name: "J2HienLoader iOS v1.8.3 - Bản chính thức IPA & Simulator"
+          tag_name: v1.8.4-j2hienloader
+          name: "J2HienLoader iOS v1.8.4 - Bản chính thức IPA & Simulator"
           body: |
-            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.3)
+            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.8.4)
             Ứng dụng giả lập J2ME chuẩn cho hệ điều hành iOS/iPadOS, nạp và chạy file .jar trực tiếp.
+            
+            ### Các cải tiến & bản vá trong v1.8.4:
+            - **Sửa lỗi hiển thị chữ Object**: Khắc phục chuyển đổi chuỗi rỗng trong `String.valueOf`.
+            - **Java SE Networking toàn diện**: Hỗ trợ đầy đủ `Socket`, `InetSocketAddress`, `URL`, `HttpURLConnection`, `Scanner` cho DragonBoy/NRO.
+            - **Phục vụ Server List tức thì 0ms**: Cache RAM thông minh, cập nhật ngầm, bấm Đổi server không bị đứng hình.
+            - **Loại bỏ Ghost Input (nhấn loạn/tự chọn nút)**: Chuyển sang `GameMTKView` thuần UIKit với cơ chế lọc phím mồ côi.
+            - **Nâng cấp bàn phím ảo & cảm ứng**: Đảm bảo phản hồi siêu nhạy, không trễ, hỗ trợ toàn diện cả chạm và phím bấm.
             
             - **Cài lên iPhone/iPad thật**: Tải file `J2HienLoader.ipa`.
             - **Test trên Web (Appetize.io)**: Tải file `J2HienLoader-Simulator-iPad.zip`.
