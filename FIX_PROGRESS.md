@@ -17,6 +17,7 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
 9. [Cảm ứng Vuốt/Kéo & Lặp chu kỳ TimerTask](#9-cảm-ứng-vuốtkéo--lặp-chu-kỳ-timertask)
 10. [Loại bỏ chữ Object, Hoàn thiện Java SE Networking & Server Caching](#10-loại-bỏ-chữ-object-hoàn-thiện-java-se-networking--server-caching)
 11. [CÔNG VIỆC DỞ DANG: Lỗi vào sảnh tự nhấn loạn cảm ứng nút 'Chơi mới' (Ghost Input)](#11-công-việc-dở-dang-lỗi-vào-sảnh-tự-nhấn-loạn-cảm-ứng-nút-chơi-mới)
+12. [CÔNG VIỆC DỞ DANG: Bản Android (J2ME-Loader Core) - Treo 24/7, Cửa sổ nổi & Tối ưu RAM](#12-công-việc-dở-dang-bản-android-j2me-loader-core---treo-247-cửa-sổ-nổi--tối-ưu-ram)
 
 ---
 
@@ -136,7 +137,44 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
      - Thêm log debug xem sự kiện `Key` hay `Touch` nào được đẩy vào `m_eventQueue` trong 2 giây đầu tiên lúc boot.
      - Bổ sung bộ lọc an toàn (**Input Boot Warmup Guard**): Bỏ qua (drop) toàn bộ các sự kiện chạm và phím ảo trong **500ms – 800ms đầu tiên** sau khi game canvas khởi động xong để triệt tiêu mọi sự kiện chạm rác do chuyển cảnh SwiftUI.
      - Kiểm tra và sửa `KeypadButtonStyle`: Dùng `@State private var lastPressed = false` trong ButtonStyle để chặn việc kích hoạt giả lập khi View vừa xuất hiện.
-     - Khởi tạo giá trị mặc định an toàn cho các biến tọa độ con trỏ (`main/b.aW = -1000`, `main/b.aZ = -1000`, `main/b.au = false`) trong engine lúc nạp lớp `main/b`.
+      - Khởi tạo giá trị mặc định an toàn cho các biến tọa độ con trỏ (`main/b.aW = -1000`, `main/b.aZ = -1000`, `main/b.au = false`) trong engine lúc nạp lớp `main/b`.
+
+---
+
+### 12. CÔNG VIỆC DỞ DANG: Bản Android (J2ME-Loader Core) - Treo 24/7, Cửa sổ nổi & Tối ưu RAM
+* **Mục tiêu & Yêu cầu kỹ thuật**:
+  - Sử dụng 100% Core gốc J2ME-Loader (PlaySoftware / Nikita-36079) để nạp và chạy game thật (DragonBoy, Ninja School, Avatar).
+  - Chống văng/out game khi treo máy: Giữ luồng CPU và socket kết nối mạng liên tục 24/7 khi tắt màn hình hoặc chuyển app.
+  - Cửa sổ nổi PiP (Picture-in-Picture) khi ấn Home thoát ra màn hình chính.
+  - Bong bóng nổi dạng Messenger: Kéo di chuyển tự do khắp màn hình (không ép dính viền) và bung ra cửa sổ game mini.
+  - Luôn hiện thông báo Android chạy ngầm (Ongoing Notification) với các nút thao tác nhanh.
+  - Tiết kiệm RAM và chống đơ máy: Tự động hạ FPS render khi chạy ngầm / tắt màn hình xuống 1 FPS để giảm 85% tải CPU và 60% RAM, khôi phục 60 FPS khi mở lại.
+  - Hỗ trợ thích ứng cả màn hình Dọc và Ngang (Adaptive Orientation).
+
+* **Các phần việc ĐÃ HOÀN TẤT**:
+  1. **Khắc phục lỗi Scoped Storage Android 14 (`create_apps_dir_failed`)**:
+     - Vá phương thức `MainActivity.i()` trong Smali: Tự động khởi tạo thư mục và database `AppDatabase` mà không bị kẹt điều kiện `File.canWrite()` lỗi thời trên Android 14.
+  2. **Khắc phục lỗi treo cấp quyền lưu trữ (`FilteredFilePickerActivity`)**:
+     - Vá phương thức `h0()` và `g0()` trong `m2.1/h.smali`: Bỏ qua các kiểm tra và xin quyền `WRITE_EXTERNAL_STORAGE` (vốn đã bị bãi bỏ trên Android 13/14), loại bỏ hoàn toàn các popup cảnh báo quyền hệ thống `Window{... u0 android}` che khuất màn hình.
+  3. **Mở khóa cảm biến xoay màn hình trên máy ảo Pixel 10 Pro**:
+     - Sửa file `config.ini` của AVD: Đổi `hw.accelerometer = yes`, `hw.gyroscope = yes`, `hw.sensors.orientation = yes`, `hw.initialOrientation = portrait`. Mở khóa hoàn toàn nút Rotate trên thanh công cụ Emulator.
+  4. **Đẩy game vào máy ảo**:
+     - Nạp thành công `NRO.jar`, `DragonBoy1.jar`, `Dragonboy250_v3.5.jar` vào `/sdcard/Download/`.
+  5. **Chạy game thật 100% trên Pixel 10 Pro**:
+     - Đã xác thực game DragonBoy/NRO khởi chạy hiển thị đầy đủ hình ảnh đồ họa 2D nhân vật, bản đồ, âm thanh và kết nối mạng socket trực tiếp.
+  6. **Vá chống dừng game trong MicroActivity**:
+     - Trong `MicroActivity.smali`: Vô hiệu hóa lệnh gọi `MidletThread.pauseApp()` trong `onPause()`. Khi chuyển app, vòng lặp game vẫn tiếp tục chạy.
+     - Bổ sung `onUserLeaveHint()` gọi `enterPictureInPictureMode()` và cấu hình `android:supportsPictureInPicture="true"` trong Manifest.
+
+* **Các hạng mục ĐANG DỞ DANG cần hoàn thiện tiếp**:
+  1. **Tích hợp sâu Foreground Service chính thức cho tiến trình `:midlet`**:
+     - Tạo Service thường trực (`GameKeepAliveService`) gắn cờ `FOREGROUND_SERVICE_SPECIAL_USE` vào tiến trình `:midlet` của J2ME-Loader, kích hoạt `PARTIAL_WAKE_LOCK` và `WIFI_MODE_FULL_HIGH_PERF` ngay khi game bắt đầu chạy.
+     - Hiển thị Ongoing Notification cố định có tên game đang chơi và nút dừng/mở bong bóng.
+  2. **Hoàn thiện hiển thị nội dung Canvas trong cửa sổ PiP & Bong bóng Messenger**:
+     - Đảm bảo SurfaceView hoặc TextureView của game tiếp tục đẩy buffer khung hình vào cửa sổ PiP khi `isInPictureInPictureMode() = true` mà không bị gián đoạn hay đen màn hình.
+     - Kết nối luồng render từ game vào `FloatingBubbleService` để cửa sổ nổi hiển thị trực tiếp đồ họa game thời gian thực.
+  3. **Bộ điều tiết FPS tiết kiệm pin & RAM (`BackgroundThrottleController`)**:
+     - Lắng nghe sự kiện `ACTION_SCREEN_OFF`: Tự động chuyển chu kỳ ngủ của luồng vẽ đồ họa từ `16ms` (60 FPS) thành `1000ms` (1 FPS) khi tắt màn hình, đồng thời kích hoạt `System.gc()` dọn dẹp bitmap rác.
 
 ---
 
