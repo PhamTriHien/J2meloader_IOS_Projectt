@@ -29,9 +29,34 @@ public enum ActiveSheet: Identifiable {
     }
 }
 
+public enum LibrarySortOption: String, CaseIterable, Identifiable {
+    case nameAsc = "name_asc"
+    case nameDesc = "name_desc"
+    case dateAdded = "date_added"
+    case lastPlayed = "last_played"
+    
+    public var id: String { rawValue }
+    
+    public var title: String {
+        switch self {
+        case .nameAsc: return "Tên (A-Z)"
+        case .nameDesc: return "Tên (Z-A)"
+        case .dateAdded: return "Mới thêm gần đây"
+        case .lastPlayed: return "Chơi gần đây nhất"
+        }
+    }
+}
+
+public enum LibraryViewMode: String, CaseIterable {
+    case list = "list"
+    case grid = "grid"
+}
+
 public struct LibraryView: View {
     @ObservedObject var gameManager: GameManager
     @ObservedObject var updateManager = AppUpdateManager.shared
+    @AppStorage("J2ME_VIEW_MODE") private var viewMode: String = LibraryViewMode.list.rawValue
+    @AppStorage("J2ME_SORT_OPTION") private var sortOption: String = LibrarySortOption.nameAsc.rawValue
     @State private var searchText = ""
     @State private var isSearching = false
     @State private var activeSheet: ActiveSheet? = nil
@@ -59,13 +84,35 @@ public struct LibraryView: View {
     }
     
     public var filteredGames: [GameItem] {
+        let baseList: [GameItem]
         if searchText.isEmpty {
-            return gameManager.games
+            baseList = gameManager.games
         } else {
-            return gameManager.games.filter {
+            baseList = gameManager.games.filter {
                 $0.title.localizedCaseInsensitiveContains(searchText) ||
                 $0.vendor.localizedCaseInsensitiveContains(searchText)
             }
+        }
+        
+        let sort = LibrarySortOption(rawValue: sortOption) ?? .nameAsc
+        switch sort {
+        case .nameAsc:
+            return baseList.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        case .nameDesc:
+            return baseList.sorted { $0.title.localizedStandardCompare($1.title) == .orderedDescending }
+        case .dateAdded:
+            return baseList.sorted { $0.dateAdded > $1.dateAdded }
+        case .lastPlayed:
+            return baseList.sorted { ($0.lastPlayed ?? Date.distantPast) > ($1.lastPlayed ?? Date.distantPast) }
+        }
+    }
+    
+    private func handleLaunch(_ game: GameItem) {
+        let quickLaunch = UserDefaults.standard.bool(forKey: "J2ME_QUICK_LAUNCH")
+        if quickLaunch {
+            gameManager.launchGame(game)
+        } else {
+            activeSheet = .settings(game)
         }
     }
     
@@ -138,40 +185,57 @@ public struct LibraryView: View {
                             Spacer()
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        // Danh sách ứng dụng chuẩn list_row_jar
-                        List {
-                            ForEach(filteredGames) { game in
-                                OriginalListRowJar(
-                                    game: game,
-                                    gameManager: gameManager,
-                                    onLaunch: {
-                                        let quickLaunch = UserDefaults.standard.bool(forKey: "J2ME_QUICK_LAUNCH")
-                                        if quickLaunch {
-                                            gameManager.launchGame(game)
-                                        } else {
-                                            activeSheet = .settings(game)
-                                        }
-                                    },
-                                    onDirectPlay: {
-                                        gameManager.launchGame(game)
-                                    },
-                                    onSettings: { activeSheet = .settings(game) },
-                                    onRename: {
-                                        gameToRename = game
-                                        newGameName = game.title
-                                        showingRenameAlert = true
-                                    },
-                                    onClearData: {
-                                        gameToClearData = game
-                                        showingClearDataAlert = true
+                        if viewMode == LibraryViewMode.grid.rawValue {
+                            ScrollView {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 100, maximum: 125), spacing: 12)], spacing: 12) {
+                                    ForEach(filteredGames) { game in
+                                        OriginalGridItemJar(
+                                            game: game,
+                                            gameManager: gameManager,
+                                            onLaunch: { handleLaunch(game) },
+                                            onDirectPlay: { gameManager.launchGame(game) },
+                                            onSettings: { activeSheet = .settings(game) },
+                                            onRename: {
+                                                gameToRename = game
+                                                newGameName = game.title
+                                                showingRenameAlert = true
+                                            },
+                                            onClearData: {
+                                                gameToClearData = game
+                                                showingClearDataAlert = true
+                                            }
+                                        )
                                     }
-                                )
-                                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                                .listRowBackground(Color.clear)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.top, 10)
+                                .padding(.bottom, 80)
                             }
+                        } else {
+                            List {
+                                ForEach(filteredGames) { game in
+                                    OriginalListRowJar(
+                                        game: game,
+                                        gameManager: gameManager,
+                                        onLaunch: { handleLaunch(game) },
+                                        onDirectPlay: { gameManager.launchGame(game) },
+                                        onSettings: { activeSheet = .settings(game) },
+                                        onRename: {
+                                            gameToRename = game
+                                            newGameName = game.title
+                                            showingRenameAlert = true
+                                        },
+                                        onClearData: {
+                                            gameToClearData = game
+                                            showingClearDataAlert = true
+                                        }
+                                    )
+                                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                                    .listRowBackground(Color.clear)
+                                }
+                            }
+                            .listStyle(PlainListStyle())
                         }
-                        .listStyle(PlainListStyle())
                     }
                 }
                 
@@ -207,28 +271,45 @@ public struct LibraryView: View {
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 16) {
+                    HStack(spacing: 14) {
                         Button(action: { isSearching.toggle() }) {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundColor(.white)
                         }
                         
-                        Button(action: { activeSheet = .generalSettings }) {
-                            Image(systemName: "gearshape")
-                                .font(.system(size: 16, weight: .semibold))
+                        Button(action: {
+                            viewMode = (viewMode == LibraryViewMode.list.rawValue) ? LibraryViewMode.grid.rawValue : LibraryViewMode.list.rawValue
+                        }) {
+                            Image(systemName: viewMode == LibraryViewMode.list.rawValue ? "square.grid.2x2" : "list.bullet")
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundColor(.white)
                         }
                         
                         Menu {
-                            Button(action: { activeSheet = .generalSettings }) {
-                                Label("Cài đặt chung", systemImage: "gearshape")
+                            Section(header: Text("Sắp xếp")) {
+                                ForEach(LibrarySortOption.allCases) { opt in
+                                    Button(action: { sortOption = opt.rawValue }) {
+                                        HStack {
+                                            Text(opt.title)
+                                            if sortOption == opt.rawValue {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                            Button(action: { activeSheet = .help }) {
-                                Label("Hướng dẫn sử dụng", systemImage: "questionmark.circle")
-                            }
-                            Button(action: { activeSheet = .about }) {
-                                Label("Thông tin ứng dụng", systemImage: "info.circle")
+                            
+                            Section {
+                                Button(action: { activeSheet = .generalSettings }) {
+                                    Label("Cài đặt chung", systemImage: "gearshape")
+                                }
+                                Button(action: { activeSheet = .help }) {
+                                    Label("Hướng dẫn sử dụng", systemImage: "questionmark.circle")
+                                }
+                                Button(action: { activeSheet = .about }) {
+                                    Label("Thông tin ứng dụng", systemImage: "info.circle")
+                                }
                             }
                         } label: {
                             Image(systemName: "ellipsis")
@@ -282,9 +363,14 @@ public struct LibraryView: View {
                         Button("Xóa dữ liệu", role: .destructive) {
                             if let target = gameToClearData {
                                 let rmsDir = gameManager.documentsDirectory.appendingPathComponent("RMS")
-                                let pattern = "\(target.title)_"
+                                let sanitize: (String) -> String = { str in
+                                    str.map { "/\\:*?\"<>| ".contains($0) ? "_" : String($0) }.joined()
+                                }
+                                let pattern1 = sanitize(target.title) + "_"
+                                let jarBase = target.jarFileName.replacingOccurrences(of: ".jar", with: "", options: .caseInsensitive)
+                                let pattern2 = sanitize(jarBase) + "_"
                                 if let files = try? FileManager.default.contentsOfDirectory(atPath: rmsDir.path) {
-                                    for file in files where file.contains(pattern) {
+                                    for file in files where (file.hasPrefix(pattern1) || file.hasPrefix(pattern2) || file.contains(pattern1) || file.contains(pattern2)) && file.hasSuffix(".rms") {
                                         try? FileManager.default.removeItem(at: rmsDir.appendingPathComponent(file))
                                     }
                                 }
@@ -314,6 +400,35 @@ public struct LibraryView: View {
 }
 }
 
+// MARK: - Icon Image Cache Manager
+public final class ImageCacheManager {
+    public static let shared = ImageCacheManager()
+    private let cache = NSCache<NSString, UIImage>()
+    
+    private init() {
+        cache.countLimit = 150
+        cache.totalCostLimit = 50 * 1024 * 1024 // 50 MB
+    }
+    
+    public func image(for path: String) -> UIImage? {
+        let key = path as NSString
+        if let cached = cache.object(forKey: key) {
+            return cached
+        }
+        guard FileManager.default.fileExists(atPath: path),
+              let img = UIImage(contentsOfFile: path) else {
+            return nil
+        }
+        let cost = Int(img.size.width * img.size.height * 4)
+        cache.setObject(img, forKey: key, cost: cost)
+        return img
+    }
+    
+    public func clear() {
+        cache.removeAllObjects()
+    }
+}
+
 // MARK: - Hàng hiển thị game chuẩn (list_row_jar.xml)
 struct OriginalListRowJar: View {
     let game: GameItem
@@ -327,7 +442,7 @@ struct OriginalListRowJar: View {
     var iconImage: UIImage? {
         if let iconName = game.iconFileName {
             let iconURL = gameManager.coversDirectory.appendingPathComponent(iconName)
-            return UIImage(contentsOfFile: iconURL.path)
+            return ImageCacheManager.shared.image(for: iconURL.path)
         }
         return nil
     }
@@ -375,6 +490,84 @@ struct OriginalListRowJar: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .contextMenu {
+            Button(action: onDirectPlay) { Label("Bắt đầu chơi", systemImage: "play.fill") }
+            Button(action: onSettings) { Label("Cài đặt game", systemImage: "gearshape.fill") }
+            Button(action: onRename) { Label("Đổi tên", systemImage: "pencil") }
+            Button(action: onClearData) { Label("Xóa dữ liệu (RMS)", systemImage: "trash.slash") }
+            Divider()
+            Button(role: .destructive, action: { gameManager.deleteGame(game) }) {
+                Label("Xóa khỏi thư viện", systemImage: "trash")
+            }
+        }
+    }
+}
+
+// MARK: - Mục hiển thị dạng Grid (Grid Card)
+struct OriginalGridItemJar: View {
+    let game: GameItem
+    let gameManager: GameManager
+    let onLaunch: () -> Void
+    let onDirectPlay: () -> Void
+    let onSettings: () -> Void
+    let onRename: () -> Void
+    let onClearData: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
+    var iconImage: UIImage? {
+        if let iconName = game.iconFileName {
+            let iconURL = gameManager.coversDirectory.appendingPathComponent(iconName)
+            return ImageCacheManager.shared.image(for: iconURL.path)
+        }
+        return nil
+    }
+    
+    var body: some View {
+        Button(action: onLaunch) {
+            VStack(spacing: 8) {
+                if let img = iconImage {
+                    Image(uiImage: img)
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 52, height: 52)
+                        .cornerRadius(10)
+                        .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1.5)
+                } else {
+                    ZStack {
+                        Color(red: 0x52/255.0, green: 0x5a/255.0, blue: 0xa0/255.0)
+                        Image(systemName: "app.fill")
+                            .font(.system(size: 26))
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: 52, height: 52)
+                    .cornerRadius(10)
+                    .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1.5)
+                }
+                
+                VStack(spacing: 2) {
+                    Text(game.title)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                    
+                    Text(game.vendor)
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(colorScheme == .dark ? J2MEColors.cardDark : J2MEColors.cardLight)
+                    .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
+            )
         }
         .buttonStyle(PlainButtonStyle())
         .contextMenu {
@@ -495,7 +688,8 @@ struct AboutView: View {
                         Text("J2HienLoader")
                             .font(.system(size: 20, weight: .bold))
                         
-                        Text("Phiên bản 1.8.2 (Tiếng Việt)")
+                        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
+                        Text("Phiên bản \(appVersion) (Tiếng Việt)")
                             .font(.system(size: 12.5, weight: .medium))
                             .foregroundColor(.secondary)
                     }

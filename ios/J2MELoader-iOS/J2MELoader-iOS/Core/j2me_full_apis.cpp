@@ -552,7 +552,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     // ============ java/lang/System extended ============
     if(className=="java/lang/Runtime"){
         if(methodName=="getRuntime"){ outResult=JavaValue(ENG().allocObject("java/lang/Runtime"),true); return true; }
-        if(methodName=="gc"||methodName=="runFinalization") return true;
+        if(methodName=="gc"||methodName=="runFinalization") { ENG().runGarbageCollector(); return true; }
         if(methodName=="totalMemory"){ outResult=JavaValue((int32_t)(16*1024*1024)); return true; }
         if(methodName=="freeMemory"){ outResult=JavaValue((int32_t)(8*1024*1024)); return true; }
         if(methodName=="exit") return true;
@@ -3149,7 +3149,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
     // ============ RMS extended ============
     if(className=="javax/microedition/rms/RecordStore"){
         if(methodName=="listRecordStores"){
-            auto list = RmsStorage::getInstance().listRecordStores("J2MEApp");
+            auto list = RmsStorage::getInstance().listRecordStores(JvmInterpreter::getInstance().getSuiteName());
             uint32_t arr = ENG().allocArray(0, (int)list.size());
             JavaArray* ja = ENG().getArray(arr);
             if (ja) {
@@ -3162,7 +3162,7 @@ bool FullApis::dispatch(const std::string& className, const std::string& methodN
         }
         if(methodName=="deleteRecordStore"&&args.size()>=1){
             std::string name = (args[0].asRef() != 0) ? ENG().getString(args[0].asRef()) : "";
-            if(!name.empty()) RmsStorage::getInstance().deleteRecordStore("J2MEApp", name);
+            if(!name.empty()) RmsStorage::getInstance().deleteRecordStore(JvmInterpreter::getInstance().getSuiteName(), name);
             return true;
         }
         if(methodName=="closeRecordStore"&&args.size()>=1){

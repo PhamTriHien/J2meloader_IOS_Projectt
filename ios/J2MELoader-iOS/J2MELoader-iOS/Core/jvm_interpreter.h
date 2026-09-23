@@ -60,6 +60,14 @@ public:
     void setSpeedMultiplier(int mult) { m_speedMultiplier.store(mult > 0 ? mult : 1); }
     int getSpeedMultiplier() const { return m_speedMultiplier.load(); }
 
+    void setSuiteName(const std::string& name) { m_suiteName = name; }
+    std::string getSuiteName() const { return m_suiteName.empty() ? "J2MEApp" : m_suiteName; }
+
+    uint32_t getMidletRef() const { return m_midletRef; }
+    uint32_t getCanvasRef() const { return m_canvasRef; }
+    uint32_t getGraphicsRef() const { return m_graphicsRef; }
+    uint32_t getRunnableRef() const { return m_runnableRef; }
+
     void triggerTone(int freq, int durationMs, int volume) {
         if (m_soundEnabled && m_playToneCallback && freq > 0 && durationMs > 0) {
             m_playToneCallback(freq, durationMs);
@@ -78,6 +86,7 @@ private:
     std::string m_jarPath;
     std::string m_mainClass;
     std::string m_targetClass;
+    std::string m_suiteName;
     std::string m_bootError;
     std::mutex m_bootMutex;
     bool m_soundEnabled;

@@ -49,17 +49,20 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
-          tag_name: v1.9.0-j2hienloader
-          name: "J2HienLoader iOS v1.9.0 - Đo Đạc FPS Thời Gian Thực Chuẩn Xác & Đồng Bộ Tốc Độ Giả Lập Speed Multiplier"
+          tag_name: v2.0.0-j2hienloader
+          name: "J2HienLoader iOS v2.0.0 - Đại Tu Toàn Diện: GC Mark-and-Sweep, Cache Bytecode, Zero-Copy GPU, Gamepad MFi & Thư Viện Grid"
           body: |
-            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v1.9.0)
+            ## J2HienLoader cho iOS & iPadOS (Bản chính thức v2.0.0)
             Ứng dụng giả lập J2ME chuẩn cho hệ điều hành iOS/iPadOS, nạp và chạy file .jar trực tiếp.
             
-            ### Các cải tiến & chuẩn hóa trong v1.9.0:
-            - **Đo Đạc FPS Thời Gian Thực (True Real-Time FPS Sampling)**: Triển khai thuật toán đo FPS trên luồng MetalRenderer dựa theo chuẩn FpsCounter từ playsoftware/J2ME-Loader (javax.microedition.lcdui.overlay.FpsCounter). Sử dụng CACurrentMediaTime() đo đạc số frame thực tế được render trong từng cửa sổ 0.5 giây và cập nhật trực tiếp lên UI.
-            - **Dynamic Emulation Speed Pacing**: Tích hợp `std::atomic<int> m_speedMultiplier` trong `JvmInterpreter`. Đồng bộ hóa tốc độ vòng lặp thực thi bytecode (1x: 60 FPS, 2x: 120 FPS, 4x: 240 FPS) kèm `preferredFramesPerSecond` của MTKView, đảm bảo game chạy nhanh thật khi bấm phím 2x/4x.
-            - **Real-Time FPS Badge & Header**: Thanh header và huy hiệu FPS hiển thị chính xác FPS thực tế đang render kèm phân loại màu sắc động (Xanh lá >= 50 FPS, Vàng 30-49 FPS, Cam < 30 FPS).
-            - **Auto Reset**: Tự động reset tốc độ giả lập về 1x khi thoát khỏi game hoặc quay lại thư viện game, chống rò rỉ trạng thái.
+            ### Các cải tiến & chuẩn hóa đột phá trong v2.0.0:
+            - **Core Emulation & Memory Garbage Collection**: Triển khai thuật toán Mark-and-Sweep Garbage Collection tự động duyệt root-set từ active stack frames, static fields và midlet runtime, xóa sạch rò rỉ bộ nhớ ngăn chặn hoàn toàn hiện tượng Jetsam crash khi chơi lâu.
+            - **Fast-Path Method Invocation Caching**: Tối ưu bộ đệm tham số descriptor và cờ void trong `CpEntry`, loại bỏ hoàn toàn việc parse string descriptor liên tục trong vòng lặp game.
+            - **Zero-Copy Double Buffering**: Triển khai swap O(1) buffer hiển thị GPU Metal, triệt tiêu `std::memcpy` toàn màn hình trên các frame vẽ chuẩn.
+            - **Cô Lập RMS Namespace & Xóa Save Data**: Tách biệt hoàn toàn namespace RMS RecordStore theo từng tựa game, giải quyết triệt để lỗi ghi đè dữ liệu chéo và cho phép xóa save game an toàn.
+            - **Tích Hợp Tay Cầm Vật Lý (Apple GameController)**: Đồng bộ thực thụ tay cầm Bluetooth PS5, Xbox, MFi qua framework `GameController` (`GCController`) kèm cấu hình gán phím linh hoạt.
+            - **Tinh Chỉnh Shaders GPU Bằng Uniform Buffer**: Truyền trực tiếp thông số độ sáng, tương phản, scanline và lcd grid vào Apple Metal Shaders.
+            - **Thiết Kế UI/UX Hiện Đại**: Thanh điều khiển GameScreenView compact với Menu overflow; bàn phím ảo với bộ haptics dùng chung và cơ chế chống kẹt phím cảm ứng; hỗ trợ xem Thư viện game dạng Grid View đa cột kèm bộ lọc sắp xếp (A-Z, Z-A, Ngày thêm, Lần chơi gần nhất) và `ImageCacheManager` (`NSCache`) tối ưu mượt mà khi cuộn.
             - **Biên Dịch Đạt Chuẩn**: 100% C++ Core biên dịch đạt 0 Error, 0 Warning trên MSVC 2022 C++17 (/W3 /WX).
             
             - **Cài lên iPhone/iPad thật**: Tải file `J2HienLoader.ipa`.

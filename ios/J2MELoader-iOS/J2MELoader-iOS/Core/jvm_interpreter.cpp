@@ -50,6 +50,31 @@ bool JvmInterpreter::init(const std::string& jarPath, const std::string& mainCla
     auto manifest = m_jarLoader->parseManifest();
     std::string targetClass = mainClass;
 
+    // Extract Suite Name for RMS isolation
+    std::string suiteName = "";
+    for (const auto& kv : manifest) {
+        std::string k = kv.first;
+        std::transform(k.begin(), k.end(), k.begin(), ::tolower);
+        if (k == "midlet-name" || k == "midlet-name:") {
+            suiteName = kv.second;
+            break;
+        }
+    }
+    if (suiteName.empty()) {
+        size_t lastSlash = jarPath.find_last_of("/\\");
+        std::string base = (lastSlash != std::string::npos) ? jarPath.substr(lastSlash + 1) : jarPath;
+        if (base.size() > 4 && base.substr(base.size() - 4) == ".jar") {
+            base = base.substr(0, base.size() - 4);
+        }
+        suiteName = base;
+    }
+    for (char& c : suiteName) {
+        if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|' || c == ' ') {
+            c = '_';
+        }
+    }
+    m_suiteName = suiteName.empty() ? "J2MEApp" : suiteName;
+
     std::string midletEntry = "";
     for (const auto& kv : manifest) {
         std::string k = kv.first;

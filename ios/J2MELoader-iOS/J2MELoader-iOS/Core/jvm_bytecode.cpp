@@ -30,6 +30,9 @@ static std::string toLowerStr(std::string s) {
     return s;
 }
 
+// Thread-local active stack frame tracking for Garbage Collection root-set scanning
+thread_local std::vector<StackFrame*> t_activeFrames;
+
 // Big-Endian Stream Helper
 class ByteStream {
 public:
@@ -231,8 +234,118 @@ const uint32_t* JvmBytecodeEngine::readableImagePixels(uint32_t imgRef) {
     return nullptr;
 }
 
+void JvmBytecodeEngine::runGarbageCollector() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    std::unordered_set<uint32_t> marked;
+    std::vector<uint32_t> worklist;
+
+    auto addRoot = [&](uint32_t ref) {
+        if (ref != 0 && marked.insert(ref).second) {
+            worklist.push_back(ref);
+        }
+    };
+
+    // 1. Interpreter primary roots
+    addRoot(JvmInterpreter::getInstance().getMidletRef());
+    addRoot(JvmInterpreter::getInstance().getCanvasRef());
+    addRoot(JvmInterpreter::getInstance().getGraphicsRef());
+    addRoot(JvmInterpreter::getInstance().getRunnableRef());
+
+    // 2. Pending exception
+    addRoot(getPendingException());
+
+    // 3. Static fields
+    for (const auto& kv : m_staticFields) {
+        if (kv.second.type == JavaValue::OBJ_REF) {
+            addRoot(kv.second.asRef());
+        }
+    }
+
+    // 4. Active stack frames
+    for (StackFrame* f : t_activeFrames) {
+        if (!f) continue;
+        for (const auto& v : f->locals) {
+            if (v.type == JavaValue::OBJ_REF) addRoot(v.asRef());
+        }
+        for (const auto& v : f->stack) {
+            if (v.type == JavaValue::OBJ_REF) addRoot(v.asRef());
+        }
+    }
+
+    // 5. Mark phase: traverse object graph from roots
+    while (!worklist.empty()) {
+        uint32_t curr = worklist.back();
+        worklist.pop_back();
+
+        // Check if curr is an object
+        auto objIt = m_heapObjects.find(curr);
+        if (objIt != m_heapObjects.end()) {
+            for (const auto& f : objIt->second.fields) {
+                if (f.second.type == JavaValue::OBJ_REF) {
+                    addRoot(f.second.asRef());
+                }
+            }
+        }
+
+        // Check if curr is an array
+        auto arrIt = m_heapArrays.find(curr);
+        if (arrIt != m_heapArrays.end()) {
+            for (uint32_t elemRef : arrIt->second.refData) {
+                addRoot(elemRef);
+            }
+        }
+
+        // Check if curr is an image or graphics target
+        auto gtIt = m_graphicsTarget.find(curr);
+        if (gtIt != m_graphicsTarget.end()) {
+            addRoot(gtIt->second);
+        }
+    }
+
+    // 6. Sweep phase: remove unmarked objects, arrays, images, and offscreens
+    for (auto it = m_heapObjects.begin(); it != m_heapObjects.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) {
+            it = m_heapObjects.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto it = m_heapArrays.begin(); it != m_heapArrays.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) {
+            it = m_heapArrays.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto it = m_nativeImages.begin(); it != m_nativeImages.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) {
+            m_offscreens.erase(it->first);
+            it = m_nativeImages.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto it = m_graphicsTarget.begin(); it != m_graphicsTarget.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) {
+            it = m_graphicsTarget.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 uint32_t JvmBytecodeEngine::allocObject(const std::string& className) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (++m_allocsSinceGC >= 4000) {
+        m_allocsSinceGC = 0;
+        if (m_heapObjects.size() + m_heapArrays.size() > 3000) {
+            runGarbageCollector();
+        }
+    }
     uint32_t ref = m_nextRef++;
     JavaObject obj;
     obj.id = ref;
@@ -257,6 +370,12 @@ std::string JvmBytecodeEngine::getString(uint32_t ref) {
 
 uint32_t JvmBytecodeEngine::allocArray(uint8_t type, int length) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (++m_allocsSinceGC >= 4000) {
+        m_allocsSinceGC = 0;
+        if (m_heapObjects.size() + m_heapArrays.size() > 3000) {
+            runGarbageCollector();
+        }
+    }
     uint32_t ref = m_nextRef++;
     JavaArray arr;
     arr.id = ref;
@@ -936,6 +1055,11 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
     }
 
     if (className == "java/lang/System") {
+        if (methodName == "gc") {
+            runGarbageCollector();
+            outResult = JavaValue(0);
+            return true;
+        }
         if (methodName == "currentTimeMillis") {
             auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
             outResult = JavaValue((int64_t)now);
@@ -2786,7 +2910,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         if (methodName == "openRecordStore") {
             std::string name = getString(args[0].asRef());
             bool create = args.size() > 1 ? (args[1].asInt() != 0) : true;
-            bool ok = RmsStorage::getInstance().openRecordStore("J2MEApp", name, create);
+            bool ok = RmsStorage::getInstance().openRecordStore(JvmInterpreter::getInstance().getSuiteName(), name, create);
             if (ok) {
                 uint32_t ref = allocObject("javax/microedition/rms/RecordStore");
                 JavaObject* obj = getObject(ref);
@@ -2804,7 +2928,7 @@ bool JvmBytecodeEngine::dispatchNativeMethod(const std::string& className, const
         }
         if (methodName == "deleteRecordStore") {
             std::string name = (args.size() > 0 && args[0].asRef() != 0) ? getString(args[0].asRef()) : "";
-            if (!name.empty()) RmsStorage::getInstance().deleteRecordStore("J2MEApp", name);
+            if (!name.empty()) RmsStorage::getInstance().deleteRecordStore(JvmInterpreter::getInstance().getSuiteName(), name);
             return true;
         }
         if (methodName == "addRecord") {
@@ -2988,6 +3112,17 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
     StackFrame frame;
     frame.classRef = curCls;
     frame.method = &method;
+    struct FrameTracker {
+        StackFrame* m_frame;
+        FrameTracker(StackFrame* f) : m_frame(f) {
+            t_activeFrames.push_back(f);
+        }
+        ~FrameTracker() {
+            if (!t_activeFrames.empty() && t_activeFrames.back() == m_frame) {
+                t_activeFrames.pop_back();
+            }
+        }
+    } frameTracker(&frame);
     size_t localSlot = 0;
     for (size_t i = 0; i < args.size(); ++i) {
         localSlot += (args[i].type == JavaValue::LONG || args[i].type == JavaValue::DOUBLE) ? 2 : 1;
@@ -3810,40 +3945,66 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             frame.pc += 2;
             if (op == OP_INVOKEINTERFACE) frame.pc += 2;
 
-            std::string targetClass = cls->thisClassName;
-            std::string targetMethod = "<init>";
-            std::string targetDesc = "()V";
+            std::string targetClass;
+            std::string targetMethod;
+            std::string targetDesc;
+            int paramCount = 0;
+            bool isVoid = false;
 
             if (mIdx < cls->constantPool.size()) {
-                const auto& cp = cls->constantPool[mIdx];
-                if (cp.classIndex < cls->constantPool.size() && cls->constantPool[cp.classIndex].nameIndex < cls->constantPool.size()) {
-                    targetClass = cls->constantPool[cls->constantPool[cp.classIndex].nameIndex].strVal;
+                auto& cp = cls->constantPool[mIdx];
+                if (!cp.methodCached) {
+                    std::string tClass = cls->thisClassName;
+                    std::string tMethod = "<init>";
+                    std::string tDesc = "()V";
+
+                    if (cp.classIndex < cls->constantPool.size() && cls->constantPool[cp.classIndex].nameIndex < cls->constantPool.size()) {
+                        tClass = cls->constantPool[cls->constantPool[cp.classIndex].nameIndex].strVal;
+                    }
+                    if (cp.nameAndTypeIndex < cls->constantPool.size()) {
+                        const auto& nat = cls->constantPool[cp.nameAndTypeIndex];
+                        if (nat.nameIndex < cls->constantPool.size()) tMethod = cls->constantPool[nat.nameIndex].strVal;
+                        if (nat.descIndex < cls->constantPool.size()) tDesc = cls->constantPool[nat.descIndex].strVal;
+                    }
+
+                    int pCount = 0;
+                    size_t p = tDesc.find('(');
+                    size_t endP = tDesc.find(')');
+                    if (p != std::string::npos && endP != std::string::npos) {
+                        for (size_t k = p + 1; k < endP; ++k) {
+                            if (tDesc[k] == 'L') {
+                                while (k < endP && tDesc[k] != ';') k++;
+                                pCount++;
+                            } else if (tDesc[k] == '[') {
+                                while (k < endP && tDesc[k] == '[') k++;
+                                if (k < endP && tDesc[k] == 'L') { while (k < endP && tDesc[k] != ';') k++; }
+                                pCount++;
+                            } else {
+                                pCount++;
+                            }
+                        }
+                    }
+
+                    cp.cachedTargetClass = std::move(tClass);
+                    cp.cachedTargetMethod = std::move(tMethod);
+                    cp.cachedTargetDesc = std::move(tDesc);
+                    cp.cachedParamCount = pCount;
+                    cp.cachedIsVoid = (cp.cachedTargetDesc.find(")V") != std::string::npos);
+                    cp.methodCached = true;
                 }
-                if (cp.nameAndTypeIndex < cls->constantPool.size()) {
-                    const auto& nat = cls->constantPool[cp.nameAndTypeIndex];
-                    if (nat.nameIndex < cls->constantPool.size()) targetMethod = cls->constantPool[nat.nameIndex].strVal;
-                    if (nat.descIndex < cls->constantPool.size()) targetDesc = cls->constantPool[nat.descIndex].strVal;
-                }
+
+                targetClass = cp.cachedTargetClass;
+                targetMethod = cp.cachedTargetMethod;
+                targetDesc = cp.cachedTargetDesc;
+                paramCount = cp.cachedParamCount;
+                isVoid = cp.cachedIsVoid;
+            } else {
+                targetClass = cls->thisClassName;
+                targetMethod = "<init>";
+                targetDesc = "()V";
+                isVoid = true;
             }
 
-            // Estimate param count from descriptor (handles L...; and [...] arrays)
-            int paramCount = 0;
-            size_t p = targetDesc.find('(');
-            size_t endP = targetDesc.find(')');
-            if (p != std::string::npos && endP != std::string::npos) {
-                for (size_t k = p + 1; k < endP; ++k) {
-                    if (targetDesc[k] == 'L') {
-                        while (k < endP && targetDesc[k] != ';') k++;
-                        paramCount++;
-                    } else if (targetDesc[k] == '[') {
-                        while (k < endP && targetDesc[k] == '[') k++;
-                        if (k < endP && targetDesc[k] == 'L') { while (k < endP && targetDesc[k] != ';') k++; }
-                        paramCount++;
-                    } else {
-                        paramCount++;
-                    }
-                }
-            }
             if (op != OP_INVOKESTATIC) paramCount++; // this ref
 
             std::vector<JavaValue> callArgs(paramCount);
@@ -3864,7 +4025,7 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
             JavaValue retVal;
             if (dispatchNativeMethod(actualClass, targetMethod, targetDesc, callArgs, retVal, display) ||
                 (actualClass != targetClass && dispatchNativeMethod(targetClass, targetMethod, targetDesc, callArgs, retVal, display))) {
-                if (targetDesc.find(")V") == std::string::npos) frame.push(retVal);
+                if (!isVoid) frame.push(retVal);
             } else {
                 auto targetCls = findOrLoadClass(actualClass, m_activeJar);
                 if (!targetCls && actualClass != targetClass) {
@@ -3872,9 +4033,9 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
                 }
                 if (targetCls) {
                     retVal = executeMethod(targetCls, targetMethod, targetDesc, callArgs, display);
-                    if (targetDesc.find(")V") == std::string::npos) frame.push(retVal);
+                    if (!isVoid) frame.push(retVal);
                 } else {
-                    if (targetDesc.find(")V") == std::string::npos) frame.push(JavaValue(0));
+                    if (!isVoid) frame.push(JavaValue(0));
                 }
             }
 

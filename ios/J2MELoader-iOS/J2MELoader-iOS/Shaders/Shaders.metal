@@ -28,35 +28,48 @@ vertex VertexOut vertexShader(uint vertexID [[vertex_id]]) {
     return out;
 }
 
+struct ShaderUniforms {
+    float brightness;
+    float contrast;
+    float scanlineIntensity;
+    float lcdGridStrength;
+};
+
 fragment float4 fragmentShader(VertexOut in [[stage_in]],
-                               texture2d<float> colorTexture [[texture(0)]]) {
+                               texture2d<float> colorTexture [[texture(0)]],
+                               constant ShaderUniforms &uniforms [[buffer(0)]]) {
     constexpr sampler textureSampler(mag_filter::nearest, min_filter::nearest);
     float4 color = colorTexture.sample(textureSampler, in.texCoord);
+    color.rgb = (color.rgb - 0.5f) * uniforms.contrast + 0.5f + uniforms.brightness;
     return color;
 }
 
 // CRT Scanline Shader
 fragment float4 crtFragmentShader(VertexOut in [[stage_in]],
-                                  texture2d<float> colorTexture [[texture(0)]]) {
+                                  texture2d<float> colorTexture [[texture(0)]],
+                                  constant ShaderUniforms &uniforms [[buffer(0)]]) {
     constexpr sampler textureSampler(mag_filter::linear, min_filter::linear);
     float4 color = colorTexture.sample(textureSampler, in.texCoord);
     
     // Scanline calculation
-    float scanline = sin(float(in.position.y) * 3.14159265f) * 0.15f;
+    float scanline = sin(float(in.position.y) * 3.14159265f) * uniforms.scanlineIntensity;
     color.rgb -= scanline;
+    color.rgb = (color.rgb - 0.5f) * uniforms.contrast + 0.5f + uniforms.brightness;
     return color;
 }
 
 // LCD Grid Shader (Simulates Nokia LCD subpixel matrix)
 fragment float4 lcdGridFragmentShader(VertexOut in [[stage_in]],
-                                      texture2d<float> colorTexture [[texture(0)]]) {
+                                      texture2d<float> colorTexture [[texture(0)]],
+                                      constant ShaderUniforms &uniforms [[buffer(0)]]) {
     constexpr sampler textureSampler(mag_filter::nearest, min_filter::nearest);
     float4 color = colorTexture.sample(textureSampler, in.texCoord);
     
     int px = int(in.position.x);
     int py = int(in.position.y);
     if ((px % 3 == 0) || (py % 3 == 0)) {
-        color.rgb *= 0.82f; // Subtle LCD dark grid boundary
+        color.rgb *= (1.0f - uniforms.lcdGridStrength);
     }
+    color.rgb = (color.rgb - 0.5f) * uniforms.contrast + 0.5f + uniforms.brightness;
     return color;
 }

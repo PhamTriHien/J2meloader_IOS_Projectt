@@ -1,13 +1,12 @@
 import SwiftUI
 
 public struct ShaderTuneView: View {
-    @State private var brightness: Double = 0.0
-    @State private var contrast: Double = 1.0
-    @State private var scanlineIntensity: Double = 0.25
-    @State private var lcdGridStrength: Double = 0.20
-    @State private var ghostingPersistence: Double = 0.10
-    
+    @Binding public var config: EmulatorConfig
     @Environment(\.presentationMode) var presentationMode
+    
+    public init(config: Binding<EmulatorConfig>) {
+        self._config = config
+    }
     
     public var body: some View {
         NavigationView {
@@ -18,11 +17,11 @@ public struct ShaderTuneView: View {
                             Text("Độ sáng màn hình (Brightness)")
                                 .font(.system(size: 13, weight: .regular))
                             Spacer()
-                            Text(String(format: "%.2f", brightness))
+                            Text(String(format: "%.2f", config.shaderBrightness))
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
-                        Slider(value: $brightness, in: -0.5...0.5, step: 0.05)
+                        Slider(value: $config.shaderBrightness, in: -0.5...0.5, step: 0.05)
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
@@ -30,11 +29,11 @@ public struct ShaderTuneView: View {
                             Text("Độ tương phản (Contrast)")
                                 .font(.system(size: 13, weight: .regular))
                             Spacer()
-                            Text(String(format: "%.2f", contrast))
+                            Text(String(format: "%.2f", config.shaderContrast))
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
-                        Slider(value: $contrast, in: 0.5...2.0, step: 0.05)
+                        Slider(value: $config.shaderContrast, in: 0.5...2.0, step: 0.05)
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
@@ -42,11 +41,11 @@ public struct ShaderTuneView: View {
                             Text("Độ đậm quét sọc TV CRT (Scanlines)")
                                 .font(.system(size: 13, weight: .regular))
                             Spacer()
-                            Text("\(Int(scanlineIntensity * 100))%")
+                            Text("\(Int(config.shaderScanlineIntensity * 100))%")
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
-                        Slider(value: $scanlineIntensity, in: 0.0...1.0, step: 0.05)
+                        Slider(value: $config.shaderScanlineIntensity, in: 0.0...1.0, step: 0.05)
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
@@ -54,33 +53,20 @@ public struct ShaderTuneView: View {
                             Text("Lưới điểm ảnh Nokia LCD (Grid Strength)")
                                 .font(.system(size: 13, weight: .regular))
                             Spacer()
-                            Text("\(Int(lcdGridStrength * 100))%")
+                            Text("\(Int(config.shaderLcdGridStrength * 100))%")
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
-                        Slider(value: $lcdGridStrength, in: 0.0...1.0, step: 0.05)
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Độ bóng mờ bóng ma LCD (Ghosting)")
-                                .font(.system(size: 13, weight: .regular))
-                            Spacer()
-                            Text("\(Int(ghostingPersistence * 100))%")
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.secondary)
-                        }
-                        Slider(value: $ghostingPersistence, in: 0.0...0.5, step: 0.05)
+                        Slider(value: $config.shaderLcdGridStrength, in: 0.0...1.0, step: 0.05)
                     }
                 }
                 
                 Section {
                     Button("Khôi phục mặc định", role: .destructive) {
-                        brightness = 0.0
-                        contrast = 1.0
-                        scanlineIntensity = 0.25
-                        lcdGridStrength = 0.20
-                        ghostingPersistence = 0.10
+                        config.shaderBrightness = 0.0
+                        config.shaderContrast = 1.0
+                        config.shaderScanlineIntensity = 0.25
+                        config.shaderLcdGridStrength = 0.20
                     }
                     .font(.system(size: 13.5, weight: .regular))
                 }

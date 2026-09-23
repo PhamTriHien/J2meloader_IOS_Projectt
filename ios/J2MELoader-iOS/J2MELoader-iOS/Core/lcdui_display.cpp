@@ -153,6 +153,7 @@ void LcduiDisplay::resize(int width, int height) {
 
 void LcduiDisplay::clear(uint32_t color) {
     std::fill(m_buffer.begin(), m_buffer.end(), color);
+    m_fullFrameDrawn = true;
 }
 
 void LcduiDisplay::resetClip() {
@@ -229,6 +230,9 @@ void LcduiDisplay::fillRect(int x, int y, int w, int h, uint32_t color) {
 
     uint32_t alpha = (color >> 24) & 0xFF;
     if (alpha == 255) {
+        if (x1 <= 0 && y1 <= 0 && x2 >= m_width && y2 >= m_height) {
+            m_fullFrameDrawn = true;
+        }
         // Fast-path: fully opaque fill line by line
         for (int cy = y1; cy < y2; ++cy) {
             uint32_t* row = m_buffer.data() + (size_t)cy * m_width;
@@ -310,6 +314,9 @@ void LcduiDisplay::drawRegion(const uint32_t* srcPixels, int srcW, int srcH, int
         if (x_src + cStart < 0) cStart = -x_src;
         if (x_src + cEnd > srcW) cEnd = srcW - x_src;
         if (cStart >= cEnd) return;
+        if (cStart == 0 && cEnd == m_width && rStart == 0 && rEnd == m_height) {
+            m_fullFrameDrawn = true;
+        }
 
         for (int r = rStart; r < rEnd; ++r) {
             int sy = y_src + r;

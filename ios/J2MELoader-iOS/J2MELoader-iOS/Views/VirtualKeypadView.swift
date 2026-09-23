@@ -24,6 +24,7 @@ public struct VirtualKeypadView: View {
                 EmptyView()
             }
         }
+        .opacity(config.keypadOpacity)
     }
 }
 
@@ -110,7 +111,7 @@ struct ClassicPhoneKeypad: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 18)
-                .fill(Color(.secondarySystemBackground).opacity(config.keypadOpacity))
+                .fill(Color(.secondarySystemBackground))
                 .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: -2)
         )
         .padding(.horizontal, 6)
@@ -169,7 +170,7 @@ struct GamepadDpadLayout: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 18)
-                .fill(Color(.secondarySystemBackground).opacity(config.keypadOpacity))
+                .fill(Color(.secondarySystemBackground))
         )
         .padding(.horizontal, 10)
     }
@@ -210,6 +211,21 @@ struct SplitLandscapeLayout: View {
     }
 }
 
+// MARK: - Haptic Feedback Helper
+final class HapticFeedbackHelper {
+    static let shared = HapticFeedbackHelper()
+    private let generator = UIImpactFeedbackGenerator(style: .medium)
+    
+    private init() {
+        generator.prepare()
+    }
+    
+    func impact() {
+        generator.impactOccurred()
+        generator.prepare()
+    }
+}
+
 // MARK: - KeyButton Component
 struct KeyButton: View {
     let title: String
@@ -220,7 +236,7 @@ struct KeyButton: View {
     let onEvent: (Int32, Bool) -> Void
     
     @State private var isPressed: Bool = false
-    private let generator = UIImpactFeedbackGenerator(style: .medium)
+    @State private var buttonSize: CGSize = .zero
     
     init(title: String, sub: String? = nil, key: J2MEKey, color: Color = Color(.systemGray5), haptic: Bool, onEvent: @escaping (Int32, Bool) -> Void) {
         self.title = title
@@ -256,13 +272,36 @@ struct KeyButton: View {
         .scaleEffect(isPressed ? 0.94 : 1.0)
         .animation(.easeInOut(duration: 0.08), value: isPressed)
         .contentShape(Rectangle())
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { buttonSize = proxy.size }
+                    .onChange(of: proxy.size) { newSize in buttonSize = newSize }
+            }
+        )
         .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if !isPressed {
-                        isPressed = true
-                        if haptic { generator.impactOccurred() }
-                        onEvent(key.rawValue, true)
+            DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                .onChanged { value in
+                    let hitSlop: CGFloat = 8.0
+                    let bounds = CGRect(
+                        x: -hitSlop,
+                        y: -hitSlop,
+                        width: buttonSize.width + hitSlop * 2,
+                        height: buttonSize.height + hitSlop * 2
+                    )
+                    let isInside = bounds.contains(value.location)
+                    
+                    if isInside {
+                        if !isPressed {
+                            isPressed = true
+                            if haptic { HapticFeedbackHelper.shared.impact() }
+                            onEvent(key.rawValue, true)
+                        }
+                    } else {
+                        if isPressed {
+                            isPressed = false
+                            onEvent(key.rawValue, false)
+                        }
                     }
                 }
                 .onEnded { _ in

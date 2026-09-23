@@ -1,14 +1,14 @@
 {
-  "id": 392390290,
-  "tag_name": "v1.9.0-j2hienloader",
-  "name": "J2HienLoader iOS v1.9.0 - Đo Đạc FPS Thời Gian Thực Chuẩn Xác & Đồng Bộ Tốc Độ Giả Lập Speed Multiplier",
-  "body": "## J2HienLoader cho iOS (v1.9.0)\n- Đo Đạc FPS Thời Gian Thực (True Real-Time FPS Sampling): Triển khai thuật toán đo FPS trên luồng MetalRenderer dựa theo chuẩn FpsCounter từ playsoftware/J2ME-Loader (javax.microedition.lcdui.overlay.FpsCounter). Sử dụng CACurrentMediaTime() đo đạc số frame thực tế được render trong từng cửa sổ 0.5 giây và cập nhật trực tiếp lên UI.\n- Dynamic Emulation Speed Pacing: Tích hợp std::atomic<int> m_speedMultiplier trong JvmInterpreter. Đồng bộ hóa tốc độ vòng lặp thực thi bytecode (1x: 60 FPS, 2x: 120 FPS, 4x: 240 FPS) kèm preferredFramesPerSecond của MTKView, đảm bảo game chạy nhanh thật khi bấm phím 2x/4x.\n- Real-Time FPS Badge & Header: Thanh header và huy hiệu FPS hiển thị chính xác FPS thực tế đang render kèm phân loại màu sắc động (Xanh lá >= 50 FPS, Vàng 30-49 FPS, Cam < 30 FPS).\n- Auto Reset: Tự động reset tốc độ giả lập về 1x khi thoát khỏi game hoặc quay lại thư viện game, chống rò rỉ trạng thái.\n- Đạt chuẩn 0 Error, 0 Warning khi biên dịch toàn bộ mã nguồn C++ trên MSVC 2022 C++17 (/W3 /WX).",
-  "published_at": "2026-09-23T05:30:00Z",
+  "id": 392390300,
+  "tag_name": "v2.0.0-j2hienloader",
+  "name": "J2HienLoader iOS v2.0.0 - Đại Tu Toàn Diện: GC Mark-and-Sweep, Cache Bytecode, Zero-Copy GPU, Gamepad MFi & Thư Viện Grid",
+  "body": "## J2HienLoader cho iOS (v2.0.0)\n- Core Engine & Memory: Tích hợp thuật toán Mark-and-Sweep Garbage Collection tự động duyệt root-set từ active stack frames, static fields và midlet runtime, xóa sạch rò rỉ bộ nhớ ngăn chặn hoàn toàn hiện tượng Jetsam crash. Tối ưu Fast-path method invocation với bộ đệm tham số descriptor trong CpEntry. Tối ưu Zero-Copy Double Buffering (swap O(1)) cho luồng render GPU Metal.\n- Cô lập dữ liệu lưu RMS đa luồng: Tách biệt hoàn toàn namespace RMS RecordStore theo MIDlet-Name/JAR base name, hỗ trợ xoá sạch save data theo từng tựa game riêng biệt.\n- Tích hợp tay cầm vật lý thực thụ: Đồng bộ framework Apple GameController (GCController) điều khiển D-Pad, Thumbstick, ABXY, L/R cho tay cầm Bluetooth PS5, Xbox, MFi.\n- Tinh chỉnh Shaders bằng Uniform Buffer: Truyền trực tiếp thông số độ sáng, tương phản, scanline và lcd grid vào Apple Metal Shaders.\n- Hiện đại hóa giao diện UI/UX: Thanh điều khiển compact với Menu overflow; bàn phím ảo với bộ haptics dùng chung và cơ chế chống kẹt phím cảm ứng; hỗ trợ xem Thư viện game dạng Grid View đa cột kèm bộ lọc sắp xếp (A-Z, Z-A, Ngày thêm, Lần chơi gần nhất) và NSCache tối ưu hiệu năng cuộn.",
+  "published_at": "2026-09-23T16:00:00Z",
   "assets": [
     {
       "name": "J2HienLoader.ipa",
-      "browser_download_url": "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/download/v1.9.0-j2hienloader/J2HienLoader.ipa",
-      "size": 3030000
+      "browser_download_url": "https://github.com/PhamTriHien/J2meloader_IOS_Projectt/releases/download/v2.0.0-j2hienloader/J2HienLoader.ipa",
+      "size": 3100000
     }
   ]
 }

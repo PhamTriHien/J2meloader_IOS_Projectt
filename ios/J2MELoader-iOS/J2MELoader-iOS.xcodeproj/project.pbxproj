@@ -23,6 +23,7 @@
 		AA00000E2C88000100000001 /* MetalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000E2C88000100000001 /* MetalView.swift */; };
 		AA0000402C88000100000001 /* AppUpdateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000402C88000100000001 /* AppUpdateManager.swift */; };
 		AA0000412C88000100000001 /* UpdateModalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000412C88000100000001 /* UpdateModalView.swift */; };
+		AA0000422C88000100000001 /* GamePadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000422C88000100000001 /* GamePadManager.swift */; };
 		AA00000F2C88000100000001 /* J2MEBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB00000F2C88000100000001 /* J2MEBridge.mm */; };
 		AA0000332C88000100000001 /* NativeFontBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0000332C88000100000001 /* NativeFontBridge.mm */; };
 		AA0000312C88000100000001 /* NativeExtBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = BB0000312C88000100000001 /* NativeExtBridge.mm */; };
@@ -94,6 +95,7 @@
 		BB00000E2C88000100000001 /* MetalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalView.swift; sourceTree = "<group>"; };
 		BB0000402C88000100000001 /* AppUpdateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateManager.swift; sourceTree = "<group>"; };
 		BB0000412C88000100000001 /* UpdateModalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateModalView.swift; sourceTree = "<group>"; };
+		BB0000422C88000100000001 /* GamePadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamePadManager.swift; sourceTree = "<group>"; };
 		BB00000F2C88000100000001 /* J2MEBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = J2MEBridge.mm; sourceTree = "<group>"; };
 		BB0000102C88000100000001 /* AudioBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AudioBridge.mm; sourceTree = "<group>"; };
 		BB0000202C88000100000001 /* J2MEBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = J2MEBridge.h; sourceTree = "<group>"; };
@@ -217,6 +219,7 @@
 				BB0000052C88000100000001 /* GameManager.swift */,
 				BB0000062C88000100000002 /* ProfileManager.swift */,
 				BB0000402C88000100000001 /* AppUpdateManager.swift */,
+				BB0000422C88000100000001 /* GamePadManager.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -416,6 +419,7 @@
 				AA00000E2C88000100000001 /* MetalView.swift in Sources */,
 				AA0000402C88000100000001 /* AppUpdateManager.swift in Sources */,
 				AA0000412C88000100000001 /* UpdateModalView.swift in Sources */,
+				AA0000422C88000100000001 /* GamePadManager.swift in Sources */,
 				AA00000F2C88000100000001 /* J2MEBridge.mm in Sources */,
 				AA0000332C88000100000001 /* NativeFontBridge.mm in Sources */,
 				AA0000312C88000100000001 /* NativeExtBridge.mm in Sources */,

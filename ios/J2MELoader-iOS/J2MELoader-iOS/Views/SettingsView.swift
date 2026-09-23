@@ -19,11 +19,17 @@ public struct SettingsView: View {
     @Environment(\.presentationMode) var presentationMode
     
     @State private var subSheet: SettingsSubSheet? = nil
+    @State private var selectedProfileId: String = ""
     
     public init(game: GameItem, onSave: @escaping (GameItem) -> Void, onStart: ((GameItem) -> Void)? = nil) {
         _game = State(initialValue: game)
         self.onSave = onSave
         self.onStart = onStart
+        // Find if current settings match an existing profile
+        let matched = ProfileManager.shared.profiles.first { p in
+            p.width == game.config.effectiveWidth && p.height == game.config.effectiveHeight && p.platform == game.config.systemPlatform
+        }
+        _selectedProfileId = State(initialValue: matched?.id ?? "")
     }
     
     public var body: some View {
@@ -78,25 +84,36 @@ public struct SettingsView: View {
                     .padding(.vertical, 3)
                 }
                 
-                Section(header: Text("THIẾT BỊ MẪU (DEVICE PROFILE)").font(.system(size: 11.5, weight: .semibold))) {
-                    Picker(selection: Binding(
-                        get: { game.config.preset },
-                        set: { newPreset in
-                            game.config.preset = newPreset
+                Section(header: Text("HỒ SƠ THIẾT BỊ MẪU (DEVICE PROFILE)").font(.system(size: 11.5, weight: .semibold))) {
+                    Picker("Mẫu điện thoại J2ME", selection: $selectedProfileId) {
+                        Text("Tùy chỉnh riêng (Custom)").tag("")
+                        ForEach(ProfileManager.shared.profiles) { profile in
+                            Text(profile.name).tag(profile.id)
                         }
-                    )) {
+                    }
+                    .font(.system(size: 13.5, weight: .regular))
+                    .onChange(of: selectedProfileId) { newId in
+                        if let prof = ProfileManager.shared.profiles.first(where: { $0.id == newId }) {
+                            applyDeviceProfile(prof)
+                        }
+                    }
+                    
+                    if let prof = ProfileManager.shared.profiles.first(where: { $0.id == selectedProfileId }) {
+                        Text("Platform: \(prof.platform) • \(prof.width)x\(prof.height)")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Section(header: Text("ĐỘ PHÂN GIẢI & BỘ LỌC ĐỒ HỌA").font(.system(size: 11.5, weight: .semibold))) {
+                    Picker("Độ phân giải chuẩn", selection: $game.config.preset) {
                         ForEach(ResolutionPreset.allCases, id: \.self) { preset in
                             Text(preset.displayName)
                                 .font(.system(size: 13, weight: .regular))
                                 .tag(preset)
                         }
-                    } label: {
-                        Text("Hồ sơ thiết bị")
-                            .font(.system(size: 13.5, weight: .regular))
                     }
-                }
-                
-                Section(header: Text("ĐỘ PHÂN GIẢI & BỘ LỌC ĐỒ HỌA").font(.system(size: 11.5, weight: .semibold))) {
+                    .font(.system(size: 13.5, weight: .regular))
                     if game.config.preset == .custom {
                         HStack {
                             Text("Chiều rộng (Width)")
@@ -343,9 +360,35 @@ public struct SettingsView: View {
                 case .keyMapper:
                     KeyMapperView()
                 case .shaderTune:
-                    ShaderTuneView()
+                    ShaderTuneView(config: $game.config)
                 }
             }
+        }
+    }
+    
+    private func applyDeviceProfile(_ profile: DeviceProfile) {
+        game.config.systemPlatform = profile.platform
+        game.config.customWidth = profile.width
+        game.config.customHeight = profile.height
+        game.config.keypadLayout = profile.keypadStyle
+        game.config.soundEnabled = profile.soundEnabled
+        game.config.targetFps = profile.defaultFps
+        if profile.width == 240 && profile.height == 320 {
+            game.config.preset = .res240x320
+        } else if profile.width == 176 && profile.height == 220 {
+            game.config.preset = .res176x220
+        } else if profile.width == 128 && profile.height == 160 {
+            game.config.preset = .res128x160
+        } else if profile.width == 176 && profile.height == 208 {
+            game.config.preset = .res176x208
+        } else if profile.width == 320 && profile.height == 240 {
+            game.config.preset = .res320x240
+        } else if profile.width == 360 && profile.height == 640 {
+            game.config.preset = .res360x640
+        } else if profile.width == 480 && profile.height == 800 {
+            game.config.preset = .res480x800
+        } else {
+            game.config.preset = .custom
         }
     }
 }

@@ -252,6 +252,12 @@ struct CpEntry {
     std::string cachedFieldKey;
     std::string cachedShortName;
     bool fieldCached = false;
+    std::string cachedTargetClass;
+    std::string cachedTargetMethod;
+    std::string cachedTargetDesc;
+    int cachedParamCount = -1;
+    bool cachedIsVoid = false;
+    bool methodCached = false;
 };
 
 struct ExceptionEntry {
@@ -423,6 +429,9 @@ public:
     // Reset Engine State
     void reset();
 
+    // Mark-and-Sweep Garbage Collection
+    void runGarbageCollector();
+
     void ensureClinit(std::shared_ptr<ClassFile> cls, LcduiDisplay* display);
     bool isInstanceOf(const std::string& className, const std::string& targetType);
 
@@ -449,6 +458,7 @@ private:
     std::unordered_map<std::string, JavaValue> m_staticFields;
     JarLoader* m_activeJar = nullptr;
     uint32_t m_nextRef = 1;
+    size_t m_allocsSinceGC = 0;
     std::atomic<bool> m_cancel{false};
     std::unordered_map<uint32_t, std::shared_ptr<LcduiDisplay>> m_offscreens;
     std::unordered_map<uint32_t, uint32_t> m_graphicsTarget;

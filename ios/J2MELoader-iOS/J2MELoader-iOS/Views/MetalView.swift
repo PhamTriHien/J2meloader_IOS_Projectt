@@ -85,6 +85,13 @@ public class GameMTKView: MTKView {
     }
 }
 
+public struct MetalShaderUniforms {
+    public var brightness: Float
+    public var contrast: Float
+    public var scanlineIntensity: Float
+    public var lcdGridStrength: Float
+}
+
 public class MetalRenderer: NSObject, MTKViewDelegate {
     var parent: MetalView
     var device: MTLDevice?
@@ -188,6 +195,13 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
         if let pipeline = pipelineState, let tex = texture {
             encoder.setRenderPipelineState(pipeline)
             encoder.setFragmentTexture(tex, index: 0)
+            var uniforms = MetalShaderUniforms(
+                brightness: config.shaderBrightness,
+                contrast: config.shaderContrast,
+                scanlineIntensity: config.shaderScanlineIntensity,
+                lcdGridStrength: config.shaderLcdGridStrength
+            )
+            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<MetalShaderUniforms>.stride, index: 0)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         }
         

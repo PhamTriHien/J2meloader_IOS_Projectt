@@ -39,21 +39,27 @@ struct J2MELoaderApp: App {
     }
     
     private func handleAppEnteredBackground() {
-        guard gameManager.isEmulating,
-              let config = gameManager.currentGame?.config,
-              config.backgroundKeepAlive else { return }
+        guard gameManager.isEmulating, let config = gameManager.currentGame?.config else { return }
         
-        // Ensure Audio Session is active for background processing
-        AudioBridge.initializeAudio()
-        
-        // Begin persistent iOS background task
-        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "J2HienLoader.ContinuousBackgroundEngine") {
-            self.endBackgroundTask()
+        if config.backgroundKeepAlive {
+            // Ensure Audio Session is active for background processing
+            AudioBridge.initializeAudio()
+            
+            // Begin persistent iOS background task
+            backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "J2HienLoader.ContinuousBackgroundEngine") {
+                self.endBackgroundTask()
+            }
+        } else {
+            // Auto-pause emulator to prevent CPU spin & battery drain when backgrounded
+            J2MEBridge.setPaused(true)
         }
     }
     
     private func handleAppBecameActive() {
         endBackgroundTask()
+        if gameManager.isEmulating {
+            J2MEBridge.setPaused(false)
+        }
         AppUpdateManager.shared.checkForUpdates(manual: false)
     }
     

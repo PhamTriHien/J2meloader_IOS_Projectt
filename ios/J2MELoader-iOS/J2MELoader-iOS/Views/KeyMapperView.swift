@@ -1,39 +1,46 @@
 import SwiftUI
 
 public struct KeyMapperView: View {
-    @State private var keyMappings: [String: Int32] = [
-        "Phím Lên (DPad Up)": J2MEKey.up.rawValue,
-        "Phím Xuống (DPad Down)": J2MEKey.down.rawValue,
-        "Phím Trái (DPad Left)": J2MEKey.left.rawValue,
-        "Phím Phải (DPad Right)": J2MEKey.right.rawValue,
-        "Nút A / Nút Chọn (OK)": J2MEKey.fire.rawValue,
-        "Nút B / Xóa (Clear)": J2MEKey.clear.rawValue,
-        "Nút L1 / Phím mềm trái (LSK)": J2MEKey.softLeft.rawValue,
-        "Nút R1 / Phím mềm phải (RSK)": J2MEKey.softRight.rawValue,
-        "Nút Start / Gọi (Call)": J2MEKey.call.rawValue,
-        "Nút Select / Kết thúc (End)": J2MEKey.end.rawValue,
-        "Nút X (Phím số 5)": J2MEKey.num5.rawValue,
-        "Nút Y (Phím số 7)": J2MEKey.num7.rawValue
-    ]
-    
+    @ObservedObject private var gamePadManager = GamePadManager.shared
     @Environment(\.presentationMode) var presentationMode
+    
+    public init() {}
     
     public var body: some View {
         NavigationView {
             Form {
+                Section(header: Text("TRẠNG THÁI TAY CẦM").font(.system(size: 11.5, weight: .semibold))) {
+                    HStack(spacing: 10) {
+                        Image(systemName: gamePadManager.isControllerConnected ? "gamecontroller.fill" : "gamecontroller")
+                            .font(.system(size: 20))
+                            .foregroundColor(gamePadManager.isControllerConnected ? .green : .secondary)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(gamePadManager.controllerName)
+                                .font(.system(size: 13.5, weight: .semibold))
+                                .foregroundColor(.primary)
+                            
+                            Text(gamePadManager.isControllerConnected ? "Sẵn sàng nhận tín hiệu điều khiển" : "Kết nối qua Bluetooth trong Cài đặt iOS")
+                                .font(.system(size: 11.5))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+                
                 Section(header: Text("GÁN NÚT TAY CẦM BLUETOOTH / MFI").font(.system(size: 11.5, weight: .semibold))) {
-                    Text("Kết nối tay cầm Bluetooth như Sony DualSense (PS5), Xbox Controller, Nintendo Switch hoặc tay cầm chuẩn MFi để chơi bằng phím cứng.")
-                        .font(.system(size: 11.5, weight: .regular))
-                        .foregroundColor(.secondary)
-                    
-                    ForEach(Array(keyMappings.keys.sorted()), id: \.self) { label in
+                    ForEach(GamePadButton.allCases) { btn in
                         HStack {
-                            Text(label)
+                            Text(btn.rawValue)
                                 .font(.system(size: 13, weight: .regular))
                             Spacer()
                             Picker("", selection: Binding(
-                                get: { keyMappings[label] ?? 0 },
-                                set: { keyMappings[label] = $0 }
+                                get: { gamePadManager.keyForButton(btn) },
+                                set: { newKeyVal in
+                                    if let key = J2MEKey(rawValue: newKeyVal) {
+                                        gamePadManager.updateMapping(button: btn, key: key)
+                                    }
+                                }
                             )) {
                                 ForEach(J2MEKey.allCases) { key in
                                     Text(key.displayName)
@@ -48,7 +55,7 @@ public struct KeyMapperView: View {
                 
                 Section {
                     Button("Khôi phục mặc định", role: .destructive) {
-                        // Reset defaults
+                        gamePadManager.resetToDefaults()
                     }
                     .font(.system(size: 13.5, weight: .regular))
                 }

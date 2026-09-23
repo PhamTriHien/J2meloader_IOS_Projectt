@@ -169,6 +169,12 @@ public struct EmulatorConfig: Codable, Hashable {
     public var networkKeepAlive: Bool
     public var vsyncMetal: Bool
     
+    // Shader tuning parameters
+    public var shaderBrightness: Float
+    public var shaderContrast: Float
+    public var shaderScanlineIntensity: Float
+    public var shaderLcdGridStrength: Float
+    
     public init(
         preset: ResolutionPreset = .res240x320,
         customWidth: Int = 240,
@@ -190,7 +196,11 @@ public struct EmulatorConfig: Codable, Hashable {
         systemLocale: String = "vi-VN",
         backgroundKeepAlive: Bool = true,
         networkKeepAlive: Bool = true,
-        vsyncMetal: Bool = true
+        vsyncMetal: Bool = true,
+        shaderBrightness: Float = 0.0,
+        shaderContrast: Float = 1.0,
+        shaderScanlineIntensity: Float = 0.25,
+        shaderLcdGridStrength: Float = 0.20
     ) {
         self.preset = preset
         self.customWidth = customWidth
@@ -213,6 +223,48 @@ public struct EmulatorConfig: Codable, Hashable {
         self.backgroundKeepAlive = backgroundKeepAlive
         self.networkKeepAlive = networkKeepAlive
         self.vsyncMetal = vsyncMetal
+        self.shaderBrightness = shaderBrightness
+        self.shaderContrast = shaderContrast
+        self.shaderScanlineIntensity = shaderScanlineIntensity
+        self.shaderLcdGridStrength = shaderLcdGridStrength
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.preset = try c.decodeIfPresent(ResolutionPreset.self, forKey: .preset) ?? .res240x320
+        self.customWidth = try c.decodeIfPresent(Int.self, forKey: .customWidth) ?? 240
+        self.customHeight = try c.decodeIfPresent(Int.self, forKey: .customHeight) ?? 320
+        self.targetFps = try c.decodeIfPresent(Int.self, forKey: .targetFps) ?? 60
+        self.showFps = try c.decodeIfPresent(Bool.self, forKey: .showFps) ?? true
+        self.screenOrientation = try c.decodeIfPresent(ScreenOrientation.self, forKey: .screenOrientation) ?? .autoSensor
+        self.screenBgColor = try c.decodeIfPresent(ScreenBgColor.self, forKey: .screenBgColor) ?? .darkNokia
+        self.fontSizeScale = try c.decodeIfPresent(FontSizeScale.self, forKey: .fontSizeScale) ?? .medium
+        self.scalingMode = try c.decodeIfPresent(ScalingMode.self, forKey: .scalingMode) ?? .fit
+        self.filterMode = try c.decodeIfPresent(FilterMode.self, forKey: .filterMode) ?? .nearest
+        self.soundEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundEnabled) ?? true
+        self.soundVolume = try c.decodeIfPresent(Float.self, forKey: .soundVolume) ?? 0.8
+        self.hapticFeedback = try c.decodeIfPresent(Bool.self, forKey: .hapticFeedback) ?? true
+        self.keypadLayout = try c.decodeIfPresent(KeypadLayout.self, forKey: .keypadLayout) ?? .classicPhone
+        self.keypadOpacity = try c.decodeIfPresent(Double.self, forKey: .keypadOpacity) ?? 0.85
+        self.touchScreenEnabled = try c.decodeIfPresent(Bool.self, forKey: .touchScreenEnabled) ?? true
+        self.systemPlatform = try c.decodeIfPresent(String.self, forKey: .systemPlatform) ?? "NokiaN73"
+        self.systemLocale = try c.decodeIfPresent(String.self, forKey: .systemLocale) ?? "vi-VN"
+        self.backgroundKeepAlive = try c.decodeIfPresent(Bool.self, forKey: .backgroundKeepAlive) ?? true
+        self.networkKeepAlive = try c.decodeIfPresent(Bool.self, forKey: .networkKeepAlive) ?? true
+        self.vsyncMetal = try c.decodeIfPresent(Bool.self, forKey: .vsyncMetal) ?? true
+        self.shaderBrightness = try c.decodeIfPresent(Float.self, forKey: .shaderBrightness) ?? 0.0
+        self.shaderContrast = try c.decodeIfPresent(Float.self, forKey: .shaderContrast) ?? 1.0
+        self.shaderScanlineIntensity = try c.decodeIfPresent(Float.self, forKey: .shaderScanlineIntensity) ?? 0.25
+        self.shaderLcdGridStrength = try c.decodeIfPresent(Float.self, forKey: .shaderLcdGridStrength) ?? 0.20
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case preset, customWidth, customHeight, targetFps, showFps
+        case screenOrientation, screenBgColor, fontSizeScale, scalingMode, filterMode
+        case soundEnabled, soundVolume, hapticFeedback, keypadLayout, keypadOpacity
+        case touchScreenEnabled, systemPlatform, systemLocale, backgroundKeepAlive
+        case networkKeepAlive, vsyncMetal
+        case shaderBrightness, shaderContrast, shaderScanlineIntensity, shaderLcdGridStrength
     }
     
     public var effectiveWidth: Int {
