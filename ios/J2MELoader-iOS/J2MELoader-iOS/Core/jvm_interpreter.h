@@ -57,6 +57,8 @@ public:
     void registerRunnable(uint32_t ref, std::shared_ptr<ClassFile> cls);
     void startRunnableThread();
     int getKeyStates();
+    void setSpeedMultiplier(int mult) { m_speedMultiplier.store(mult > 0 ? mult : 1); }
+    int getSpeedMultiplier() const { return m_speedMultiplier.load(); }
 
     void triggerTone(int freq, int durationMs, int volume) {
         if (m_soundEnabled && m_playToneCallback && freq > 0 && durationMs > 0) {
@@ -83,6 +85,7 @@ private:
     std::atomic<bool> m_paused;
     std::atomic<bool> m_runnableRunning;
     std::atomic<int> m_paintTick{0};
+    std::atomic<int> m_speedMultiplier{1};
 
     std::unique_ptr<JarLoader> m_jarLoader;
     std::unique_ptr<LcduiDisplay> m_display;

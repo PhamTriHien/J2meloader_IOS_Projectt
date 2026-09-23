@@ -128,4 +128,12 @@
     return JvmInterpreter::getInstance().getPaintTick();
 }
 
++ (void)setSpeedMultiplier:(int)multiplier {
+    JvmInterpreter::getInstance().setSpeedMultiplier(multiplier);
+}
+
++ (int)getSpeedMultiplier {
+    return JvmInterpreter::getInstance().getSpeedMultiplier();
+}
+
 @end

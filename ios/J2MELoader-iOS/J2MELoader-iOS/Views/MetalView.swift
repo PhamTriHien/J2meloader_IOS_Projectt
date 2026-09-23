@@ -4,10 +4,19 @@ import UIKit.UIGestureRecognizerSubclass
 
 public struct MetalView: UIViewRepresentable {
     public var config: EmulatorConfig
+    public var speedMultiplier: Int
+    public var onFpsUpdate: ((Int) -> Void)?
     public var onTouch: (Int32, Int32, Int32) -> Void // x, y, action: 0=down, 1=drag, 2=up
     
-    public init(config: EmulatorConfig, onTouch: @escaping (Int32, Int32, Int32) -> Void) {
+    public init(
+        config: EmulatorConfig,
+        speedMultiplier: Int = 1,
+        onFpsUpdate: ((Int) -> Void)? = nil,
+        onTouch: @escaping (Int32, Int32, Int32) -> Void
+    ) {
         self.config = config
+        self.speedMultiplier = speedMultiplier
+        self.onFpsUpdate = onFpsUpdate
         self.onTouch = onTouch
     }
     
@@ -21,7 +30,7 @@ public struct MetalView: UIViewRepresentable {
         mtkView.delegate = context.coordinator
         mtkView.enableSetNeedsDisplay = false
         mtkView.isPaused = false
-        mtkView.preferredFramesPerSecond = config.targetFps
+        mtkView.preferredFramesPerSecond = config.targetFps * max(1, speedMultiplier)
         mtkView.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         mtkView.isUserInteractionEnabled = config.touchScreenEnabled
         mtkView.config = config
@@ -30,11 +39,11 @@ public struct MetalView: UIViewRepresentable {
     }
     
     public func updateUIView(_ uiView: GameMTKView, context: Context) {
-        uiView.preferredFramesPerSecond = config.targetFps
+        uiView.preferredFramesPerSecond = config.targetFps * max(1, speedMultiplier)
         uiView.isUserInteractionEnabled = config.touchScreenEnabled
         uiView.config = config
         uiView.onTouch = onTouch
-        context.coordinator.updateConfig(config)
+        context.coordinator.updateConfig(config, speedMultiplier: speedMultiplier, onFpsUpdate: onFpsUpdate)
     }
 }
 
@@ -83,11 +92,20 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
     var pipelineState: MTLRenderPipelineState?
     var texture: MTLTexture?
     var config: EmulatorConfig
+    var speedMultiplier: Int = 1
+    var onFpsUpdate: ((Int) -> Void)?
     var lastPaintTick: Int32 = -1
+    
+    // Real-time FPS measurement
+    private var frameCount: Int = 0
+    private var lastFpsTimestamp: CFTimeInterval = 0
+    public private(set) var currentFps: Int = 0
     
     init(_ parent: MetalView) {
         self.parent = parent
         self.config = parent.config
+        self.speedMultiplier = parent.speedMultiplier
+        self.onFpsUpdate = parent.onFpsUpdate
         self.device = MTLCreateSystemDefaultDevice()
         if let dev = device {
             self.commandQueue = dev.makeCommandQueue()
@@ -96,9 +114,11 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
         setupPipeline()
     }
     
-    func updateConfig(_ config: EmulatorConfig) {
+    func updateConfig(_ config: EmulatorConfig, speedMultiplier: Int, onFpsUpdate: ((Int) -> Void)?) {
         let needPipelineUpdate = self.config.filterMode != config.filterMode
         self.config = config
+        self.speedMultiplier = speedMultiplier
+        self.onFpsUpdate = onFpsUpdate
         if needPipelineUpdate {
             setupPipeline()
         }
@@ -174,5 +194,24 @@ public class MetalRenderer: NSObject, MTKViewDelegate {
         encoder.endEncoding()
         commandBuffer.present(drawable)
         commandBuffer.commit()
+        
+        // Measure real presented FPS (sliding sample window every 0.5s)
+        let now = CACurrentMediaTime()
+        if lastFpsTimestamp == 0 {
+            lastFpsTimestamp = now
+        }
+        frameCount += 1
+        let elapsed = now - lastFpsTimestamp
+        if elapsed >= 0.5 {
+            let actualFps = Int(round(Double(frameCount) / elapsed))
+            currentFps = actualFps
+            frameCount = 0
+            lastFpsTimestamp = now
+            
+            let cb = self.onFpsUpdate
+            DispatchQueue.main.async {
+                cb?(actualFps)
+            }
+        }
     }
 }

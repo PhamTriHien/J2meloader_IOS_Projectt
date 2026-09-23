@@ -6,6 +6,7 @@ public struct GameScreenView: View {
     
     @State private var isPaused: Bool = false
     @State private var speedMultiplier: Int = 1 // 1x, 2x, 4x
+    @State private var actualFps: Int = 0
     @State private var showingSettings: Bool = false
     @State private var showingKeyMapper: Bool = false
     @State private var currentConfig: EmulatorConfig
@@ -25,6 +26,7 @@ public struct GameScreenView: View {
                 // Thanh điều khiển trên cùng (Retro Action Bar)
                 HStack(spacing: 8) {
                     Button(action: {
+                        J2MEBridge.setSpeedMultiplier(1)
                         gameManager.stopEmulation()
                         presentationMode.wrappedValue.dismiss()
                     }) {
@@ -43,7 +45,8 @@ public struct GameScreenView: View {
                             .foregroundColor(.white)
                             .lineLimit(1)
                         
-                        Text("\(currentConfig.effectiveWidth)x\(currentConfig.effectiveHeight) • \(currentConfig.targetFps * speedMultiplier) FPS")
+                        let displayFps = actualFps > 0 ? actualFps : (currentConfig.targetFps * speedMultiplier)
+                        Text("\(currentConfig.effectiveWidth)x\(currentConfig.effectiveHeight) • \(displayFps) FPS")
                             .font(.system(size: 9.5, weight: .medium, design: .monospaced))
                             .foregroundColor(.white.opacity(0.6))
                     }
@@ -55,6 +58,7 @@ public struct GameScreenView: View {
                         if speedMultiplier == 1 { speedMultiplier = 2 }
                         else if speedMultiplier == 2 { speedMultiplier = 4 }
                         else { speedMultiplier = 1 }
+                        J2MEBridge.setSpeedMultiplier(Int32(speedMultiplier))
                     }) {
                         Text("\(speedMultiplier)x")
                             .font(.system(size: 10, weight: .bold))
@@ -184,7 +188,13 @@ public struct GameScreenView: View {
                         blue: Double(currentConfig.screenBgColor.hexColor & 0xFF) / 255.0
                     )
                     
-                    MetalView(config: currentConfig) { x, y, action in
+                    MetalView(
+                        config: currentConfig,
+                        speedMultiplier: speedMultiplier,
+                        onFpsUpdate: { fps in
+                            self.actualFps = fps
+                        }
+                    ) { x, y, action in
                         J2MEBridge.sendTouchEvent(x, y: y, action: action)
                     }
                     .aspectRatio(CGFloat(currentConfig.effectiveWidth) / CGFloat(currentConfig.effectiveHeight), contentMode: currentConfig.scalingMode == .stretch ? .fill : .fit)
@@ -192,15 +202,17 @@ public struct GameScreenView: View {
                     
                     // Badge hiển thị FPS thời gian thực (nếu bật trong cài đặt)
                     if currentConfig.showFps {
+                        let displayFps = actualFps > 0 ? actualFps : (currentConfig.targetFps * speedMultiplier)
+                        let fpsColor: Color = displayFps >= 50 ? .green : (displayFps >= 30 ? .yellow : .orange)
                         VStack {
                             HStack {
                                 Spacer()
-                                Text("\(currentConfig.targetFps * speedMultiplier) FPS")
+                                Text("\(displayFps) FPS")
                                     .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 2)
                                     .background(Color.black.opacity(0.65))
-                                    .foregroundColor(.green)
+                                    .foregroundColor(fpsColor)
                                     .cornerRadius(4)
                                     .padding(8)
                             }
@@ -223,6 +235,7 @@ public struct GameScreenView: View {
             startEmulation()
         }
         .onDisappear {
+            J2MEBridge.setSpeedMultiplier(1)
             J2MEBridge.stopEmulator()
         }
         .sheet(isPresented: $showingSettings) {

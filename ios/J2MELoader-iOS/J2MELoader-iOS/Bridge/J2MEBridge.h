@@ -15,6 +15,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (void)stopEmulator;
 + (void)setPaused:(BOOL)paused;
++ (void)setSpeedMultiplier:(int)multiplier;
++ (int)getSpeedMultiplier;
 
 + (void)sendKeyEvent:(int)keyCode isDown:(BOOL)isDown;
 + (void)sendTouchEvent:(int)x y:(int)y action:(int)action;

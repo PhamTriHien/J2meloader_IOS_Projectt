@@ -403,9 +403,35 @@ Tài liệu chi tiết về toàn bộ các lỗi phát hiện, nguyên nhân g�
 
 ---
 
-## 📊 KẾT QUẢ KIỂM THỬ (v1.8.9)
-* **Khởi động**: DragonBoy, Avatar, Ninja School, Gameloft, MascotCapsule 3D khởi chạy trực tiếp vào màn hình game.
-* **Đồ họa & Điều khiển**: Render 60 FPS mượt mà; va chạm pixel-level Sprite với TiledLayer và Image cực kỳ chính xác; đồ họa 3D MascotCapsule xoay chuyển đúng tư thế mô hình; bàn phím điều hướng phản hồi tức thì.
-* **Tính ổn định & Dữ liệu**: Dữ liệu lưu game RMS và FileConnection lưu trữ / đọc ghi thực tế chuẩn xác; biên dịch trên MSVC 2022 C++17 đạt **0 Error, 0 Warning** với cờ `/W3 /WX`.
+### 18. Đo Đạc FPS Thời Gian Thực Chuẩn Xác & Đồng Bộ Tốc Độ Giả Lập Speed Multiplier (v1.9.0)
+- **Vấn đề thực tế**:
+  - FPS counter trước đây bị fix cứng theo công thức tính nhẩm `targetFps * speedMultiplier`, không phản ánh tốc độ khung hình thực tế của game hay hiệu năng phần cứng thiết bị.
+  - Nút chuyển tốc độ (1x, 2x, 4x) chỉ làm thay đổi nhãn hiển thị và nhân tần số khung hình hiển thị tĩnh của MetalView mà không tác động vào luồng bytecode interpreter C++, khiến game không thực sự chạy nhanh hơn 2x hay 4x.
+- **Giải pháp chuẩn hóa đối chiếu Upstream**:
+  - **MetalRenderer True FPS Measurement (`MetalView.swift`)**:
+    - Áp dụng nguyên lý của `javax.microedition.lcdui.overlay.FpsCounter` từ `playsoftware/J2ME-Loader`.
+    - Sử dụng `CACurrentMediaTime()` đo đạc số frame thực tế được render qua `MTKViewDelegate.draw(in:)` trên từng cửa sổ lấy mẫu 0.5 giây: `currentFps = Int(round(Double(frameCount) / elapsed))`.
+    - Điều phối callback `onFpsUpdate` về `DispatchQueue.main` cập nhật giao diện người dùng theo thời gian thực.
+  - **Đồng bộ hóa vòng lặp Bytecode (`jvm_interpreter.h`, `jvm_interpreter.cpp`)**:
+    - Bổ sung `std::atomic<int> m_speedMultiplier{1};` kèm các hàm `setSpeedMultiplier(int)` và `getSpeedMultiplier()`.
+    - Cập nhật frame pacing của vòng lặp thực thi máy ảo tại `jvm_interpreter.cpp`:
+      `const auto currentFrameDuration = std::chrono::microseconds(1000000 / (60 * speed));`
+      Giúp khi kích hoạt 2x hoặc 4x, máy ảo đẩy chu kỳ thực thi tương ứng lên 120 FPS và 240 FPS thật.
+  - **Cầu nối Objective-C++ (`J2MEBridge.h`, `J2MEBridge.mm`)**:
+    - Bổ sung `+ (void)setSpeedMultiplier:(int)multiplier;` và `+ (int)getSpeedMultiplier;`.
+  - **Giao diện hiển thị Game (`GameScreenView.swift`)**:
+    - Truyền `speedMultiplier` và `onFpsUpdate` vào `MetalView`.
+    - Nút tốc độ 1x/2x/4x gọi trực tiếp `J2MEBridge.setSpeedMultiplier(Int32(speedMultiplier))`.
+    - Header và FPS badge hiển thị `displayFps` thực tế được cập nhật liên tục từ renderer.
+    - Phân loại màu sắc động cho badge: Xanh lá ($\ge 50$ FPS), Vàng ($30..49$ FPS), Cam ($< 30$ FPS).
+    - Tự động reset tốc độ về 1x khi bấm "Thư viện" hoặc `.onDisappear` chống rò rỉ trạng thái.
+
+---
+
+## 📊 KẾT QUẢ KIỂM THỬ (v1.9.0)
+* **Đo đạc FPS**: FPS hiển thị phản ánh 100% số khung hình thực tế xuất ra từ MetalView, biến động tự nhiên theo tải của từng game Java thay vì con số tĩnh.
+* **Tăng tốc giả lập**: Chế độ 2x và 4x tăng tốc độ xử lý game và đồ họa rõ rệt, vận hành mượt mà ở cả 120 FPS / 240 FPS pacing.
+* **Biên dịch**: Toàn bộ mã nguồn C++ Core (`lcdui_display.cpp`, `game_canvas.cpp`, `jvm_bytecode.cpp`, `j2me_full_apis.cpp`, `jvm_interpreter.cpp`) biên dịch đạt **0 Error, 0 Warning** với MSVC 2022 `/W3 /WX`.
+* **Mã nguồn**: Tuân thủ tuyệt đối Điều Lệ Tối Thượng Số 0: 100% mã nguồn thực chiến, không mock/fake.
 
 

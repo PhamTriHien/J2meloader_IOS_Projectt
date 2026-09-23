@@ -4,6 +4,7 @@
 #include <iostream>
 #include <cmath>
 #include <sstream>
+#include <algorithm>
 
 JvmInterpreter::JvmInterpreter()
     : m_soundEnabled(true), m_running(false), m_paused(false), m_runnableRunning(false) {
@@ -650,11 +651,14 @@ void JvmInterpreter::executionLoop() {
             }
         }
 
-        // Adaptive frame pacing: sleep only the remaining time in the 16.6ms window
+        // Adaptive frame pacing: sleep only the remaining time in the dynamic frame window
+        int speed = m_speedMultiplier.load();
+        if (speed < 1) speed = 1;
+        auto currentFrameDuration = std::chrono::microseconds(1000000 / (60 * speed));
         auto frameEnd = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frameEnd - frameStart);
-        if (elapsed < targetFrameDuration) {
-            std::this_thread::sleep_for(targetFrameDuration - elapsed);
+        if (elapsed < currentFrameDuration) {
+            std::this_thread::sleep_for(currentFrameDuration - elapsed);
         } else {
             std::this_thread::yield();
         }
