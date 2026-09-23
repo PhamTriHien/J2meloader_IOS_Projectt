@@ -30,8 +30,9 @@ static std::string toLowerStr(std::string s) {
     return s;
 }
 
-// Thread-local active stack frame tracking for Garbage Collection root-set scanning
-thread_local std::vector<StackFrame*> t_activeFrames;
+// Global active stack frame tracking across all running JVM threads for GC root scanning
+static std::mutex s_framesMutex;
+static std::vector<StackFrame*> s_activeFrames;
 
 // Big-Endian Stream Helper
 class ByteStream {
@@ -262,18 +263,24 @@ void JvmBytecodeEngine::runGarbageCollector() {
         }
     }
 
-    // 4. Active stack frames
-    for (StackFrame* f : t_activeFrames) {
-        if (!f) continue;
-        for (const auto& v : f->locals) {
-            if (v.type == JavaValue::OBJ_REF) addRoot(v.asRef());
-        }
-        for (const auto& v : f->stack) {
-            if (v.type == JavaValue::OBJ_REF) addRoot(v.asRef());
+    // 4. Active stack frames across all running JVM threads
+    {
+        std::lock_guard<std::mutex> lk(s_framesMutex);
+        for (StackFrame* f : s_activeFrames) {
+            if (!f) continue;
+            for (const auto& v : f->locals) {
+                if (v.type == JavaValue::OBJ_REF) addRoot(v.asRef());
+            }
+            for (const auto& v : f->stack) {
+                if (v.type == JavaValue::OBJ_REF) addRoot(v.asRef());
+            }
         }
     }
 
-    // 5. Mark phase: traverse object graph from roots
+    // 5. FullApis primary roots (current high-level screens, commands, listeners)
+    FullApis::markRoots(addRoot);
+
+    // 6. Mark phase: traverse object graph from roots
     while (!worklist.empty()) {
         uint32_t curr = worklist.back();
         worklist.pop_back();
@@ -301,9 +308,12 @@ void JvmBytecodeEngine::runGarbageCollector() {
         if (gtIt != m_graphicsTarget.end()) {
             addRoot(gtIt->second);
         }
+
+        // FullApis reachable objects (Hashtables, Enumerations, Screens, Micro3D)
+        FullApis::traverseReachable(curr, addRoot);
     }
 
-    // 6. Sweep phase: remove unmarked objects, arrays, images, and offscreens
+    // 7. Sweep phase: remove unmarked objects, arrays, images, and offscreens
     for (auto it = m_heapObjects.begin(); it != m_heapObjects.end(); ) {
         if (it->first != 0 && marked.find(it->first) == marked.end()) {
             it = m_heapObjects.erase(it);
@@ -336,6 +346,9 @@ void JvmBytecodeEngine::runGarbageCollector() {
             ++it;
         }
     }
+
+    // Sweep FullApis internal collections
+    FullApis::sweep(marked);
 }
 
 uint32_t JvmBytecodeEngine::allocObject(const std::string& className) {
@@ -3115,14 +3128,24 @@ JavaValue JvmBytecodeEngine::executeMethod(std::shared_ptr<ClassFile> cls, const
     struct FrameTracker {
         StackFrame* m_frame;
         FrameTracker(StackFrame* f) : m_frame(f) {
-            t_activeFrames.push_back(f);
+            std::lock_guard<std::mutex> lk(s_framesMutex);
+            s_activeFrames.push_back(f);
         }
         ~FrameTracker() {
-            if (!t_activeFrames.empty() && t_activeFrames.back() == m_frame) {
-                t_activeFrames.pop_back();
+            std::lock_guard<std::mutex> lk(s_framesMutex);
+            for (auto it = s_activeFrames.rbegin(); it != s_activeFrames.rend(); ++it) {
+                if (*it == m_frame) {
+                    if (it == s_activeFrames.rbegin()) {
+                        s_activeFrames.pop_back();
+                    } else {
+                        s_activeFrames.erase(std::next(it).base());
+                    }
+                    break;
+                }
             }
         }
     } frameTracker(&frame);
+    frame.stack.reserve(std::max<size_t>(method.maxStack + 16, 64));
     size_t localSlot = 0;
     for (size_t i = 0; i < args.size(); ++i) {
         localSlot += (args[i].type == JavaValue::LONG || args[i].type == JavaValue::DOUBLE) ? 2 : 1;

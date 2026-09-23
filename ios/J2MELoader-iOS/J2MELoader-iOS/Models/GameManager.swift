@@ -6,6 +6,7 @@ public class GameManager: ObservableObject {
     @Published public var games: [GameItem] = []
     @Published public var currentGame: GameItem?
     @Published public var isEmulating: Bool = false
+    @Published public var isUserPaused: Bool = false
     @Published public var isImporting: Bool = false
     @Published public var errorMessage: String?
     @Published public var showErrorAlert: Bool = false
@@ -228,6 +229,7 @@ public class GameManager: ObservableObject {
     public func stopEmulation() {
         J2MEBridge.stopEmulator()
         self.isEmulating = false
+        self.isUserPaused = false
         self.currentGame = nil
     }
 }

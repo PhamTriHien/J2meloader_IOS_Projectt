@@ -57,7 +57,7 @@ struct J2MELoaderApp: App {
     
     private func handleAppBecameActive() {
         endBackgroundTask()
-        if gameManager.isEmulating {
+        if gameManager.isEmulating && !gameManager.isUserPaused {
             J2MEBridge.setPaused(false)
         }
         AppUpdateManager.shared.checkForUpdates(manual: false)

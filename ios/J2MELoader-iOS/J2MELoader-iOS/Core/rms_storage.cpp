@@ -2,6 +2,10 @@
 #include <fstream>
 #include <sstream>
 #include <sys/stat.h>
+#if defined(_WIN32) || defined(_WIN64)
+#include <direct.h>
+#define mkdir(p, m) _mkdir(p)
+#endif
 
 RmsStorage::RmsStorage() : m_baseDir("./RMS") {}
 RmsStorage::~RmsStorage() {}

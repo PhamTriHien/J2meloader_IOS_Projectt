@@ -57,12 +57,7 @@ public:
         if (m_frontBuffer.size() != m_buffer.size()) {
             m_frontBuffer.resize(m_buffer.size(), 0xFF050814);
         }
-        if (m_fullFrameDrawn) {
-            m_frontBuffer.swap(m_buffer);
-        } else {
-            m_frontBuffer.swap(m_buffer);
-            std::memcpy(m_buffer.data(), m_frontBuffer.data(), m_buffer.size() * sizeof(uint32_t));
-        }
+        std::memcpy(m_frontBuffer.data(), m_buffer.data(), m_buffer.size() * sizeof(uint32_t));
         m_fullFrameDrawn = false;
     }
 

@@ -72,6 +72,7 @@ public struct GameScreenView: View {
                     // Nút Tạm dừng / Tiếp tục
                     Button(action: {
                         isPaused.toggle()
+                        gameManager.isUserPaused = isPaused
                         J2MEBridge.setPaused(isPaused)
                     }) {
                         Image(systemName: isPaused ? "play.circle.fill" : "pause.circle.fill")

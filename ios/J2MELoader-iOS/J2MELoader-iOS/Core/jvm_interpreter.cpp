@@ -320,7 +320,6 @@ void JvmInterpreter::postTouchEvent(int32_t x, int32_t y, int32_t action) {
 }
 
 void JvmInterpreter::processEvents() {
-    std::lock_guard<std::mutex> lock(m_eventMutex);
     auto& jvm = JvmBytecodeEngine::getInstance();
     auto nowMs = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -330,25 +329,38 @@ void JvmInterpreter::processEvents() {
     uint32_t canvasRef = 0;
     { std::lock_guard<std::mutex> slk(m_stateMutex); canvasCls = m_canvasClass; canvasRef = m_canvasRef; }
 
-    // 1. Dispatch any pending key releases whose hold duration has expired
-    for (auto it = m_pendingReleases.begin(); it != m_pendingReleases.end(); ) {
-        if (it->releaseTimeMs <= nowMs) {
-            int32_t code = it->keyCode;
-            it = m_pendingReleases.erase(it);
-            m_keyPressTimes.erase(code);
-            if (canvasCls && canvasRef != 0) {
-                jvm.executeMethod(canvasCls, "keyReleased", "(I)V", { JavaValue(canvasRef, true), JavaValue(code) }, m_display.get());
+    std::vector<int32_t> expiredCodes;
+    std::vector<InputEvent> eventsToProcess;
+
+    {
+        std::lock_guard<std::mutex> lock(m_eventMutex);
+        // 1. Collect any pending key releases whose hold duration has expired
+        for (auto it = m_pendingReleases.begin(); it != m_pendingReleases.end(); ) {
+            if (it->releaseTimeMs <= nowMs) {
+                expiredCodes.push_back(it->keyCode);
+                m_keyPressTimes.erase(it->keyCode);
+                it = m_pendingReleases.erase(it);
+            } else {
+                ++it;
             }
-        } else {
-            ++it;
+        }
+
+        // 2. Drain all queued events
+        while (!m_eventQueue.empty()) {
+            eventsToProcess.push_back(m_eventQueue.front());
+            m_eventQueue.pop();
+        }
+    }
+
+    // 1. Dispatch expired key releases outside event mutex
+    for (int32_t code : expiredCodes) {
+        if (canvasCls && canvasRef != 0) {
+            jvm.executeMethod(canvasCls, "keyReleased", "(I)V", { JavaValue(canvasRef, true), JavaValue(code) }, m_display.get());
         }
     }
 
     // 2. Process all queued events immediately (ZERO DELAY for touch and key events)
-    while (!m_eventQueue.empty()) {
-        InputEvent ev = m_eventQueue.front();
-        m_eventQueue.pop();
-        
+    for (const auto& ev : eventsToProcess) {
         if (ev.type == InputEvent::Key) {
             if (m_soundEnabled && m_playToneCallback && ev.isDownOrAction) {
                 m_playToneCallback(520, 30);
@@ -362,6 +374,7 @@ void JvmInterpreter::processEvents() {
                 jvm.executeMethod(canvasCls, method, "(I)V", { JavaValue(canvasRef, true), JavaValue(ev.codeOrX) }, m_display.get());
             }
             if (ev.isDownOrAction == 0) {
+                std::lock_guard<std::mutex> lock(m_eventMutex);
                 m_keyPressTimes.erase(ev.codeOrX);
             }
         }
@@ -608,6 +621,7 @@ void JvmInterpreter::executionLoop() {
     // Paint one splash frame immediately: the user never stares at a black
     // screen while startApp() blocks (e.g. online games connecting).
     drawBootSplash("Dang tai game Java");
+    m_display->publishFrame();
 
     // MIDlet lifecycle runs on its own thread; the loop below keeps painting.
     // Published under lock: shutdown() may concurrently move it out to join.

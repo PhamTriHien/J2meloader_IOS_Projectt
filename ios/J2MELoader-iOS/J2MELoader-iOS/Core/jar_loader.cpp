@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <algorithm>
 #include <zlib.h>
 
 #pragma pack(push, 1)

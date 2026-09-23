@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <functional>
+#include <unordered_set>
 
 class LcduiDisplay;
 struct JavaValue;
@@ -26,6 +28,10 @@ public:
     static void renderCurrentScreen(LcduiDisplay* display);
     // Online games: reconnect a closed socket stream once, returns new fd or -1
     static int reconnectSocket(uint32_t streamRef);
+    // Garbage Collector integration: mark, reachability traverse & sweep internal collections
+    static void markRoots(std::function<void(uint32_t)> addRoot);
+    static void traverseReachable(uint32_t curr, std::function<void(uint32_t)> addRoot);
+    static void sweep(const std::unordered_set<uint32_t>& marked);
 };
 
 #endif

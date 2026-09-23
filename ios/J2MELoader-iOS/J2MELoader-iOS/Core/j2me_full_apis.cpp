@@ -363,6 +363,8 @@ static std::string s_cachedServerList =
     "Vũ trụ 10:dragon10.teamobi.com:14445:0:0:0,"
     "Võ Đài Liên Vũ Trụ:dragonwar.teamobi.com:14445:0:0:0,"
     "Đông Nam Á:dragonsea.teamobi.com:14445:0:0:0";
+static std::mutex g_fullApisMutex;
+static std::mutex s_serverListMutex;
 static std::atomic<bool> s_serverListUpdating{false};
 
 static std::string getServerListText() {
@@ -373,12 +375,14 @@ static std::string getServerListText() {
             if (!body.empty()) {
                 std::string text(body.begin(), body.end());
                 if (!text.empty() && text.find("dragon") != std::string::npos) {
+                    std::lock_guard<std::mutex> slk(s_serverListMutex);
                     s_cachedServerList = text;
                 }
             }
             s_serverListUpdating.store(false);
         }).detach();
     }
+    std::lock_guard<std::mutex> slk(s_serverListMutex);
     return s_cachedServerList;
 }
 
@@ -424,6 +428,102 @@ int FullApis::reconnectSocket(uint32_t streamRef){
         so->fields["sockFd"]=JavaValue(fd);
     }
     return fd;
+}
+
+void FullApis::markRoots(std::function<void(uint32_t)> addRoot) {
+    std::lock_guard<std::mutex> lk(g_fullApisMutex);
+    addRoot(g_currentScreen);
+    if (g_currentScreen != 0) {
+        auto it = g_screens.find(g_currentScreen);
+        if (it != g_screens.end()) {
+            for (uint32_t c : it->second.commands) addRoot(c);
+            addRoot(it->second.listener);
+            addRoot(it->second.ticker);
+        }
+    }
+}
+
+void FullApis::traverseReachable(uint32_t curr, std::function<void(uint32_t)> addRoot) {
+    std::lock_guard<std::mutex> lk(g_fullApisMutex);
+    auto htIt = g_hashtable.find(curr);
+    if (htIt != g_hashtable.end()) {
+        for (const auto& p : htIt->second) {
+            addRoot(p.first);
+            addRoot(p.second);
+        }
+    }
+    auto enIt = g_enums.find(curr);
+    if (enIt != g_enums.end()) {
+        for (uint32_t item : enIt->second.items) {
+            addRoot(item);
+        }
+    }
+    auto scIt = g_screens.find(curr);
+    if (scIt != g_screens.end()) {
+        for (uint32_t c : scIt->second.commands) addRoot(c);
+        addRoot(scIt->second.listener);
+        addRoot(scIt->second.ticker);
+    }
+    auto m3It = g_micro3dGfx.find(curr);
+    if (m3It != g_micro3dGfx.end()) {
+        addRoot(m3It->second);
+    }
+    auto mtIt = g_m3dTarget.find(curr);
+    if (mtIt != g_m3dTarget.end()) {
+        addRoot(mtIt->second);
+    }
+}
+
+void FullApis::sweep(const std::unordered_set<uint32_t>& marked) {
+    std::lock_guard<std::mutex> lk(g_fullApisMutex);
+    for (auto it = g_hashtable.begin(); it != g_hashtable.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) it = g_hashtable.erase(it);
+        else ++it;
+    }
+    for (auto it = g_enums.begin(); it != g_enums.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) it = g_enums.erase(it);
+        else ++it;
+    }
+    for (auto it = g_sprites.begin(); it != g_sprites.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) it = g_sprites.erase(it);
+        else ++it;
+    }
+    for (auto it = g_tiled.begin(); it != g_tiled.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) it = g_tiled.erase(it);
+        else ++it;
+    }
+    for (auto it = g_layerMgr.begin(); it != g_layerMgr.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) it = g_layerMgr.erase(it);
+        else ++it;
+    }
+    for (auto it = g_m3gWorlds.begin(); it != g_m3gWorlds.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) it = g_m3gWorlds.erase(it);
+        else ++it;
+    }
+    for (auto it = g_microFig.begin(); it != g_microFig.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) it = g_microFig.erase(it);
+        else ++it;
+    }
+    for (auto it = g_microTex.begin(); it != g_microTex.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) it = g_microTex.erase(it);
+        else ++it;
+    }
+    for (auto it = g_micro3dGfx.begin(); it != g_micro3dGfx.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) it = g_micro3dGfx.erase(it);
+        else ++it;
+    }
+    for (auto it = g_m3dTarget.begin(); it != g_m3dTarget.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) it = g_m3dTarget.erase(it);
+        else ++it;
+    }
+    for (auto it = g_baos.begin(); it != g_baos.end(); ) {
+        if (it->first != 0 && marked.find(it->first) == marked.end()) it = g_baos.erase(it);
+        else ++it;
+    }
+    for (auto it = g_screens.begin(); it != g_screens.end(); ) {
+        if (it->first != 0 && it->first != g_currentScreen && marked.find(it->first) == marked.end()) it = g_screens.erase(it);
+        else ++it;
+    }
 }
 
 static void renderScreen(uint32_t ref, LcduiDisplay* display);

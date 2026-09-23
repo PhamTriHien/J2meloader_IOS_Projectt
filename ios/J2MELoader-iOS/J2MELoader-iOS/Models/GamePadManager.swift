@@ -119,6 +119,9 @@ public class GamePadManager: ObservableObject {
     
     @objc private func handleControllerDisconnected(_ notification: Notification) {
         DispatchQueue.main.async {
+            if let controller = notification.object as? GCController {
+                self.unbindController(controller)
+            }
             let remaining = GCController.controllers()
             if let next = remaining.first {
                 self.isControllerConnected = true
@@ -129,6 +132,23 @@ public class GamePadManager: ObservableObject {
                 self.controllerName = "Chưa kết nối tay cầm"
             }
         }
+    }
+    
+    private func unbindController(_ controller: GCController) {
+        guard let gamepad = controller.extendedGamepad else { return }
+        gamepad.dpad.up.pressedChangedHandler = nil
+        gamepad.dpad.down.pressedChangedHandler = nil
+        gamepad.dpad.left.pressedChangedHandler = nil
+        gamepad.dpad.right.pressedChangedHandler = nil
+        gamepad.buttonA.pressedChangedHandler = nil
+        gamepad.buttonB.pressedChangedHandler = nil
+        gamepad.buttonX.pressedChangedHandler = nil
+        gamepad.buttonY.pressedChangedHandler = nil
+        gamepad.leftShoulder.pressedChangedHandler = nil
+        gamepad.rightShoulder.pressedChangedHandler = nil
+        gamepad.buttonMenu.pressedChangedHandler = nil
+        gamepad.buttonOptions?.pressedChangedHandler = nil
+        gamepad.leftThumbstick.valueChangedHandler = nil
     }
     
     public func startMonitoring() {
