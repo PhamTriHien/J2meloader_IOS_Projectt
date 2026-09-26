@@ -163,78 +163,64 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
     );
   }
 
-  void _showAddGameDialog() {
-    final controller = TextEditingController();
+  void _installJarPath(String path) {
+    if (_engine == null) return;
+
+    final pathPtr = path.toNativeUtf8();
+    final errBuf = calloc<ffi.Uint8>(256).cast<Utf8>();
+    final appId = _bindings.appInstallerInstall(_engine!, pathPtr, true, errBuf, 256);
+    final errMsg = errBuf.toDartString();
+    calloc.free(pathPtr);
+    calloc.free(errBuf);
+
+    if (appId > 0) {
+      setState(() {
+        _loadInstalledApps();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Đã cài đặt thành công: ${path.split(RegExp(r'[\\/]')).last}"),
+          backgroundColor: const Color(0xFF1E88E5),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Không thể cài đặt tệp: ${errMsg.isNotEmpty ? errMsg : path}"),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
+  void _onAddGamePressed() {
+    // 1. Trên Desktop (Windows, macOS, Linux): Tự động mở hộp thoại chọn tệp của hệ điều hành
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      final pathBuf = calloc<ffi.Uint8>(1024).cast<Utf8>();
+      final ok = _bindings.platformPickFile(pathBuf, 1024);
+      if (ok) {
+        final pickedPath = pathBuf.toDartString();
+        calloc.free(pathBuf);
+        if (pickedPath.isNotEmpty && File(pickedPath).existsSync()) {
+          _installJarPath(pickedPath);
+          return;
+        }
+      } else {
+        calloc.free(pathBuf);
+      }
+    }
+
+    // 2. Trên Android, iOS hoặc duyệt thư mục bộ nhớ trên thiết bị:
+    _showDeviceStorageBrowser();
+  }
+
+  void _showDeviceStorageBrowser() {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F1F1F),
-        title: const Text("Chọn tệp JAR", style: TextStyle(color: Colors.white, fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Nhập đường dẫn đến tệp .JAR trên thiết bị:",
-              style: TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-              decoration: const InputDecoration(
-                hintText: r"C:\games\app.jar",
-                hintStyle: TextStyle(color: Colors.white38),
-                filled: true,
-                fillColor: Color(0xFF141414),
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Hủy", style: TextStyle(color: Colors.white60)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E88E5)),
-            onPressed: () {
-              final path = controller.text.trim();
-              if (path.isNotEmpty && File(path).existsSync()) {
-                if (_engine != null) {
-                  final pathPtr = path.toNativeUtf8();
-                  final errBuf = calloc<ffi.Uint8>(256).cast<Utf8>();
-                  final appId = _bindings.appInstallerInstall(_engine!, pathPtr, true, errBuf, 256);
-                  calloc.free(pathPtr);
-                  calloc.free(errBuf);
-
-                  if (appId > 0) {
-                    setState(() {
-                      _loadInstalledApps();
-                    });
-                    Navigator.pop(ctx);
-                    return;
-                  }
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Không thể cài đặt tệp JAR!"),
-                    backgroundColor: Colors.redAccent,
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Tệp không tồn tại hoặc đường dẫn không hợp lệ!"),
-                    backgroundColor: Colors.redAccent,
-                  ),
-                );
-              }
-            },
-            child: const Text("Cài đặt"),
-          ),
-        ],
+      builder: (ctx) => DeviceStorageBrowserDialog(
+        onFileSelected: (selectedPath) {
+          _installJarPath(selectedPath);
+        },
       ),
     );
   }
@@ -453,7 +439,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: const Color(0xFF1E88E5),
         tooltip: "Chọn tệp JAR",
-        onPressed: _showAddGameDialog,
+        onPressed: _onAddGamePressed,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
@@ -534,6 +520,271 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class DeviceStorageBrowserDialog extends StatefulWidget {
+  final Function(String selectedPath) onFileSelected;
+
+  const DeviceStorageBrowserDialog({super.key, required this.onFileSelected});
+
+  @override
+  State<DeviceStorageBrowserDialog> createState() => _DeviceStorageBrowserDialogState();
+}
+
+class _DeviceStorageBrowserDialogState extends State<DeviceStorageBrowserDialog> {
+  late Directory _currentDir;
+  final TextEditingController _pathController = TextEditingController();
+  List<FileSystemEntity> _entries = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentDir = Directory(_resolveInitialDirectory());
+    _pathController.text = _currentDir.path;
+    _refreshDirectory();
+  }
+
+  @override
+  void dispose() {
+    _pathController.dispose();
+    super.dispose();
+  }
+
+  String _resolveInitialDirectory() {
+    if (Platform.isAndroid) {
+      const paths = ['/storage/emulated/0/Download', '/storage/emulated/0', '/sdcard/Download', '/sdcard'];
+      for (final p in paths) {
+        if (Directory(p).existsSync()) return p;
+      }
+    } else if (Platform.isWindows) {
+      final userProfile = Platform.environment['USERPROFILE'];
+      if (userProfile != null) {
+        final downloads = '$userProfile\\Downloads';
+        if (Directory(downloads).existsSync()) return downloads;
+        return userProfile;
+      }
+    } else if (Platform.isMacOS || Platform.isLinux) {
+      final home = Platform.environment['HOME'];
+      if (home != null) {
+        final downloads = '$home/Downloads';
+        if (Directory(downloads).existsSync()) return downloads;
+        return home;
+      }
+    }
+    return Directory.current.path;
+  }
+
+  void _refreshDirectory() {
+    setState(() => _isLoading = true);
+    try {
+      if (_currentDir.existsSync()) {
+        final raw = _currentDir.listSync(followLinks: false);
+        final dirs = raw.whereType<Directory>().toList()
+          ..sort((a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()));
+
+        final files = raw.whereType<File>().where((f) {
+          final p = f.path.toLowerCase();
+          return p.endsWith('.jar') || p.endsWith('.jad');
+        }).toList()
+          ..sort((a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()));
+
+        _entries = [...dirs, ...files];
+      } else {
+        _entries = [];
+      }
+    } catch (_) {
+      _entries = [];
+    }
+    setState(() => _isLoading = false);
+  }
+
+  void _navigateTo(Directory dir) {
+    if (dir.existsSync()) {
+      setState(() {
+        _currentDir = dir;
+        _pathController.text = dir.path;
+      });
+      _refreshDirectory();
+    }
+  }
+
+  void _navigateUp() {
+    final parent = _currentDir.parent;
+    if (parent.path != _currentDir.path) {
+      _navigateTo(parent);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      titlePadding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      title: Row(
+        children: [
+          const Icon(Icons.folder_open, color: Color(0xFF1E88E5), size: 24),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              "Chọn tệp JAR từ bộ nhớ",
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.arrow_upward, color: Colors.white70, size: 20),
+            tooltip: "Lên thư mục cha",
+            onPressed: _navigateUp,
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 500,
+        height: 420,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF121212),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF333333)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _currentDir.path,
+                      style: const TextStyle(color: Color(0xFF90CAF9), fontSize: 12, fontFamily: 'monospace'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh, color: Colors.white60, size: 16),
+                    tooltip: "Tải lại",
+                    onPressed: _refreshDirectory,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E88E5)))
+                  : _entries.isEmpty
+                      ? const Center(
+                          child: Text(
+                            "Không tìm thấy tệp .jar trong thư mục này",
+                            style: TextStyle(color: Colors.white38, fontSize: 13),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _entries.length,
+                          itemBuilder: (context, index) {
+                            final entity = _entries[index];
+                            final name = entity.path.split(RegExp(r'[\\/]')).last;
+                            final isDir = entity is Directory;
+                            final isJar = name.toLowerCase().endsWith('.jar');
+
+                            return ListTile(
+                              dense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                              leading: Icon(
+                                isDir
+                                    ? Icons.folder
+                                    : isJar
+                                        ? Icons.sports_esports
+                                        : Icons.insert_drive_file,
+                                color: isDir
+                                    ? const Color(0xFFFFA726)
+                                    : const Color(0xFF1E88E5),
+                                size: 22,
+                              ),
+                              title: Text(
+                                name,
+                                style: TextStyle(
+                                  color: isDir ? Colors.white : const Color(0xFFE0E0E0),
+                                  fontWeight: isDir ? FontWeight.w500 : FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: !isDir && entity is File
+                                  ? FutureBuilder<int>(
+                                      future: entity.length(),
+                                      builder: (context, snapshot) {
+                                        final bytes = snapshot.data ?? 0;
+                                        final kb = (bytes / 1024).toStringAsFixed(1);
+                                        return Text("$kb KB", style: const TextStyle(color: Colors.white38, fontSize: 11));
+                                      },
+                                    )
+                                  : null,
+                              onTap: () {
+                                if (isDir) {
+                                  _navigateTo(entity);
+                                } else {
+                                  Navigator.pop(context);
+                                  widget.onFileSelected(entity.path);
+                                }
+                              },
+                            );
+                          },
+                        ),
+            ),
+            const Divider(color: Color(0xFF333333)),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _pathController,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                    decoration: const InputDecoration(
+                      hintText: "Nhập đường dẫn tệp...",
+                      hintStyle: TextStyle(color: Colors.white30, fontSize: 12),
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      filled: true,
+                      fillColor: Color(0xFF141414),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E88E5),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  onPressed: () {
+                    final manualPath = _pathController.text.trim();
+                    if (manualPath.isNotEmpty && File(manualPath).existsSync()) {
+                      Navigator.pop(context);
+                      widget.onFileSelected(manualPath);
+                    } else if (manualPath.isNotEmpty && Directory(manualPath).existsSync()) {
+                      _navigateTo(Directory(manualPath));
+                    }
+                  },
+                  child: const Text("Mở", style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text("Hủy", style: TextStyle(color: Colors.white60)),
+        ),
+      ],
     );
   }
 }

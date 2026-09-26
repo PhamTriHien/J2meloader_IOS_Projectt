@@ -1167,6 +1167,9 @@ typedef J2meWavSetTimeDart = void Function(int, int);
 typedef J2meWavRenderPcmC = ffi.Size Function(ffi.UintPtr, ffi.Pointer<ffi.Int16>, ffi.Size);
 typedef J2meWavRenderPcmDart = int Function(int, ffi.Pointer<ffi.Int16>, int);
 
+typedef J2mePlatformPickFileC = ffi.Bool Function(ffi.Pointer<Utf8>, ffi.Size);
+typedef J2mePlatformPickFileDart = bool Function(ffi.Pointer<Utf8>, int);
+
 class J2meBindings {
   late final ffi.DynamicLibrary _dylib;
 
@@ -1638,6 +1641,7 @@ class J2meBindings {
   late final J2meWavSetTimeDart wavSetMediaTimeUs;
   late final J2meWavRenderPcmDart wavRenderPcm;
   late final J2meWavActionDart wavDestroy;
+  late final J2mePlatformPickFileDart platformPickFile;
 
   static J2meBindings? _instance;
 
@@ -2122,5 +2126,6 @@ class J2meBindings {
     wavSetMediaTimeUs = _dylib.lookupFunction<J2meWavSetTimeC, J2meWavSetTimeDart>('j2me_core_wav_set_media_time_us');
     wavRenderPcm = _dylib.lookupFunction<J2meWavRenderPcmC, J2meWavRenderPcmDart>('j2me_core_wav_render_pcm');
     wavDestroy = _dylib.lookupFunction<J2meWavActionC, J2meWavActionDart>('j2me_core_wav_destroy');
+    platformPickFile = _dylib.lookupFunction<J2mePlatformPickFileC, J2mePlatformPickFileDart>('j2me_core_platform_pick_file');
   }
 }

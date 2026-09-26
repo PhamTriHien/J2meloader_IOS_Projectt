@@ -161,6 +161,7 @@ set(CORE_SOURCES
     src/push/push_registry.cpp
     src/comm/comm_connection.cpp
     src/security/secure_connection.cpp
+    src/platform/platform_dialogs.cpp
     ${SONIVOX_SOURCES}
 )
 
@@ -170,7 +171,7 @@ add_library(j2me_core SHARED ${CORE_SOURCES})
 target_compile_definitions(j2me_core PRIVATE J2ME_CORE_EXPORTS)
 
 if(WIN32)
-    target_link_libraries(j2me_core PRIVATE ws2_32)
+    target_link_libraries(j2me_core PRIVATE ws2_32 comdlg32)
 endif()
 
 set_target_properties(j2me_core PROPERTIES
@@ -182,7 +183,7 @@ set_target_properties(j2me_core PROPERTIES
 add_executable(test_core test_main.cpp)
 target_link_libraries(test_core PRIVATE j2me_core)
 if(WIN32)
-    target_link_libraries(test_core PRIVATE ws2_32)
+    target_link_libraries(test_core PRIVATE ws2_32 comdlg32)
 endif()
 
 # Export headers

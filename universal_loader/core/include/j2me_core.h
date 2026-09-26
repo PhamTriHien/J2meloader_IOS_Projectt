@@ -610,6 +610,9 @@ J2ME_API void      j2me_core_wav_set_media_time_us(uintptr_t player_handle, int6
 J2ME_API size_t    j2me_core_wav_render_pcm(uintptr_t player_handle, int16_t* out_stereo_pcm, size_t frames);
 J2ME_API void      j2me_core_wav_destroy(uintptr_t player_handle);
 
+// --- 32. NATIVE PLATFORM DIALOGS ---
+J2ME_API bool      j2me_core_platform_pick_file(char* out_path, size_t max_len);
+
 #ifdef __cplusplus
 }
 #endif

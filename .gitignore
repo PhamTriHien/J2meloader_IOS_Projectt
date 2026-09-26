@@ -32,5 +32,8 @@ universal_loader/ui_app/.flutter-plugins
 universal_loader/ui_app/.flutter-plugins-dependencies
 *.log
 out.log
-universal_rms/
-
+# Test sandbox artifacts
+test_j2me_fs_sandbox/
+test_pim_sandbox/
+test_push_registry.json
+test_rms_suite/
