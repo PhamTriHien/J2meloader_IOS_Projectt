@@ -23,3 +23,14 @@ rms/
 __pycache__/
 android/
 app_icon.ico
+
+# Universal Loader build directories
+universal_loader/core/build/
+universal_loader/ui_app/build/
+universal_loader/ui_app/.dart_tool/
+universal_loader/ui_app/.flutter-plugins
+universal_loader/ui_app/.flutter-plugins-dependencies
+*.log
+out.log
+universal_rms/
+

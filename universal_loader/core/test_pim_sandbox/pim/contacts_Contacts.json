@@ -1,0 +1,61 @@
+{
+  "name": "Contacts",
+  "type": 1,
+  "categories": ["Personal", "Business"],
+  "items": [
+{
+  "uid": "",
+  "categories": [],
+  "fields": [
+    {
+      "id": 105,
+      "type": 4,
+      "values": [
+        {"attr": 0, "str": "Hien Pham"}
+      ]
+    },
+    {
+      "id": 106,
+      "type": 5,
+      "values": [
+        {"attr": 0, "arr": ["Pham", "Hien", "", "", ""]}
+      ]
+    },
+    {
+      "id": 115,
+      "type": 4,
+      "values": [
+        {"attr": 16, "str": "0909123456"}
+      ]
+    }
+  ]
+},
+{
+  "uid": "",
+  "categories": [],
+  "fields": [
+    {
+      "id": 105,
+      "type": 4,
+      "values": [
+        {"attr": 0, "str": "Hien Pham"}
+      ]
+    },
+    {
+      "id": 106,
+      "type": 5,
+      "values": [
+        {"attr": 0, "arr": ["Pham", "Hien", "", "", ""]}
+      ]
+    },
+    {
+      "id": 115,
+      "type": 4,
+      "values": [
+        {"attr": 16, "str": "0909123456"}
+      ]
+    }
+  ]
+}
+  ]
+}

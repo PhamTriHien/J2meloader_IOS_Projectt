@@ -1,0 +1,3 @@
+@echo off
+echo Khoi dong Universal J2ME Loader...
+start "" "%~dp0universal_loader\ui_app\build\windows\x64\runner\Release\ui_app.exe"

@@ -1,0 +1,168 @@
+#pragma once
+
+#include <cstdint>
+#include <string>
+
+namespace j2me {
+namespace bluetooth {
+
+// JSR-82 DiscoveryAgent Constants
+enum DiscoveryMode : int {
+    NOT_DISCOVERABLE = 0,
+    GIAC = 0x9E8B33,
+    LIAC = 0x9E8B00
+};
+
+enum DeviceRetrieveOption : int {
+    DEVICE_CACHED = 0x00,
+    DEVICE_PREKNOWN = 0x01
+};
+
+enum InquiryCompletionCode : int {
+    INQUIRY_COMPLETED = 0,
+    INQUIRY_TERMINATED = 5,
+    INQUIRY_ERROR = 7
+};
+
+enum ServiceSearchCompletionCode : int {
+    SERVICE_SEARCH_COMPLETED = 1,
+    SERVICE_SEARCH_TERMINATED = 2,
+    SERVICE_SEARCH_ERROR = 3,
+    SERVICE_SEARCH_NO_RECORDS = 4,
+    SERVICE_SEARCH_DEVICE_NOT_REACHABLE = 6
+};
+
+// Security Requirements
+enum SecurityMode : int {
+    NOAUTHENTICATE_NOENCRYPT = 0,
+    AUTHENTICATE_NOENCRYPT = 1,
+    AUTHENTICATE_ENCRYPT = 2
+};
+
+// DataElement Types
+enum DataElementType : int {
+    TYPE_NULL = 0,
+    TYPE_U_INT_1 = 0x8,
+    TYPE_U_INT_2 = 0x9,
+    TYPE_U_INT_4 = 0xA,
+    TYPE_U_INT_8 = 0xB,
+    TYPE_U_INT_16 = 0xC,
+    TYPE_INT_1 = 0x10,
+    TYPE_INT_2 = 0x11,
+    TYPE_INT_4 = 0x12,
+    TYPE_INT_8 = 0x13,
+    TYPE_INT_16 = 0x14,
+    TYPE_URL = 0x40,
+    TYPE_UUID = 0x18,
+    TYPE_BOOL = 0x28,
+    TYPE_STRING = 0x20,
+    TYPE_DATSEQ = 0x30,
+    TYPE_DATALT = 0x38
+};
+
+// Standard ServiceRecord Attribute IDs
+enum ServiceAttributeId : int {
+    ATTR_SERVICE_RECORD_HANDLE = 0x0000,
+    ATTR_SERVICE_CLASS_ID_LIST = 0x0001,
+    ATTR_SERVICE_RECORD_STATE = 0x0002,
+    ATTR_SERVICE_ID = 0x0003,
+    ATTR_PROTOCOL_DESCRIPTOR_LIST = 0x0004,
+    ATTR_BROWSE_GROUP_LIST = 0x0005,
+    ATTR_LANGUAGE_BASE_ATTRIBUTE_ID_LIST = 0x0006,
+    ATTR_SERVICE_INFO_TIME_TO_LIVE = 0x0007,
+    ATTR_SERVICE_AVAILABILITY = 0x0008,
+    ATTR_BLUETOOTH_PROFILE_DESCRIPTOR_LIST = 0x0009,
+    ATTR_DOCUMENTATION_URL = 0x000A,
+    ATTR_CLIENT_EXECUTABLE_URL = 0x000B,
+    ATTR_ICON_URL = 0x000C,
+    ATTR_SERVICE_NAME = 0x0100,
+    ATTR_SERVICE_DESCRIPTION = 0x0101,
+    ATTR_PROVIDER_NAME = 0x0102
+};
+
+// Standard Bluetooth UUIDs
+constexpr uint32_t UUID_SDP = 0x0001;
+constexpr uint32_t UUID_UDP = 0x0002;
+constexpr uint32_t UUID_RFCOMM = 0x0003;
+constexpr uint32_t UUID_TCP = 0x0004;
+constexpr uint32_t UUID_TCS_BIN = 0x0005;
+constexpr uint32_t UUID_TCS_AT = 0x0006;
+constexpr uint32_t UUID_OBEX = 0x0008;
+constexpr uint32_t UUID_IP = 0x0009;
+constexpr uint32_t UUID_FTP = 0x000A;
+constexpr uint32_t UUID_HTTP = 0x000C;
+constexpr uint32_t UUID_WSP = 0x000E;
+constexpr uint32_t UUID_BNEP = 0x000F;
+constexpr uint32_t UUID_UPNP = 0x0010;
+constexpr uint32_t UUID_HIDP = 0x0011;
+constexpr uint32_t UUID_L2CAP = 0x0100;
+constexpr uint32_t UUID_SERIAL_PORT = 0x1101;
+constexpr uint32_t UUID_LAN_ACCESS = 0x1102;
+constexpr uint32_t UUID_DIALUP_NETWORKING = 0x1103;
+constexpr uint32_t UUID_IR_MC_SYNC = 0x1104;
+constexpr uint32_t UUID_OBEX_OBJECT_PUSH = 0x1105;
+constexpr uint32_t UUID_OBEX_FILE_TRANSFER = 0x1106;
+
+// L2CAP Constants
+constexpr int L2CAP_DEFAULT_MTU = 672;
+constexpr int L2CAP_MINIMUM_MTU = 48;
+
+// OBEX Response Codes
+enum ObexResponseCode : int {
+    OBEX_HTTP_OK = 0xA0,
+    OBEX_HTTP_CREATED = 0xA1,
+    OBEX_HTTP_ACCEPTED = 0xA2,
+    OBEX_HTTP_NOT_AUTHORITATIVE = 0xA3,
+    OBEX_HTTP_NO_CONTENT = 0xA4,
+    OBEX_HTTP_RESET = 0xA5,
+    OBEX_HTTP_PARTIAL = 0xA6,
+    OBEX_HTTP_MULT_CHOICE = 0xB0,
+    OBEX_HTTP_MOVED_PERM = 0xB1,
+    OBEX_HTTP_MOVED_TEMP = 0xB2,
+    OBEX_HTTP_SEE_OTHER = 0xB3,
+    OBEX_HTTP_NOT_MODIFIED = 0xB4,
+    OBEX_HTTP_USE_PROXY = 0xB5,
+    OBEX_HTTP_BAD_REQUEST = 0xC0,
+    OBEX_HTTP_UNAUTHORIZED = 0xC1,
+    OBEX_HTTP_PAYMENT_REQUIRED = 0xC2,
+    OBEX_HTTP_FORBIDDEN = 0xC3,
+    OBEX_HTTP_NOT_FOUND = 0xC4,
+    OBEX_HTTP_BAD_METHOD = 0xC5,
+    OBEX_HTTP_NOT_ACCEPTABLE = 0xC6,
+    OBEX_HTTP_PROXY_AUTH = 0xC7,
+    OBEX_HTTP_TIMEOUT = 0xC8,
+    OBEX_HTTP_CONFLICT = 0xC9,
+    OBEX_HTTP_GONE = 0xCA,
+    OBEX_HTTP_LENGTH_REQUIRED = 0xCB,
+    OBEX_HTTP_PRECON_FAILED = 0xCC,
+    OBEX_HTTP_ENTITY_TOO_LARGE = 0xCD,
+    OBEX_HTTP_REQ_TOO_LARGE = 0xCE,
+    OBEX_HTTP_UNSUPPORTED_TYPE = 0xCF,
+    OBEX_HTTP_INTERNAL_ERROR = 0xD0,
+    OBEX_HTTP_NOT_IMPLEMENTED = 0xD1,
+    OBEX_HTTP_BAD_GATEWAY = 0xD2,
+    OBEX_HTTP_UNAVAILABLE = 0xD3,
+    OBEX_HTTP_GATEWAY_TIMEOUT = 0xD4,
+    OBEX_HTTP_VERSION = 0xD5,
+    OBEX_DATABASE_FULL = 0xE0,
+    OBEX_DATABASE_LOCKED = 0xE1
+};
+
+// OBEX Standard Header Identifiers
+enum ObexHeaderId : int {
+    OBEX_HDR_COUNT = 0xC0,
+    OBEX_HDR_NAME = 0x01,
+    OBEX_HDR_TYPE = 0x42,
+    OBEX_HDR_LENGTH = 0xC3,
+    OBEX_HDR_TIME_ISO_8601 = 0x44,
+    OBEX_HDR_TIME_4_BYTE = 0xC4,
+    OBEX_HDR_DESCRIPTION = 0x05,
+    OBEX_HDR_TARGET = 0x46,
+    OBEX_HDR_HTTP = 0x47,
+    OBEX_HDR_WHO = 0x4A,
+    OBEX_HDR_OBJECT_CLASS = 0x4F,
+    OBEX_HDR_APPLICATION_PARAMETER = 0x4C
+};
+
+} // namespace bluetooth
+} // namespace j2me

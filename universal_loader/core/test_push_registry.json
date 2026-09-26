@@ -1,0 +1,17 @@
+{
+  "connections": [
+    {
+      "connection": "socket://:5000",
+      "midlet": "com.example.ChatMIDlet",
+      "filter": "192.168.1.*",
+      "available": true
+    }
+  ],
+  "alarms": [
+    {
+      "midlet": "com.example.AlarmMIDlet",
+      "alarmTimeMs": 3000000,
+      "fired": true
+    }
+  ]
+}
