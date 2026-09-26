@@ -3,6 +3,7 @@
 #endif
 #include "../include/j2me_core.h"
 #include "lcdui/frame_buffer.h"
+#include "lcdui/lcdui_graphics.h"
 #include "lcdui/font.h"
 #include "jvm/jar_reader.h"
 #include "storage/rms_storage.h"
@@ -137,6 +138,12 @@ struct J2meEngineInstance {
 static void engine_game_loop(J2meEngineInstance* inst) {
     auto lastTick = std::chrono::steady_clock::now();
 
+    if (!inst->mainClass.empty()) {
+        try {
+            inst->vm.executeMethodByName(inst->mainClass, "startApp", "()V", {});
+        } catch (...) {}
+    }
+
     while (inst->isRunning.load()) {
         if (inst->isPaused.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -150,32 +157,18 @@ static void engine_game_loop(J2meEngineInstance* inst) {
         int frameIntervalMs = 1000 / (targetFps * mult);
         if (frameIntervalMs < 1) frameIntervalMs = 1;
 
-        // Cập nhật màn hình Game
         inst->frameCounter++;
 
-        // Render frame nền tảng J2ME
+        // Render frame nền tảng LCDUI
         uint32_t customBg = inst->profile.screenBackgroundColor & 0x00FFFFFF;
-        uint32_t bgColor = (customBg != 0xD0D0D0 && customBg != 0) ? (0xFF000000 | customBg) : 0xFF1E293B;
+        uint32_t bgColor = (customBg != 0xD0D0D0 && customBg != 0) ? (0xFF000000 | customBg) : 0xFF000000;
         inst->frameBuffer.clear(bgColor);
 
-        // Thanh trạng thái LCD
-        inst->frameBuffer.fillRect(0, 0, inst->frameBuffer.getWidth(), 22, 0xFF0F172A);
-        inst->frameBuffer.drawString(inst->appTitle, 8, 7, 0xFF38BDF8);
-
-        // Khung viền thế giới 2D
-        int w = inst->frameBuffer.getWidth();
-        int h = inst->frameBuffer.getHeight();
-        inst->frameBuffer.drawRect(6, 28, w - 12, h - 34, 0xFF475569);
-
-        // Banner thông tin MIDlet
-        std::string infoStr = "Vendor: " + inst->appVendor;
-        inst->frameBuffer.drawString(infoStr, 12, 36, 0xFF94A3B8);
-        std::string verStr = "Ver: " + inst->appVersion;
-        inst->frameBuffer.drawString(verStr, 12, 48, 0xFF94A3B8);
-
-        // Đèn nhấp nháy FPS Indicator
-        uint32_t blinkCol = (inst->frameCounter % 60 < 30) ? 0xFF22C55E : 0xFF15803D;
-        inst->frameBuffer.fillRect(w - 18, 6, 8, 8, blinkCol);
+        auto currentDisplayable = universal_loader::lcdui::Display::instance().getCurrent();
+        if (currentDisplayable) {
+            j2me::LcduiGraphics g(inst->frameBuffer.getRawDrawBuffer(), inst->frameBuffer.getWidth(), inst->frameBuffer.getHeight());
+            currentDisplayable->paint(&g);
+        }
 
         // Đẩy frame ra Display Buffer cho UI (Flutter / GPU Texture) lấy
         inst->frameBuffer.publishFrame();
@@ -206,7 +199,7 @@ J2ME_API J2meEngineInstance* j2me_core_create(const char* storage_root_dir) {
     std::string appsDir = (std::filesystem::path(inst->storageRoot) / "apps").string();
     inst->appRepo = std::make_shared<universal_loader::app::AppRepository>(appsDir);
     inst->appInstaller = std::make_unique<universal_loader::app::AppInstaller>(inst->storageRoot, inst->appRepo);
-
+    universal_loader::lcdui::Display::instance().setCurrent(nullptr);
     return inst;
 }
 
@@ -302,6 +295,7 @@ J2ME_API void j2me_core_stop(J2meEngineInstance* inst) {
 J2ME_API void j2me_core_destroy(J2meEngineInstance* inst) {
     if (!inst) return;
     j2me_core_stop(inst);
+    universal_loader::lcdui::Display::instance().setCurrent(nullptr);
     delete inst;
 }
 
@@ -332,11 +326,29 @@ J2ME_API void j2me_core_send_key(J2meEngineInstance* inst, int key_code, bool is
     } else if (key_code < 0 && key_code >= -63) {
         inst->specialKeyStates[-key_code] = is_pressed;
     }
+
+    auto currentDisplayable = universal_loader::lcdui::Display::instance().getCurrent();
+    if (currentDisplayable) {
+        if (is_pressed) {
+            currentDisplayable->keyPressed(key_code);
+        } else {
+            currentDisplayable->keyReleased(key_code);
+        }
+    }
 }
 
 J2ME_API void j2me_core_send_touch(J2meEngineInstance* inst, int action, int x, int y) {
     if (!inst) return;
-    // Dispatch touch pointer event to LCDUI Canvas
+    auto currentDisplayable = universal_loader::lcdui::Display::instance().getCurrent();
+    if (currentDisplayable) {
+        if (action == 0) {
+            currentDisplayable->pointerPressed(x, y);
+        } else if (action == 1) {
+            currentDisplayable->pointerReleased(x, y);
+        } else if (action == 2) {
+            currentDisplayable->pointerDragged(x, y);
+        }
+    }
 }
 
 J2ME_API size_t j2me_core_render_audio(J2meEngineInstance* inst, int16_t* pcm_stereo_buffer, size_t sample_count) {

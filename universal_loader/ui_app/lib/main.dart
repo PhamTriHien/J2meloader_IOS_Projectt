@@ -42,6 +42,7 @@ class UniversalJ2meApp extends StatelessWidget {
 }
 
 class GameItem {
+  final int id;
   final String title;
   final String vendor;
   final String version;
@@ -49,6 +50,7 @@ class GameItem {
   final String resolution;
 
   GameItem({
+    required this.id,
     required this.title,
     required this.vendor,
     required this.version,
@@ -80,43 +82,45 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
     _engine = _bindings.coreCreate(storageDir);
     calloc.free(storageDir);
 
-    _scanDefaultGames();
+    _loadInstalledApps();
   }
 
-  void _scanDefaultGames() {
-    const defaultPaths = [
-      r"C:\j2meloader\universal_loader\core\test_assets\DragonBoy.jar",
-      r"../core/test_assets/DragonBoy.jar",
-      r"core/test_assets/DragonBoy.jar",
-    ];
+  void _loadInstalledApps() {
+    _games.clear();
+    if (_engine == null) return;
 
-    for (final p in defaultPaths) {
-      if (File(p).existsSync()) {
-        String title = "Dragon Boy (Chú Bé Rồng)";
-        String vendor = "Team";
-        String version = "2.4.7";
-        if (_engine != null) {
-          final pathPtr = p.toNativeUtf8();
-          if (_bindings.coreLoadJarFile(_engine!, pathPtr)) {
-            final t = _bindings.coreGetAppTitle(_engine!).toDartString();
-            final v = _bindings.coreGetAppVendor(_engine!).toDartString();
-            final ver = _bindings.coreGetAppVersion(_engine!).toDartString();
-            if (t.isNotEmpty) title = t;
-            if (v.isNotEmpty) vendor = v;
-            if (ver.isNotEmpty) version = ver;
-          }
-          calloc.free(pathPtr);
-        }
+    final count = _bindings.appRepoGetCount(_engine!);
+    final infoPtr = calloc<J2meAppItemInfoFFI>();
+
+    for (int i = 0; i < count; ++i) {
+      if (_bindings.appRepoGetItem(_engine!, i, infoPtr)) {
+        final title = _arrayToString(infoPtr.ref.title, 128);
+        final author = _arrayToString(infoPtr.ref.author, 128);
+        final version = _arrayToString(infoPtr.ref.version, 32);
+        final path = _arrayToString(infoPtr.ref.path, 128);
+
         _games.add(GameItem(
-          title: title,
-          vendor: vendor,
-          version: version,
-          path: p,
+          id: infoPtr.ref.id,
+          title: title.isNotEmpty ? title : "Game $i",
+          vendor: author.isNotEmpty ? author : "J2ME",
+          version: version.isNotEmpty ? version : "1.0",
+          path: path,
           resolution: "240x320",
         ));
-        break;
       }
     }
+
+    calloc.free(infoPtr);
+  }
+
+  String _arrayToString(ffi.Array<ffi.Uint8> arr, int maxLen) {
+    final bytes = <int>[];
+    for (int i = 0; i < maxLen; ++i) {
+      final b = arr[i];
+      if (b == 0) break;
+      bytes.add(b);
+    }
+    return String.fromCharCodes(bytes);
   }
 
   @override
@@ -198,31 +202,27 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
             onPressed: () {
               final path = controller.text.trim();
               if (path.isNotEmpty && File(path).existsSync()) {
-                String title = path.split(RegExp(r'[\\/]')).last.replaceAll('.jar', '');
-                String vendor = "J2ME";
-                String version = "1.0.0";
                 if (_engine != null) {
                   final pathPtr = path.toNativeUtf8();
-                  if (_bindings.coreLoadJarFile(_engine!, pathPtr)) {
-                    final t = _bindings.coreGetAppTitle(_engine!).toDartString();
-                    final v = _bindings.coreGetAppVendor(_engine!).toDartString();
-                    final ver = _bindings.coreGetAppVersion(_engine!).toDartString();
-                    if (t.isNotEmpty) title = t;
-                    if (v.isNotEmpty) vendor = v;
-                    if (ver.isNotEmpty) version = ver;
-                  }
+                  final errBuf = calloc<ffi.Uint8>(256).cast<Utf8>();
+                  final appId = _bindings.appInstallerInstall(_engine!, pathPtr, true, errBuf, 256);
                   calloc.free(pathPtr);
+                  calloc.free(errBuf);
+
+                  if (appId > 0) {
+                    setState(() {
+                      _loadInstalledApps();
+                    });
+                    Navigator.pop(ctx);
+                    return;
+                  }
                 }
-                setState(() {
-                  _games.add(GameItem(
-                    title: title,
-                    vendor: vendor,
-                    version: version,
-                    path: path,
-                    resolution: "240x320",
-                  ));
-                });
-                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Không thể cài đặt tệp JAR!"),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -367,6 +367,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
               if (newName.isNotEmpty) {
                 setState(() {
                   _games[index] = GameItem(
+                    id: game.id,
                     title: newName,
                     vendor: game.vendor,
                     version: game.version,
@@ -403,8 +404,11 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () {
+              if (_engine != null && game.id > 0) {
+                _bindings.appRepoDelete(_engine!, game.id);
+              }
               setState(() {
-                _games.removeAt(index);
+                _loadInstalledApps();
               });
               Navigator.pop(ctx);
             },
