@@ -20,20 +20,20 @@ J2ME_API bool j2me_core_platform_pick_file(char* out_path, size_t max_len) {
     out_path[0] = '\0';
 
 #if defined(_WIN32) || defined(_WIN64)
-    wchar_t szFile[MAX_PATH] = {0};
+    wchar_t szFile[32768] = {0};
     OPENFILENAMEW ofn;
     ZeroMemory(&ofn, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = NULL;
+    ofn.lStructSize = sizeof(OPENFILENAMEW);
+    ofn.hwndOwner = GetForegroundWindow();
     ofn.lpstrFile = szFile;
     ofn.nMaxFile = sizeof(szFile) / sizeof(wchar_t);
-    ofn.lpstrFilter = L"J2ME Game Files (*.jar;*.jad)\0*.jar;*.jad\0All Files (*.*)\0*.*\0";
+    ofn.lpstrFilter = L"J2ME Game Files (*.jar;*.jad)\0*.jar;*.jad\0JAR Files (*.jar)\0*.jar\0JAD Files (*.jad)\0*.jad\0All Files (*.*)\0*.*\0";
     ofn.nFilterIndex = 1;
     ofn.lpstrFileTitle = NULL;
     ofn.nMaxFileTitle = 0;
     ofn.lpstrInitialDir = NULL;
     ofn.lpstrTitle = L"Select J2ME Game (.jar / .jad)";
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
 
     if (GetOpenFileNameW(&ofn) == TRUE) {
         int ret = WideCharToMultiByte(CP_UTF8, 0, szFile, -1, out_path, static_cast<int>(max_len), NULL, NULL);

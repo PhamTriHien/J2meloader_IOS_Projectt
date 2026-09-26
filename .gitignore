@@ -37,3 +37,4 @@ test_j2me_fs_sandbox/
 test_pim_sandbox/
 test_push_registry.json
 test_rms_suite/
+universal_rms/

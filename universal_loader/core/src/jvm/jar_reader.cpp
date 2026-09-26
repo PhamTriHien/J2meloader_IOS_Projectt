@@ -4,6 +4,7 @@
 #include <cstring>
 #include <algorithm>
 #include <iostream>
+#include <filesystem>
 
 namespace j2me {
 
@@ -279,7 +280,15 @@ bool JarReader::openFromMemory(const uint8_t* data, size_t size) {
 
 bool JarReader::openFromFile(const std::string& filePath) {
     close();
-    std::ifstream file(filePath, std::ios::binary);
+    std::string cleanPath = filePath;
+    if (cleanPath.size() >= 2 && cleanPath.front() == '"' && cleanPath.back() == '"') {
+        cleanPath = cleanPath.substr(1, cleanPath.size() - 2);
+    }
+#if defined(_WIN32) || defined(_WIN64)
+    std::ifstream file(std::filesystem::u8path(cleanPath), std::ios::binary);
+#else
+    std::ifstream file(cleanPath, std::ios::binary);
+#endif
     if (!file.is_open()) return false;
 
     file.seekg(0, std::ios::end);

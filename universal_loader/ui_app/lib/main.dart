@@ -135,14 +135,40 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
   void _launchGame(GameItem game) {
     if (_engine == null) return;
 
-    final pathPtr = game.path.toNativeUtf8();
-    final ok = _bindings.coreLoadJarFile(_engine!, pathPtr);
-    calloc.free(pathPtr);
+    bool ok = false;
+    // 1. Nếu là ứng dụng đã cài đặt (id > 0), khởi chạy qua appLaunch (tự động cấu hình RMS, profile và app.jar)
+    if (game.id > 0) {
+      ok = _bindings.appLaunch(_engine!, game.id);
+    }
+
+    // 2. Dự phòng: Nếu chưa chạy được, phân giải đường dẫn thực tế trên đĩa và nạp trực tiếp
+    if (!ok && game.path.isNotEmpty) {
+      String resolvedPath = game.path;
+      if (!File(resolvedPath).existsSync()) {
+        final candidates = [
+          "./universal_rms/apps/${game.path}/app.jar",
+          "universal_rms/apps/${game.path}/app.jar",
+          game.path,
+        ];
+        for (final c in candidates) {
+          if (File(c).existsSync()) {
+            resolvedPath = c;
+            break;
+          }
+        }
+      }
+
+      if (File(resolvedPath).existsSync()) {
+        final pathPtr = resolvedPath.toNativeUtf8();
+        ok = _bindings.coreLoadJarFile(_engine!, pathPtr);
+        calloc.free(pathPtr);
+      }
+    }
 
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Không thể nạp tệp game: ${game.path}"),
+          content: Text("Không thể nạp tệp game: ${game.title}"),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -166,9 +192,22 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
   void _installJarPath(String path) {
     if (_engine == null) return;
 
-    final pathPtr = path.toNativeUtf8();
-    final errBuf = calloc<ffi.Uint8>(256).cast<Utf8>();
-    final appId = _bindings.appInstallerInstall(_engine!, pathPtr, true, errBuf, 256);
+    String cleanPath = path.trim();
+    if (cleanPath.startsWith('"') && cleanPath.endsWith('"') && cleanPath.length >= 2) {
+      cleanPath = cleanPath.substring(1, cleanPath.length - 1);
+    }
+
+    // Nếu người dùng chọn file .jad, tự động tìm file .jar cùng tên trong thư mục
+    if (cleanPath.toLowerCase().endsWith('.jad')) {
+      final jarCandidate = '${cleanPath.substring(0, cleanPath.length - 4)}.jar';
+      if (File(jarCandidate).existsSync()) {
+        cleanPath = jarCandidate;
+      }
+    }
+
+    final pathPtr = cleanPath.toNativeUtf8();
+    final errBuf = calloc<ffi.Uint8>(512).cast<Utf8>();
+    final appId = _bindings.appInstallerInstall(_engine!, pathPtr, true, errBuf, 512);
     final errMsg = errBuf.toDartString();
     calloc.free(pathPtr);
     calloc.free(errBuf);
@@ -179,14 +218,14 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Đã cài đặt thành công: ${path.split(RegExp(r'[\\/]')).last}"),
+          content: Text("Đã cài đặt thành công: ${cleanPath.split(RegExp(r'[\\/]')).last}"),
           backgroundColor: const Color(0xFF1E88E5),
         ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Không thể cài đặt tệp: ${errMsg.isNotEmpty ? errMsg : path}"),
+          content: Text("Không thể cài đặt tệp: ${errMsg.isNotEmpty ? errMsg : cleanPath}"),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -196,8 +235,8 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
   void _onAddGamePressed() {
     // 1. Trên Desktop (Windows, macOS, Linux): Tự động mở hộp thoại chọn tệp của hệ điều hành
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      final pathBuf = calloc<ffi.Uint8>(1024).cast<Utf8>();
-      final ok = _bindings.platformPickFile(pathBuf, 1024);
+      final pathBuf = calloc<ffi.Uint8>(2048).cast<Utf8>();
+      final ok = _bindings.platformPickFile(pathBuf, 2048);
       if (ok) {
         final pickedPath = pathBuf.toDartString();
         calloc.free(pathBuf);
@@ -208,6 +247,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
       } else {
         calloc.free(pathBuf);
       }
+      return;
     }
 
     // 2. Trên Android, iOS hoặc duyệt thư mục bộ nhớ trên thiết bị:

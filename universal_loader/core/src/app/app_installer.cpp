@@ -18,6 +18,18 @@ static int64_t getCurrentTimeMs() {
     ).count();
 }
 
+static inline fs::path toNativeFsPath(const std::string& pathStr) {
+    std::string clean = pathStr;
+    if (clean.size() >= 2 && clean.front() == '"' && clean.back() == '"') {
+        clean = clean.substr(1, clean.size() - 2);
+    }
+#if defined(_WIN32) || defined(_WIN64)
+    return fs::u8path(clean);
+#else
+    return fs::path(clean);
+#endif
+}
+
 std::string AppInstaller::sanitizePathName(const std::string& rawName) {
     std::string clean;
     clean.reserve(rawName.size());
@@ -52,7 +64,8 @@ std::string AppInstaller::getConfigDir(const std::string& appPath) const {
 
 InstallCheckResult AppInstaller::checkJar(const std::string& jarPath) {
     InstallCheckResult res;
-    if (!fs::exists(jarPath)) {
+    fs::path pJar = toNativeFsPath(jarPath);
+    if (!fs::exists(pJar)) {
         res.status = InstallStatus::STATUS_ERROR;
         return res;
     }
@@ -75,7 +88,7 @@ InstallCheckResult AppInstaller::checkJar(const std::string& jarPath) {
     res.icon = desc->getIcon();
 
     if (res.title.empty()) {
-        res.title = fs::path(jarPath).stem().string();
+        res.title = pJar.stem().string();
     }
 
     if (!m_repository) {
@@ -105,7 +118,8 @@ bool AppInstaller::installFromJar(const std::string& jarPath, bool forceUpdate, 
     outAppId = 0;
     outError.clear();
 
-    if (!fs::exists(jarPath)) {
+    fs::path pJar = toNativeFsPath(jarPath);
+    if (!fs::exists(pJar)) {
         outError = "JAR file not found: " + jarPath;
         return false;
     }
@@ -124,7 +138,7 @@ bool AppInstaller::installFromJar(const std::string& jarPath, bool forceUpdate, 
 
     std::string title = desc->getName();
     if (title.empty()) {
-        title = fs::path(jarPath).stem().string();
+        title = pJar.stem().string();
     }
     std::string vendor = desc->getVendor();
     std::string version = desc->getVersion();
@@ -167,7 +181,7 @@ bool AppInstaller::installFromJar(const std::string& jarPath, bool forceUpdate, 
         fs::create_directories(tmpDir);
 
         // 1. Copy JAR file
-        fs::copy_file(jarPath, fs::path(tmpDir) / "app.jar", fs::copy_options::overwrite_existing);
+        fs::copy_file(pJar, fs::path(tmpDir) / "app.jar", fs::copy_options::overwrite_existing);
 
         // 2. Write Manifest
         if (loader.hasResource("META-INF/MANIFEST.MF")) {
