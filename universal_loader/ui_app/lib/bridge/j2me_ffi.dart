@@ -1702,7 +1702,7 @@ class J2meBindings {
     } else {
       // iOS: J2meCore.framework from the CocoaPods build (ios/Podfile) is linked into the app
       try {
-        _dylib = ffi.DynamicLibrary.open("J2meCore.framework/J2meCore");
+        _dylib = ffi.DynamicLibrary.open("${File(Platform.resolvedExecutable).parent.path}/Frameworks/J2meCore.framework/J2meCore");
       } catch (_) {
         _dylib = ffi.DynamicLibrary.process();
       }
