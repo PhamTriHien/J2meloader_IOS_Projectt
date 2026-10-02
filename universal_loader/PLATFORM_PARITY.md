@@ -24,6 +24,10 @@ HTTP transport and OS lifecycle integration.
 - Hidden sessions render at most once per second without changing their configured FPS.
   New sessions are limited to eight on mobile and sixteen on desktop, and blocked
   after a memory pressure notification until all sessions are closed.
+- The VM begins garbage collection at 100,000 objects instead of 400,000,
+  then adapts to the live set. This is an object threshold, not a byte memory cap.
+- Java workers reserve an 8 MB stack on Apple and Windows to accommodate
+  the recursive interpreter. Engine destruction waits for worker cleanup.
 - TCP uses keepalive, transient send retries and complete writes. Server disconnects
   still require the game's own reconnect/login handling; no protocol packets are replayed.
 - Windows runs sessions while the process remains open.

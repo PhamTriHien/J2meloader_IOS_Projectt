@@ -418,7 +418,7 @@ void CldcVirtualMachine::collectGarbage() {
     }
     m_heap.resize(live);
     queueFree(std::move(dead));
-    m_gcThreshold = std::max<size_t>(400000, live * 2);
+    m_gcThreshold = std::max<size_t>(kMinimumGcObjects, live * 2);
     if (gcLog) {
         using ms = std::chrono::duration<double, std::milli>;
         const auto t1 = std::chrono::steady_clock::now();

@@ -215,7 +215,8 @@ private:
     std::unordered_map<JavaObject*, int> m_pinned;
     std::mutex m_singletonMutex;
     std::unordered_map<std::string, JavaObject*> m_nativeSingletons;
-    size_t m_gcThreshold{400000};
+    static constexpr size_t kMinimumGcObjects = 100000;
+    size_t m_gcThreshold{kMinimumGcObjects};
     // Unreachable objects are destroyed on a helper thread so a collection only pauses for mark + compact
     void queueFree(std::vector<std::unique_ptr<JavaObject>>&& dead);
     std::mutex m_freeMutex;
