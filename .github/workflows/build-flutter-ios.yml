@@ -66,6 +66,9 @@ jobs:
           if grep -q 'Unhandled Exception' build/ios-smoke/system.log; then
             LAUNCH_STATUS=1
           fi
+          if find build/ios-smoke/crashes -name 'Runner*.ips' -print | grep -q .; then
+            LAUNCH_STATUS=1
+          fi
           exit "$LAUNCH_STATUS"
       - uses: actions/upload-artifact@v4
         if: always()

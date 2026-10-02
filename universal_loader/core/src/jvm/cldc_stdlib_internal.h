@@ -2,6 +2,10 @@
 #define J2ME_CLDC_STDLIB_INTERNAL_H
 
 #include <map>
+#include <system_error>
+#if defined(__APPLE__)
+#include <pthread.h>
+#endif
 #include <sstream>
 #include <regex>
 #include "cldc_vm.h"
@@ -341,6 +345,7 @@ int32_t calendarGet(int64_t millis, int32_t field);
 int64_t calendarSet(int64_t millis, int32_t field, int32_t value);
 
 void runJavaRunnable(CldcVirtualMachine* vm, JavaObject* target, const char* context);
+void startDetachedJavaThread(std::function<void()> body);
 
 template <typename F>
 void runJavaThread(CldcVirtualMachine* vm, F&& body) {

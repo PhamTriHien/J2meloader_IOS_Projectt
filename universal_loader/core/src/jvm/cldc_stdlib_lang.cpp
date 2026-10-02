@@ -1153,12 +1153,16 @@ void registerLangMisc(CldcVirtualMachine* vm) {
         p.alive->store(true);
         auto alive = p.alive;
         vm->pin(threadObj);
-        std::thread([vm, threadObj, alive]() {
+        try { startDetachedJavaThread([vm, threadObj, alive]() {
             // Thread.run() either is overridden in bytecode or delegates to the Runnable
             runJavaThread(vm, [&] { runJavaRunnable(vm, threadObj, "thread"); });
             alive->store(false);
             vm->unpin(threadObj);
-        }).detach();
+        }); } catch (...) {
+            alive->store(false);
+            vm->unpin(threadObj);
+            throw;
+        }
         return JavaValue();
     });
     vm->registerNative(T, "isAlive", "()Z", [](CldcVirtualMachine* vm, const Args& a) {

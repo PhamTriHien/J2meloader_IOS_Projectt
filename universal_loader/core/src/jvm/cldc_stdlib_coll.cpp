@@ -553,7 +553,7 @@ void registerCollections(CldcVirtualMachine* vm) {
             auto taskCancelled = ensurePayload<TimerPayload>(task).cancelled;
             if (timerCancelled->load()) vm->throwJava("java/lang/IllegalStateException", "Timer already cancelled.");
             vm->pin(task);
-            std::thread([vm, task, delay, period, fixedRate, timerCancelled, taskCancelled]() { runJavaThread(vm, [&] {
+            try { startDetachedJavaThread([vm, task, delay, period, fixedRate, timerCancelled, taskCancelled]() { runJavaThread(vm, [&] {
                 auto nextRun = std::chrono::steady_clock::now() + std::chrono::milliseconds(delay);
                 for (;;) {
                     while (std::chrono::steady_clock::now() < nextRun) {
@@ -567,7 +567,10 @@ void registerCollections(CldcVirtualMachine* vm) {
                     nextRun = fixedRate ? nextRun + std::chrono::milliseconds(period)
                                         : std::chrono::steady_clock::now() + std::chrono::milliseconds(period);
                 }
-            }); vm->unpin(task); }).detach();
+            }); vm->unpin(task); }); } catch (...) {
+                vm->unpin(task);
+                throw;
+            }
             return JavaValue();
         };
     };

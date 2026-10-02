@@ -29,6 +29,7 @@ Pod::Spec.new do |s|
     # The bytecode interpreter is the hot path; Xcode's default -Os costs noticeable speed
     'GCC_OPTIMIZATION_LEVEL[config=Release]' => '3',
     'GCC_OPTIMIZATION_LEVEL[config=Profile]' => '3',
+    'GCC_OPTIMIZATION_LEVEL[config=Debug]' => '2',
     'OTHER_CFLAGS' => '$(inherited) -Wno-unused-parameter -Wno-shorten-64-to-32 -Wno-comma',
     'GCC_WARN_INHIBIT_ALL_WARNINGS' => 'YES',
   }
