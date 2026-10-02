@@ -322,7 +322,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
         _showMessageDialog(
           "J5Hienloader",
           "Trình giả lập J2ME đa nền tảng tối ưu hiệu năng cao.\n"
-          "Hỗ trợ đồ họa LCDUI, M3G 3D, Mascot Capsule, âm thanh Sonivox MIDI/WAV, mạng kết nối Socket/HTTP và tính năng nhân bản game (Multi-Instance) chạy nền liên tục 24/7.\n\n"
+          "Hỗ trợ đồ họa LCDUI, M3G 3D, Mascot Capsule, âm thanh Sonivox MIDI/WAV, mạng kết nối Socket/HTTP và nhiều phiên game độc lập. Trên iOS, phiên game tạm dừng khi ứng dụng chạy nền.\n\n"
           "J5Hienloader v1.0.0",
         );
         break;

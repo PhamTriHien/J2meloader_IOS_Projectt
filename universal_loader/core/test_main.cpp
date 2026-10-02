@@ -5592,6 +5592,19 @@ int main() {
     cleanup.join();
     j2me_core_destroy(engine);
 
+    // Creating and destroying one session must leave another session usable.
+    auto* survivor = j2me_core_create("./test_rms_survivor");
+    j2me_core_start(survivor);
+    auto* sibling = j2me_core_create("./test_rms_sibling");
+    j2me_core_start(sibling);
+    j2me_core_destroy(sibling);
+    assert(survivor->isRunning.load());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    fb = j2me_core_lock_framebuffer(survivor, &w, &h, &dirty);
+    assert(fb != nullptr && dirty && w > 0 && h > 0);
+    j2me_core_unlock_framebuffer(survivor);
+    j2me_core_destroy(survivor);
+
     std::cout << "[SUCCESS] 100% Tat ca Unit Tests (31/31 Mo Dun) da vuot qua hoan hao!" << std::endl;
     return 0;
 }
