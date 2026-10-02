@@ -2,6 +2,8 @@
 # Sources and preprocessor defines are read from CMakeLists.txt so the iOS and CMake builds stay in sync.
 cmake = File.read(File.join(__dir__, 'CMakeLists.txt'))
 sources = cmake.scan(%r{^\s*(src/\S+\.(?:c|cpp))\s*$}).flatten
+missing_sources = sources.reject { |path| File.file?(File.join(__dir__, path)) }
+raise "Missing J2meCore sources: #{missing_sources.join(', ')}" unless missing_sources.empty?
 defines = cmake[/add_compile_definitions\((.*?)\)/m, 1].split + ['J2ME_CORE_EXPORTS=1']
 
 Pod::Spec.new do |s|

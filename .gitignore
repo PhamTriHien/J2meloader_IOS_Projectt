@@ -19,6 +19,8 @@ dist/
 test_screenshots/
 ios_simulator_room/
 config/
+!universal_loader/core/src/config/
+!universal_loader/core/src/config/**
 rms/
 __pycache__/
 android/
