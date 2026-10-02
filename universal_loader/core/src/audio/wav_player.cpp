@@ -187,11 +187,18 @@ void WavPlayer::prefetch() {
     }
 }
 
-void WavPlayer::start() {
+MmapiPlayerState WavPlayer::getState() const {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_state != PLAYER_CLOSED) {
+    return m_state;
+}
+
+void WavPlayer::start() {
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_state == PLAYER_CLOSED || m_state == PLAYER_STARTED) return;
         m_state = PLAYER_STARTED;
     }
+    if (auto self = weak_from_this().lock()) AudioOutput::instance().attach(self);
 }
 
 void WavPlayer::stop() {
@@ -202,17 +209,18 @@ void WavPlayer::stop() {
 }
 
 void WavPlayer::deallocate() {
-    stop();
-    m_state = PLAYER_REALIZED;
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_state != PLAYER_CLOSED && m_state > PLAYER_REALIZED) m_state = PLAYER_REALIZED;
 }
 
 void WavPlayer::close() {
-    stop();
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_state = PLAYER_CLOSED;
 }
 
 void WavPlayer::setLoopCount(int count) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (count == 0) return;
     m_loopCount = count;
     m_currentLoop = 0;
 }
@@ -246,14 +254,9 @@ void WavPlayer::setMute(bool mute) {
     m_muted = mute;
 }
 
-size_t WavPlayer::renderAudio44100(int16_t* outStereoPcm, size_t frameCount) {
-    if (!outStereoPcm || frameCount == 0) return 0;
-
-    std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_state != PLAYER_STARTED || !m_valid || m_format.totalFrames == 0) {
-        std::memset(outStereoPcm, 0, frameCount * 2 * sizeof(int16_t));
-        return 0;
-    }
+template <typename Emit>
+size_t WavPlayer::renderLocked(size_t frameCount, Emit emit) {
+    if (m_state != PLAYER_STARTED || !m_valid || m_format.totalFrames == 0) return 0;
 
     double ratio = static_cast<double>(m_format.sampleRate) / 44100.0;
     float vol = m_muted ? 0.0f : (static_cast<float>(m_volume) / 100.0f);
@@ -271,23 +274,39 @@ size_t WavPlayer::renderAudio44100(int16_t* outStereoPcm, size_t frameCount) {
                 // Finished playing
                 m_state = PLAYER_PREFETCHED;
                 m_playbackFramePos = 0.0;
-                // Pad remaining frames with 0
-                std::memset(outStereoPcm + i * 2, 0, (frameCount - i) * 2 * sizeof(int16_t));
+                m_currentLoop = 0;
+                m_endOfMedia++;
                 break;
             }
         }
 
         int16_t l = 0, r = 0;
         sampleAt(m_playbackFramePos, l, r);
-
-        outStereoPcm[i * 2] = static_cast<int16_t>(static_cast<float>(l) * vol);
-        outStereoPcm[i * 2 + 1] = static_cast<int16_t>(static_cast<float>(r) * vol);
+        emit(i, static_cast<int32_t>(static_cast<float>(l) * vol), static_cast<int32_t>(static_cast<float>(r) * vol));
 
         m_playbackFramePos += ratio;
         rendered++;
     }
 
     return rendered;
+}
+
+size_t WavPlayer::renderAudio44100(int16_t* outStereoPcm, size_t frameCount) {
+    if (!outStereoPcm || frameCount == 0) return 0;
+    std::memset(outStereoPcm, 0, frameCount * 2 * sizeof(int16_t));
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return renderLocked(frameCount, [&](size_t i, int32_t l, int32_t r) {
+        outStereoPcm[i * 2] = static_cast<int16_t>(l);
+        outStereoPcm[i * 2 + 1] = static_cast<int16_t>(r);
+    });
+}
+
+bool WavPlayer::mixInto(int32_t* acc, size_t frameCount) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return renderLocked(frameCount, [&](size_t i, int32_t l, int32_t r) {
+        acc[i * 2] += l;
+        acc[i * 2 + 1] += r;
+    }) > 0;
 }
 
 size_t WavPlayer::streamToRingBuffer(AudioRingBuffer& ringBuffer, size_t maxFrames) {

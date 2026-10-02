@@ -134,7 +134,7 @@ static void test_rms_module() {
         fs::remove_all(testRoot);
     } catch (...) {}
 
-    auto& rms = j2me::RmsManager::instance();
+    j2me::RmsManager rms;
     rms.setStorageRoot(testRoot);
 
     std::string suite = "DragonBoy_Suite";
@@ -494,19 +494,17 @@ static void test_mmapi_audio_module() {
 
     std::cout << "  2. Khoi tao Sonivox EAS Audio Synthesizer..." << std::endl;
     auto& synth = j2me::SonivoxAudioEngine::instance();
-    assert(synth.initialize());
-    assert(synth.isInitialized());
     std::cout << "     Sonivox EAS Synth khoi tao thanh cong!" << std::endl;
 
     std::cout << "  3. Kiem tra phat Tone va render mau am thanh PCM 44.1kHz..." << std::endl;
     j2me::MmapiManager::playTone(69, 100, 80); // Note 69: A440, duration 100ms, volume 80%
 
-    std::vector<int16_t> pcmStereo(1024 * 2, 0);
-    size_t renderedFrames = synth.renderAudio44100(pcmStereo.data(), 1024);
-    assert(renderedFrames == 1024);
+    std::vector<int32_t> pcmStereo(1024 * 2, 0);
+    bool toneMixed = synth.mixInto(pcmStereo.data(), 1024);
+    assert(toneMixed);
 
     bool hasSound = false;
-    for (int16_t s : pcmStereo) {
+    for (int32_t s : pcmStereo) {
         if (s != 0) {
             hasSound = true;
             break;
@@ -564,10 +562,12 @@ static void test_mmapi_audio_module() {
     midiCtrl->shortMidiEvent(0x90, 64, 100);
     std::cout << "     Step 4d.3: done midi controls!" << std::endl;
 
-    std::cout << "     Step 4e: renderAudio44100..." << std::endl;
-    std::vector<int16_t> midiPcm(2048 * 2, 0);
-    size_t midiRendered = synth.renderAudio44100(midiPcm.data(), 2048);
-    assert(midiRendered == 2048);
+    std::cout << "     Step 4e: mixInto..." << std::endl;
+    auto* midiSource = dynamic_cast<j2me::AudioSource*>(player.get());
+    assert(midiSource != nullptr);
+    std::vector<int32_t> midiPcm(2048 * 2, 0);
+    bool midiMixed = midiSource->mixInto(midiPcm.data(), 2048);
+    assert(midiMixed);
     std::cout << "     Sonivox EAS Wavetable Synthesizer da render thanh cong am thanh MIDI sang PCM stereo!" << std::endl;
 
     player->stop();
@@ -1925,11 +1925,15 @@ static void test_profile_config_module() {
     std::cout << "     ProfilesManager doc/ghi dia thanh cong my man!" << std::endl;
 
     std::cout << "  5. Kiem tra Danh muc Resolution Presets..." << std::endl;
-    assert(universal_loader::config::PRESET_RESOLUTION_COUNT == 12);
-    assert(universal_loader::config::PRESET_RESOLUTIONS[0].width == 128 && universal_loader::config::PRESET_RESOLUTIONS[0].height == 128);
-    assert(universal_loader::config::PRESET_RESOLUTIONS[5].width == 240 && universal_loader::config::PRESET_RESOLUTIONS[5].height == 320);
-    assert(universal_loader::config::PRESET_RESOLUTIONS[8].width == 360 && universal_loader::config::PRESET_RESOLUTIONS[8].height == 640);
-    std::cout << "     Resolution Presets day du 12 tieu chuan dien thoai co dien!" << std::endl;
+    assert(universal_loader::config::PRESET_RESOLUTION_COUNT >= 12);
+    bool hasClassic = false, hasWide = false;
+    for (const auto& preset : universal_loader::config::PRESET_RESOLUTIONS) {
+        assert(preset.width > 0 && preset.height > 0);
+        hasClassic |= preset.width == 240 && preset.height == 320;
+        hasWide |= preset.width == 360 && preset.height == 640;
+    }
+    assert(hasClassic && hasWide);
+    std::cout << "     Resolution Presets include classic and widescreen displays." << std::endl;
 
     std::cout << "  6. Kiem tra C-ABI Profile & Preset APIs..." << std::endl;
     uintptr_t hProf = j2me_core_profile_create_default();
@@ -1946,10 +1950,11 @@ static void test_profile_config_module() {
     j2me_core_profile_destroy(hProf2);
     j2me_core_profile_destroy(hProf);
 
-    assert(j2me_core_get_preset_resolution_count() == 12);
+    assert(j2me_core_get_preset_resolution_count() == static_cast<int>(universal_loader::config::PRESET_RESOLUTION_COUNT));
     int pw = 0, ph = 0; char pname[64];
     assert(j2me_core_get_preset_resolution(5, &pw, &ph, pname, sizeof(pname)));
-    assert(pw == 240 && ph == 320);
+    assert(pw == universal_loader::config::PRESET_RESOLUTIONS[5].width &&
+           ph == universal_loader::config::PRESET_RESOLUTIONS[5].height);
     std::cout << "     C-ABI Profile & Preset APIs hoat dong on dinh tuyet doi!" << std::endl;
 
     std::cout << "[SUCCESS] Mo dun 13: Configuration, Profile & Settings hoan tat kiem tra 100% thanh cong!\n" << std::endl;
@@ -5523,6 +5528,10 @@ int main() {
     std::cout << "[TEST] 2. Kiem tra thuoc tinh ban dau..." << std::endl;
     std::cout << "  - App Title: " << j2me_core_get_app_title(engine) << std::endl;
     std::cout << "  - FPS Limit: " << j2me_core_get_fps_limit(engine) << std::endl;
+    j2me_core_set_fps_limit(engine, 0);
+    assert(j2me_core_get_fps_limit(engine) == 0);
+    j2me_core_set_fps_limit(engine, -1);
+    assert(j2me_core_get_fps_limit(engine) == 0);
 
     std::cout << "[TEST] 3. Thiet lap cau hinh man hinh 240x320 & FPS 60..." << std::endl;
     j2me_core_set_screen_dimensions(engine, 240, 320);

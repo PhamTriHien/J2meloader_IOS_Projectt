@@ -1,34 +1,129 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-class VirtualKeypad extends StatelessWidget {
+enum KeypadType {
+  full,       // Softkeys + D-Pad + Numpad
+  dpadOnly,   // Softkeys + D-Pad Only
+  numpadOnly, // Numpad Only
+}
+
+enum KeypadLayoutMode {
+  bottom,    // Standard bottom keypad (for portrait)
+  leftWing,  // D-Pad + LSK wing (for landscape left)
+  rightWing, // Numpad + RSK wing (for landscape right)
+}
+
+enum KeypadButtonShape {
+  roundRect,
+  rect,
+  oval,
+}
+
+// Compact key size defaults
+const double kDesktopKeyHeight = 22.0;
+const double kMobileKeyHeight = 38.0;
+
+class VirtualKeypad extends StatefulWidget {
   final Function(int keyCode, bool isPressed) onKeyEvent;
+  final double opacity;
+  final KeypadType keypadType;
+  final KeypadLayoutMode layoutMode;
+  final KeypadButtonShape buttonShape;
+  final bool enableHaptic;
+  final double? customKeyHeight;
 
-  const VirtualKeypad({super.key, required this.onKeyEvent});
+  const VirtualKeypad({
+    super.key,
+    required this.onKeyEvent,
+    this.opacity = 0.95,
+    this.keypadType = KeypadType.full,
+    this.layoutMode = KeypadLayoutMode.bottom,
+    this.buttonShape = KeypadButtonShape.roundRect,
+    this.enableHaptic = true,
+    this.customKeyHeight,
+  });
 
-  Widget _buildKey(String label, int code, {Color? bg, Color? fg, double flex = 1.0}) {
+  @override
+  State<VirtualKeypad> createState() => _VirtualKeypadState();
+}
+
+class _VirtualKeypadState extends State<VirtualKeypad> {
+  final Map<int, int> _pressedPointers = {};
+
+  double get opacity => widget.opacity;
+  KeypadType get keypadType => widget.keypadType;
+  KeypadLayoutMode get layoutMode => widget.layoutMode;
+  KeypadButtonShape get buttonShape => widget.buttonShape;
+  double? get customKeyHeight => widget.customKeyHeight;
+
+  void _press(int pointer, int code) {
+    final wasPressed = _pressedPointers.containsValue(code);
+    setState(() => _pressedPointers[pointer] = code);
+    if (!wasPressed) {
+      if (widget.enableHaptic) HapticFeedback.lightImpact();
+      widget.onKeyEvent(code, true);
+    }
+  }
+
+  void _release(int pointer) {
+    final code = _pressedPointers[pointer];
+    if (code == null) return;
+    setState(() => _pressedPointers.remove(pointer));
+    if (!_pressedPointers.containsValue(code)) {
+      widget.onKeyEvent(code, false);
+    }
+  }
+
+  BorderRadius _getBorderRadius(double height) {
+    switch (buttonShape) {
+      case KeypadButtonShape.oval:
+        return BorderRadius.circular(height / 2);
+      case KeypadButtonShape.rect:
+        return BorderRadius.zero;
+      case KeypadButtonShape.roundRect:
+        return BorderRadius.circular(height >= 32 ? 8 : 5);
+    }
+  }
+
+  Widget _buildKey(
+    String label,
+    int code, {
+    Color? bg,
+    Color? fg,
+    double flex = 1.0,
+    required double height,
+  }) {
+    final isLarge = height >= 32;
+    final fontSize = label.length > 2
+        ? (isLarge ? 13.0 : 10.5)
+        : (isLarge ? 17.0 : 12.5);
+    final padH = isLarge ? 2.5 : 1.5;
+    final padV = isLarge ? 2.0 : 1.0;
+    final pressed = _pressedPointers.containsValue(code);
+
     return Expanded(
       flex: (flex * 10).toInt(),
       child: Padding(
-        padding: const EdgeInsets.all(2.5),
+        padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
         child: Listener(
-          onPointerDown: (_) {
-            HapticFeedback.lightImpact();
-            onKeyEvent(code, true);
-          },
-          onPointerUp: (_) => onKeyEvent(code, false),
-          onPointerCancel: (_) => onKeyEvent(code, false),
+          onPointerDown: (event) => _press(event.pointer, code),
+          onPointerUp: (event) => _release(event.pointer),
+          onPointerCancel: (event) => _release(event.pointer),
           child: Container(
-            height: 48,
+            height: height,
             decoration: BoxDecoration(
-              color: bg ?? const Color(0xFF1E293B),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF334155), width: 1.2),
-              boxShadow: [
+              color: pressed ? const Color(0xFFFBBF24) : (bg ?? const Color(0xFF1E293B)),
+              borderRadius: _getBorderRadius(height),
+              border: Border.all(
+                color: pressed ? const Color(0xFFFFF3C4) : const Color(0xFF334155),
+                width: 1.0,
+              ),
+              boxShadow: const [
                 BoxShadow(
-                  color: Colors.black.withAlpha(76),
-                  offset: const Offset(0, 2),
-                  blurRadius: 2,
+                  color: Color(0x33000000),
+                  offset: Offset(0, 1),
+                  blurRadius: 1,
                 )
               ],
             ),
@@ -36,10 +131,10 @@ class VirtualKeypad extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: fg ?? const Color(0xFFE2E8F0),
-                fontSize: 16,
+                color: pressed ? const Color(0xFF17212B) : (fg ?? const Color(0xFFE2E8F0)),
+                fontSize: fontSize,
                 fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
+                letterSpacing: isLarge ? 0.4 : 0.2,
               ),
             ),
           ),
@@ -50,78 +145,228 @@ class VirtualKeypad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withAlpha(242),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        border: const Border(top: BorderSide(color: Color(0xFF334155), width: 1.5)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Softkeys & D-Pad Top Row
-          Row(
+    final isMobile = Platform.isAndroid || Platform.isIOS;
+    final screenH = MediaQuery.of(context).size.height;
+
+    double keyHeight;
+    if (customKeyHeight != null) {
+      keyHeight = customKeyHeight!;
+    } else if (isMobile) {
+      if (layoutMode == KeypadLayoutMode.leftWing || layoutMode == KeypadLayoutMode.rightWing) {
+        keyHeight = 36.0;
+      } else {
+        // Generous touch size for mobile thumbs in portrait mode
+        keyHeight = (screenH * 0.35 / (keypadType == KeypadType.full ? 7 : (keypadType == KeypadType.dpadOnly ? 3 : 4))).clamp(36.0, 44.0);
+      }
+    } else {
+      keyHeight = kDesktopKeyHeight;
+    }
+
+    final isLarge = keyHeight >= 32;
+
+    if (layoutMode == KeypadLayoutMode.leftWing) {
+      final safeLeft = MediaQuery.of(context).padding.left;
+      return Opacity(
+        opacity: opacity.clamp(0.1, 1.0),
+        child: Container(
+          height: double.infinity,
+          padding: EdgeInsets.fromLTRB(safeLeft > 0 ? safeLeft + 2 : 4, 4, 4, 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A).withAlpha(245),
+            borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+            border: const Border(right: BorderSide(color: Color(0xFF334155), width: 1.0)),
+          ),
+          alignment: Alignment.center,
+          child: Center(
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      _buildKey("LSK", -6, bg: const Color(0xFF334155), fg: const Color(0xFF38BDF8), height: keyHeight),
+                    ],
+                  ),
+                  SizedBox(height: isLarge ? 6 : 3),
+                  Row(
+                    children: [
+                      const Spacer(),
+                      _buildKey("▲", -1, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8), height: keyHeight),
+                      const Spacer(),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      _buildKey("◀", -3, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8), height: keyHeight),
+                      _buildKey("OK", -5, bg: const Color(0xFF0284C7), fg: Colors.white, flex: 1.1, height: keyHeight),
+                      _buildKey("▶", -4, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8), height: keyHeight),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      const Spacer(),
+                      _buildKey("▼", -2, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8), height: keyHeight),
+                      const Spacer(),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (layoutMode == KeypadLayoutMode.rightWing) {
+      final safeRight = MediaQuery.of(context).padding.right;
+      return Opacity(
+        opacity: opacity.clamp(0.1, 1.0),
+        child: Container(
+          height: double.infinity,
+          padding: EdgeInsets.fromLTRB(4, 4, safeRight > 0 ? safeRight + 2 : 4, 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A).withAlpha(245),
+            borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
+            border: const Border(left: BorderSide(color: Color(0xFF334155), width: 1.0)),
+          ),
+          alignment: Alignment.center,
+          child: Center(
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      _buildKey("RSK", -7, bg: const Color(0xFF334155), fg: const Color(0xFF38BDF8), height: keyHeight),
+                    ],
+                  ),
+                  SizedBox(height: isLarge ? 4 : 2),
+                  Row(
+                    children: [
+                      _buildKey("1", 49, height: keyHeight),
+                      _buildKey("2", 50, height: keyHeight),
+                      _buildKey("3", 51, height: keyHeight),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      _buildKey("4", 52, height: keyHeight),
+                      _buildKey("5", 53, height: keyHeight),
+                      _buildKey("6", 54, height: keyHeight),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      _buildKey("7", 55, height: keyHeight),
+                      _buildKey("8", 56, height: keyHeight),
+                      _buildKey("9", 57, height: keyHeight),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      _buildKey("*", 42, fg: const Color(0xFFF59E0B), height: keyHeight),
+                      _buildKey("0", 48, height: keyHeight),
+                      _buildKey("#", 35, fg: const Color(0xFFF59E0B), height: keyHeight),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Opacity(
+      opacity: opacity.clamp(0.1, 1.0),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.fromLTRB(
+          isLarge ? 6 : 4,
+          isLarge ? 4 : 2,
+          isLarge ? 6 : 4,
+          isLarge ? 4 : 2,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xFF0F172A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+          border: Border(top: BorderSide(color: Color(0xFF334155), width: 1.0)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _buildKey("LSK", -6, bg: const Color(0xFF334155), fg: const Color(0xFF38BDF8)),
-              const Spacer(),
-              _buildKey("▲", -1, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8)),
-              const Spacer(),
-              _buildKey("RSK", -7, bg: const Color(0xFF334155), fg: const Color(0xFF38BDF8)),
+              if (keypadType == KeypadType.full || keypadType == KeypadType.dpadOnly) ...[
+                // Softkeys & D-Pad Top Row
+                Row(
+                  children: [
+                    _buildKey("LSK", -6, bg: const Color(0xFF334155), fg: const Color(0xFF38BDF8), height: keyHeight),
+                    const Spacer(),
+                    _buildKey("▲", -1, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8), height: keyHeight),
+                    const Spacer(),
+                    _buildKey("RSK", -7, bg: const Color(0xFF334155), fg: const Color(0xFF38BDF8), height: keyHeight),
+                  ],
+                ),
+                // D-Pad Middle Row
+                Row(
+                  children: [
+                    const Spacer(),
+                    _buildKey("◀", -3, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8), height: keyHeight),
+                    _buildKey("OK", -5, bg: const Color(0xFF0284C7), fg: Colors.white, flex: 1.1, height: keyHeight),
+                    _buildKey("▶", -4, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8), height: keyHeight),
+                    const Spacer(),
+                  ],
+                ),
+                // D-Pad Bottom Row
+                Row(
+                  children: [
+                    const Spacer(flex: 2),
+                    _buildKey("▼", -2, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8), height: keyHeight),
+                    const Spacer(flex: 2),
+                  ],
+                ),
+              ],
+              if (keypadType == KeypadType.full) SizedBox(height: isLarge ? 2 : 1),
+              if (keypadType == KeypadType.full || keypadType == KeypadType.numpadOnly) ...[
+                // Numpad Row 1: 1, 2, 3
+                Row(
+                  children: [
+                    _buildKey("1", 49, height: keyHeight),
+                    _buildKey("2", 50, height: keyHeight),
+                    _buildKey("3", 51, height: keyHeight),
+                  ],
+                ),
+                // Numpad Row 2: 4, 5, 6
+                Row(
+                  children: [
+                    _buildKey("4", 52, height: keyHeight),
+                    _buildKey("5", 53, height: keyHeight),
+                    _buildKey("6", 54, height: keyHeight),
+                  ],
+                ),
+                // Numpad Row 3: 7, 8, 9
+                Row(
+                  children: [
+                    _buildKey("7", 55, height: keyHeight),
+                    _buildKey("8", 56, height: keyHeight),
+                    _buildKey("9", 57, height: keyHeight),
+                  ],
+                ),
+                // Numpad Row 4: *, 0, #
+                Row(
+                  children: [
+                    _buildKey("*", 42, fg: const Color(0xFFF59E0B), height: keyHeight),
+                    _buildKey("0", 48, height: keyHeight),
+                    _buildKey("#", 35, fg: const Color(0xFFF59E0B), height: keyHeight),
+                  ],
+                ),
+              ],
             ],
           ),
-          // D-Pad Middle Row
-          Row(
-            children: [
-              const Spacer(),
-              _buildKey("◀", -3, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8)),
-              _buildKey("OK", -5, bg: const Color(0xFF0284C7), fg: Colors.white, flex: 1.2),
-              _buildKey("▶", -4, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8)),
-              const Spacer(),
-            ],
-          ),
-          // D-Pad Bottom Row
-          Row(
-            children: [
-              const Spacer(),
-              _buildKey("▼", -2, bg: const Color(0xFF1E293B), fg: const Color(0xFF38BDF8)),
-              const Spacer(),
-            ],
-          ),
-          const SizedBox(height: 6),
-          // Numpad Row 1: 1, 2, 3
-          Row(
-            children: [
-              _buildKey("1", 49),
-              _buildKey("2", 50),
-              _buildKey("3", 51),
-            ],
-          ),
-          // Numpad Row 2: 4, 5, 6
-          Row(
-            children: [
-              _buildKey("4", 52),
-              _buildKey("5", 53),
-              _buildKey("6", 54),
-            ],
-          ),
-          // Numpad Row 3: 7, 8, 9
-          Row(
-            children: [
-              _buildKey("7", 55),
-              _buildKey("8", 56),
-              _buildKey("9", 57),
-            ],
-          ),
-          // Numpad Row 4: *, 0, #
-          Row(
-            children: [
-              _buildKey("*", 42, fg: const Color(0xFFF59E0B)),
-              _buildKey("0", 48),
-              _buildKey("#", 35, fg: const Color(0xFFF59E0B)),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }

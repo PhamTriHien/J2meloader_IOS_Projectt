@@ -23,6 +23,19 @@ typedef J2meLockFBC = ffi.Pointer<ffi.Uint32> Function(
 typedef J2meLockFBDart = ffi.Pointer<ffi.Uint32> Function(
     ffi.Pointer<ffi.Void> inst, ffi.Pointer<ffi.Int32> w, ffi.Pointer<ffi.Int32> h, ffi.Pointer<ffi.Bool> dirty);
 
+typedef J2meCopyFrameC = ffi.Int32 Function(ffi.Pointer<ffi.Void> inst, ffi.Pointer<ffi.Uint8> dst, ffi.Size cap,
+    ffi.Int32 scale, ffi.Bool force, ffi.Pointer<ffi.Int32> w, ffi.Pointer<ffi.Int32> h);
+typedef J2meCopyFrameDart = int Function(ffi.Pointer<ffi.Void> inst, ffi.Pointer<ffi.Uint8> dst, int cap,
+    int scale, bool force, ffi.Pointer<ffi.Int32> w, ffi.Pointer<ffi.Int32> h);
+
+typedef J2meScreenSerialC = ffi.Int32 Function(ffi.Pointer<ffi.Void> inst);
+typedef J2meScreenSerialDart = int Function(ffi.Pointer<ffi.Void> inst);
+typedef J2meScreenGetC = ffi.Bool Function(ffi.Pointer<ffi.Void> inst, ffi.Pointer<Utf8> out, ffi.Size maxLen);
+typedef J2meScreenGetDart = bool Function(ffi.Pointer<ffi.Void> inst, ffi.Pointer<Utf8> out, int maxLen);
+typedef J2meScreenSubmitC = ffi.Void Function(ffi.Pointer<ffi.Void> inst, ffi.Int32 cmdIndex, ffi.Pointer<Utf8> texts);
+typedef J2meSendKeyIdxC = ffi.Void Function(ffi.Pointer<ffi.Void> inst, ffi.Int32 index);
+typedef J2meSendKeyIdxDart = void Function(ffi.Pointer<ffi.Void> inst, int index);
+typedef J2meScreenSubmitDart = void Function(ffi.Pointer<ffi.Void> inst, int cmdIndex, ffi.Pointer<Utf8> texts);
 typedef J2meSendKeyC = ffi.Void Function(ffi.Pointer<ffi.Void> inst, ffi.Int32 keyCode, ffi.Bool pressed);
 typedef J2meSendKeyDart = void Function(ffi.Pointer<ffi.Void> inst, int keyCode, bool pressed);
 
@@ -490,6 +503,9 @@ typedef J2meAppInstallerUninstallDart = bool Function(
 
 typedef J2meAppLaunchC = ffi.Bool Function(ffi.Pointer<ffi.Void>, ffi.Int32);
 typedef J2meAppLaunchDart = bool Function(ffi.Pointer<ffi.Void>, int);
+
+typedef J2meAppSpawnC = ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>, ffi.Int32, ffi.Int32);
+typedef J2meAppSpawnDart = ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>, int, int);
 
 // Section 22: JSR-82 Mobile Bluetooth & RFCOMM/L2CAP Multiplayer
 typedef J2meBtIsPowerOnC = ffi.Bool Function();
@@ -1170,8 +1186,16 @@ typedef J2meWavRenderPcmDart = int Function(int, ffi.Pointer<ffi.Int16>, int);
 typedef J2mePlatformPickFileC = ffi.Bool Function(ffi.Pointer<Utf8>, ffi.Size);
 typedef J2mePlatformPickFileDart = bool Function(ffi.Pointer<Utf8>, int);
 
+typedef J2mePlatformSetWindowSizeC = ffi.Bool Function(ffi.Int32, ffi.Int32);
+typedef J2mePlatformSetWindowSizeDart = bool Function(int, int);
+
+typedef J2mePlatformGetWindowSizeC = ffi.Bool Function(ffi.Pointer<ffi.Int32>, ffi.Pointer<ffi.Int32>);
+typedef J2mePlatformGetWindowSizeDart = bool Function(ffi.Pointer<ffi.Int32>, ffi.Pointer<ffi.Int32>);
+
 class J2meBindings {
   late final ffi.DynamicLibrary _dylib;
+
+  ffi.DynamicLibrary get library => _dylib;
 
   // Core Lifecycle
   late final J2meCreateDart coreCreate;
@@ -1186,10 +1210,18 @@ class J2meBindings {
   // Framebuffer
   late final J2meLockFBDart coreLockFramebuffer;
   late final J2meActionDart coreUnlockFramebuffer;
+  late final J2meCopyFrameDart coreCopyFrameRgba;
   late final J2meSetDimsDart coreSetScreenDimensions;
 
   // Input
   late final J2meSendKeyDart coreSendKey;
+  // Form / TextBox input dialog
+  late final J2meScreenSerialDart coreScreenSerial;
+  late final J2meScreenGetDart coreScreenGet;
+  late final J2meScreenSubmitDart coreScreenSubmit;
+  late final J2meScreenSerialDart coreCanvasCommandsVersion;
+  late final J2meScreenGetDart coreCanvasCommands;
+  late final J2meSendKeyIdxDart coreCanvasCommand;
   late final J2meSendTouchDart coreSendTouch;
 
   // Info & Performance
@@ -1360,6 +1392,7 @@ class J2meBindings {
   late final J2meAppInstallerInstallDart appInstallerInstall;
   late final J2meAppInstallerUninstallDart appInstallerUninstall;
   late final J2meAppLaunchDart appLaunch;
+  late final J2meAppSpawnDart appSpawn;
 
   // Section 22: JSR-82 Mobile Bluetooth & RFCOMM/L2CAP Multiplayer
   late final J2meBtIsPowerOnDart btIsPowerOn;
@@ -1642,6 +1675,8 @@ class J2meBindings {
   late final J2meWavRenderPcmDart wavRenderPcm;
   late final J2meWavActionDart wavDestroy;
   late final J2mePlatformPickFileDart platformPickFile;
+  late final J2mePlatformSetWindowSizeDart platformSetWindowSize;
+  late final J2mePlatformGetWindowSizeDart platformGetWindowSize;
 
   static J2meBindings? _instance;
 
@@ -1652,18 +1687,25 @@ class J2meBindings {
 
   J2meBindings._init() {
     if (Platform.isWindows) {
-      const dllPath = r"C:\j2meloader\universal_loader\core\build\Release\j2me_core.dll";
-      if (File(dllPath).existsSync()) {
-        _dylib = ffi.DynamicLibrary.open(dllPath);
-      } else {
-        _dylib = ffi.DynamicLibrary.open("j2me_core.dll");
-      }
+      // Bundled next to ui_app.exe by windows/CMakeLists.txt
+      _dylib = ffi.DynamicLibrary.open("j2me_core.dll");
     } else if (Platform.isAndroid) {
       _dylib = ffi.DynamicLibrary.open("libj2me_core.so");
-    } else if (Platform.isIOS || Platform.isMacOS) {
-      _dylib = ffi.DynamicLibrary.process();
-    } else {
+    } else if (Platform.isLinux) {
       _dylib = ffi.DynamicLibrary.open("libj2me_core.so");
+    } else if (Platform.isMacOS) {
+      try {
+        _dylib = ffi.DynamicLibrary.open("libj2me_core.dylib");
+      } catch (_) {
+        _dylib = ffi.DynamicLibrary.process();
+      }
+    } else {
+      // iOS: J2meCore.framework from the CocoaPods build (ios/Podfile) is linked into the app
+      try {
+        _dylib = ffi.DynamicLibrary.open("J2meCore.framework/J2meCore");
+      } catch (_) {
+        _dylib = ffi.DynamicLibrary.process();
+      }
     }
 
     coreCreate = _dylib.lookupFunction<J2meCreateC, J2meCreateDart>('j2me_core_create');
@@ -1677,9 +1719,16 @@ class J2meBindings {
 
     coreLockFramebuffer = _dylib.lookupFunction<J2meLockFBC, J2meLockFBDart>('j2me_core_lock_framebuffer');
     coreUnlockFramebuffer = _dylib.lookupFunction<J2meActionC, J2meActionDart>('j2me_core_unlock_framebuffer');
+    coreCopyFrameRgba = _dylib.lookupFunction<J2meCopyFrameC, J2meCopyFrameDart>('j2me_core_copy_frame_rgba');
     coreSetScreenDimensions = _dylib.lookupFunction<J2meSetDimsC, J2meSetDimsDart>('j2me_core_set_screen_dimensions');
 
     coreSendKey = _dylib.lookupFunction<J2meSendKeyC, J2meSendKeyDart>('j2me_core_send_key');
+    coreScreenSerial = _dylib.lookupFunction<J2meScreenSerialC, J2meScreenSerialDart>('j2me_core_screen_serial');
+    coreScreenGet = _dylib.lookupFunction<J2meScreenGetC, J2meScreenGetDart>('j2me_core_screen_get');
+    coreScreenSubmit = _dylib.lookupFunction<J2meScreenSubmitC, J2meScreenSubmitDart>('j2me_core_screen_submit');
+    coreCanvasCommandsVersion = _dylib.lookupFunction<J2meScreenSerialC, J2meScreenSerialDart>('j2me_core_canvas_commands_version');
+    coreCanvasCommands = _dylib.lookupFunction<J2meScreenGetC, J2meScreenGetDart>('j2me_core_canvas_commands');
+    coreCanvasCommand = _dylib.lookupFunction<J2meSendKeyIdxC, J2meSendKeyIdxDart>('j2me_core_canvas_command');
     coreSendTouch = _dylib.lookupFunction<J2meSendTouchC, J2meSendTouchDart>('j2me_core_send_touch');
 
     coreGetAppTitle = _dylib.lookupFunction<J2meGetStringC, J2meGetStringDart>('j2me_core_get_app_title');
@@ -1845,6 +1894,7 @@ class J2meBindings {
     appInstallerInstall = _dylib.lookupFunction<J2meAppInstallerInstallC, J2meAppInstallerInstallDart>('j2me_core_app_installer_install');
     appInstallerUninstall = _dylib.lookupFunction<J2meAppInstallerUninstallC, J2meAppInstallerUninstallDart>('j2me_core_app_installer_uninstall');
     appLaunch = _dylib.lookupFunction<J2meAppLaunchC, J2meAppLaunchDart>('j2me_core_app_launch');
+    appSpawn = _dylib.lookupFunction<J2meAppSpawnC, J2meAppSpawnDart>('j2me_core_app_spawn');
 
     // Section 22: JSR-82 Mobile Bluetooth & RFCOMM/L2CAP Multiplayer
     btIsPowerOn = _dylib.lookupFunction<J2meBtIsPowerOnC, J2meBtIsPowerOnDart>('j2me_core_bluetooth_is_power_on');
@@ -2127,5 +2177,7 @@ class J2meBindings {
     wavRenderPcm = _dylib.lookupFunction<J2meWavRenderPcmC, J2meWavRenderPcmDart>('j2me_core_wav_render_pcm');
     wavDestroy = _dylib.lookupFunction<J2meWavActionC, J2meWavActionDart>('j2me_core_wav_destroy');
     platformPickFile = _dylib.lookupFunction<J2mePlatformPickFileC, J2mePlatformPickFileDart>('j2me_core_platform_pick_file');
+    platformSetWindowSize = _dylib.lookupFunction<J2mePlatformSetWindowSizeC, J2mePlatformSetWindowSizeDart>('j2me_core_platform_set_window_size');
+    platformGetWindowSize = _dylib.lookupFunction<J2mePlatformGetWindowSizeC, J2mePlatformGetWindowSizeDart>('j2me_core_platform_get_window_size');
   }
 }

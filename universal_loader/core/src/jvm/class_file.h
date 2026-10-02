@@ -77,6 +77,16 @@ public:
     uint16_t maxLocals{0};
     std::vector<uint8_t> code;
     std::vector<JavaExceptionCatch> exceptionTable;
+    // Interpreter caches
+    const void* nativeHandler{nullptr};
+    bool nativeResolved{false};
+    std::vector<char> paramTypes;
+    bool paramsParsed{false};
+    // Trivial static no-arg methods (obfuscator getters / opaque predicates)
+    int8_t trivialKind{0}; // 0 unknown, 1 not trivial, 2 constant, 3 static field getter
+    JavaValue trivialConst;
+    JavaClass* trivialOwner{nullptr};
+    size_t trivialSlot{0};
 
     bool isNative() const { return (accessFlags & ACC_NATIVE) != 0; }
     bool isStatic() const { return (accessFlags & ACC_STATIC) != 0; }
@@ -99,6 +109,11 @@ public:
     std::vector<JavaValue> staticFieldValues;
 
     size_t instanceFieldCount{0};
+    // Index of this class's first instance field inside an object's field vector
+    // (superclass fields come first). Valid once layoutResolved is set.
+    size_t instanceFieldBase{0};
+    bool layoutResolved{false};
+    bool staticInitDone{false};
 
     std::string getUtf8FromCp(uint16_t index) const;
     std::string getClassNameFromCp(uint16_t classIndex) const;

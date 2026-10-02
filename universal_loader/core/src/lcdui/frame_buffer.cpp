@@ -2,6 +2,7 @@
 #include <cstring>
 #include <algorithm>
 #include <cmath>
+#include <bit>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -120,6 +121,7 @@ FrameBuffer::~FrameBuffer() {}
 
 void FrameBuffer::resize(int width, int height) {
     if (width <= 0 || height <= 0) return;
+    std::lock_guard<std::mutex> lock(m_displayMutex);
     m_width = width;
     m_height = height;
     resetClip();
@@ -131,15 +133,15 @@ void FrameBuffer::resize(int width, int height) {
 
 void FrameBuffer::publishFrame() {
     // Copy draw buffer to display buffer
-    if (!m_isDisplayLocked.load()) {
-        std::memcpy(m_displayBuffer.data(), m_drawBuffer.data(), m_width * m_height * sizeof(uint32_t));
-        m_isDirty.store(true);
-    }
+    std::lock_guard<std::mutex> lock(m_displayMutex);
+    std::memcpy(m_displayBuffer.data(), m_drawBuffer.data(), m_width * m_height * sizeof(uint32_t));
+    m_isDirty.store(true);
 }
 
 const uint32_t* FrameBuffer::lockDisplayFrame(int* outW, int* outH, bool* outDirty) {
     if (outW) *outW = m_width;
     if (outH) *outH = m_height;
+    m_displayMutex.lock();
     if (outDirty) *outDirty = m_isDirty.load();
 
     m_isDisplayLocked.store(true);
@@ -149,6 +151,36 @@ const uint32_t* FrameBuffer::lockDisplayFrame(int* outW, int* outH, bool* outDir
 
 void FrameBuffer::unlockDisplayFrame() {
     m_isDisplayLocked.store(false);
+    m_displayMutex.unlock();
+}
+
+int FrameBuffer::copyDisplayRgba(uint8_t* dst, size_t cap, int scale, bool force, int* outW, int* outH) {
+    std::lock_guard<std::mutex> lock(m_displayMutex);
+    const int w = m_width, h = m_height;
+    if (outW) *outW = w;
+    if (outH) *outH = h;
+    if (!force && !m_isDirty.load()) return 0;
+    if (scale < 1) scale = 1;
+    const size_t outW32 = static_cast<size_t>(w) * scale;
+    if (!dst || cap < outW32 * h * scale * 4) return -1;
+    m_isDirty.store(false);
+    uint32_t* out = reinterpret_cast<uint32_t*>(dst);
+    const uint32_t* src = m_displayBuffer.data();
+    for (int y = 0; y < h; ++y) {
+        uint32_t* row = out + static_cast<size_t>(y) * scale * outW32;
+        const uint32_t* in = src + static_cast<size_t>(y) * w;
+        for (int x = 0; x < w; ++x) {
+            const uint32_t p = in[x];
+            // ARGB word -> R,G,B,A bytes in memory
+            uint32_t c;
+            if constexpr (std::endian::native == std::endian::little) c = (p & 0xFF00FF00u) | ((p >> 16) & 0xFFu) | ((p & 0xFFu) << 16);
+            else c = (p << 8) | (p >> 24);
+            if (scale == 1) row[x] = c;
+            else for (int d = 0; d < scale; ++d) row[static_cast<size_t>(x) * scale + d] = c;
+        }
+        for (int d = 1; d < scale; ++d) std::memcpy(row + d * outW32, row, outW32 * 4);
+    }
+    return 1;
 }
 
 void FrameBuffer::clear(uint32_t argbColor) {

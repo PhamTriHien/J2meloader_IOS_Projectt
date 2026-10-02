@@ -396,11 +396,11 @@ static EAS_RESULT WT_StartVoice (S_VOICE_MGR *pVoiceMgr, S_SYNTH *pSynth, S_SYNT
 
 #ifdef EAS_SPLIT_WT_SYNTH
         if (voiceNum < NUM_PRIMARY_VOICES)
-            pWTVoice->phaseAccum = (EAS_U32) pSynth->pEAS->pSamples + pSynth->pEAS->pSampleOffsets[pRegion->waveIndex];
+            pWTVoice->phaseAccum = (uintptr_t) pSynth->pEAS->pSamples + pSynth->pEAS->pSampleOffsets[pRegion->waveIndex];
         else
             pWTVoice->phaseAccum = pSynth->pEAS->pSampleOffsets[pRegion->waveIndex];
 #else
-        pWTVoice->phaseAccum = (EAS_U32) pSynth->pEAS->pSamples + pSynth->pEAS->pSampleOffsets[pRegion->waveIndex];
+        pWTVoice->phaseAccum = (uintptr_t) pSynth->pEAS->pSamples + pSynth->pEAS->pSampleOffsets[pRegion->waveIndex];
 #endif
 
         if (pRegion->region.keyGroupAndFlags & REGION_FLAG_IS_LOOPED)

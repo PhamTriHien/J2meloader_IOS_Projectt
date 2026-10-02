@@ -40,6 +40,7 @@
 #endif
 
 #include "eas_wt_IPC_frame.h"
+#include <stdint.h>
 
 /*----------------------------------------------------------------------------
  * defines
@@ -124,9 +125,9 @@ typedef enum {
 */
 typedef struct s_wt_voice_tag
 {
-    EAS_U32             loopEnd;                /* points to last PCM sample (not 1 beyond last) */
-    EAS_U32             loopStart;              /* points to first sample at start of loop */
-    EAS_U32             phaseAccum;             /* current sample, integer portion of phase */
+    uintptr_t           loopEnd;                /* points to last PCM sample (not 1 beyond last) */
+    uintptr_t           loopStart;              /* points to first sample at start of loop */
+    uintptr_t           phaseAccum;             /* current sample, integer portion of phase */
     EAS_U32             phaseFrac;              /* fractional portion of phase */
 
 #if (NUM_OUTPUT_CHANNELS == 2)

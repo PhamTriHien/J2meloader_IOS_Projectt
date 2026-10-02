@@ -273,7 +273,7 @@ void WT_Interpolate (S_WT_VOICE *pWTVoice, S_WT_INT_FRAME *pWTIntFrame)
     }
 
     /* save pointer and phase */
-    pWTVoice->phaseAccum = (EAS_U32) pSamples;
+    pWTVoice->phaseAccum = (uintptr_t) pSamples;
     pWTVoice->phaseFrac = (EAS_U32) phaseFrac;
 }
 #endif
@@ -377,7 +377,7 @@ void WT_InterpolateNoLoop (S_WT_VOICE *pWTVoice, S_WT_INT_FRAME *pWTIntFrame)
     }
 
     /* save pointer and phase */
-    pWTVoice->phaseAccum = (EAS_U32) pSamples;
+    pWTVoice->phaseAccum = (uintptr_t) pSamples;
     pWTVoice->phaseFrac = (EAS_U32) phaseFrac;
 }
 #endif

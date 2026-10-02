@@ -67,6 +67,8 @@ J2ME_API void                j2me_core_destroy(J2meEngineInstance* inst);
 // Trả về con trỏ vùng nhớ ARGB8888 32-bit (width * height * 4 bytes)
 J2ME_API const uint32_t*     j2me_core_lock_framebuffer(J2meEngineInstance* inst, int* out_width, int* out_height, bool* out_dirty);
 J2ME_API void                j2me_core_unlock_framebuffer(J2meEngineInstance* inst);
+// Chép khung hình hiện tại ra RGBA8888 (mỗi điểm ảnh lặp scale x scale). 1 = đã chép, 0 = không đổi, -1 = dst thiếu chỗ
+J2ME_API int                 j2me_core_copy_frame_rgba(J2meEngineInstance* inst, uint8_t* dst, size_t cap, int scale, bool force, int* out_width, int* out_height);
 J2ME_API void                j2me_core_set_screen_dimensions(J2meEngineInstance* inst, int width, int height);
 
 // --- 3. XỬ LÝ NHẬP LIỆU PHÍM BẤM & CẢM ỨNG ---
@@ -317,6 +319,10 @@ J2ME_API int    j2me_core_app_installer_check_jar(J2meEngineInstance* engine, co
 J2ME_API int    j2me_core_app_installer_install(J2meEngineInstance* engine, const char* jar_path, bool force_update, char* out_error, size_t error_cap);
 J2ME_API bool   j2me_core_app_installer_uninstall(J2meEngineInstance* engine, int app_id, char* out_error, size_t error_cap);
 J2ME_API bool   j2me_core_app_launch(J2meEngineInstance* engine, int app_id);
+// New engine running an installed app alongside others, sharing the library engine's app repository and
+// inheriting its FPS limit and screen size (the app's own profile still wins). clone_slot 0 uses the app's
+// save data; slot N > 0 keeps separate RMS under data/<app>/clones/N. Returns NULL on failure; free with j2me_core_destroy.
+J2ME_API J2meEngineInstance* j2me_core_app_spawn(J2meEngineInstance* library, int app_id, int clone_slot);
 
 // --- 22. JSR-82 MOBILE BLUETOOTH & RFCOMM/L2CAP MULTIPLAYER ---
 J2ME_API bool      j2me_core_bluetooth_is_power_on(void);
@@ -610,8 +616,32 @@ J2ME_API void      j2me_core_wav_set_media_time_us(uintptr_t player_handle, int6
 J2ME_API size_t    j2me_core_wav_render_pcm(uintptr_t player_handle, int16_t* out_stereo_pcm, size_t frames);
 J2ME_API void      j2me_core_wav_destroy(uintptr_t player_handle);
 
-// --- 32. NATIVE PLATFORM DIALOGS ---
+// --- 32. NATIVE PLATFORM DIALOGS & WINDOW MANAGEMENT ---
 J2ME_API bool      j2me_core_platform_pick_file(char* out_path, size_t max_len);
+J2ME_API bool      j2me_core_platform_set_window_size(int client_width, int client_height);
+J2ME_API bool      j2me_core_platform_get_window_size(int* out_width, int* out_height);
+
+
+// High-level screen (Form/TextBox) shown as a host input dialog
+J2ME_API int  j2me_core_screen_serial(J2meEngineInstance* inst);
+J2ME_API bool j2me_core_screen_get(J2meEngineInstance* inst, char* out_json, size_t max_len);
+J2ME_API void j2me_core_screen_submit(J2meEngineInstance* inst, int action, const char* values);
+// Commands of the current Canvas
+J2ME_API int  j2me_core_canvas_commands_version(J2meEngineInstance* inst);
+J2ME_API bool j2me_core_canvas_commands(J2meEngineInstance* inst, char* out_json, size_t max_len);
+J2ME_API void j2me_core_canvas_command(J2meEngineInstance* inst, int index);
+
+// --- HOST HTTP(S) BRIDGE ---
+// https:// requests on platforms without a native TLS client (Android, iOS) are handed to the host.
+// The handler may be called from any thread and must not block; the host answers with j2me_core_http_complete.
+typedef void (*j2me_http_handler_t)(int64_t request_id);
+J2ME_API void   j2me_core_set_http_handler(j2me_http_handler_t handler);
+// "METHOD\nURL\nName: value\n..." copied into out_buf; returns the size needed including the NUL (0 = unknown id)
+J2ME_API size_t j2me_core_http_request_info(int64_t request_id, char* out_buf, size_t max_len);
+// Request body copied into out_buf when it fits; returns its size
+J2ME_API size_t j2me_core_http_request_body(int64_t request_id, uint8_t* out_buf, size_t max_len);
+// head: "HTTP/1.1 200 OK\r\nName: value\r\n..." (no blank line). A non-null error fails the request instead.
+J2ME_API void   j2me_core_http_complete(int64_t request_id, const char* head, const uint8_t* body, size_t body_len, const char* error);
 
 #ifdef __cplusplus
 }

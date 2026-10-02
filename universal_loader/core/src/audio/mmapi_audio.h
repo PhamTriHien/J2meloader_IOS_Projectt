@@ -2,6 +2,7 @@
 #define J2ME_MMAPI_AUDIO_H
 
 #include "../../include/j2me_core.h"
+#include "audio_output.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -75,23 +76,23 @@ public:
     virtual void setLoopCount(int count) = 0;
     virtual int64_t setMediaTime(int64_t nowUsec) = 0;
     virtual int64_t getMediaTime() const = 0;
-    virtual int64_t getDuration() const = 0;
+    virtual int64_t getDuration() const = 0; // -1 (TIME_UNKNOWN) when not known yet
     virtual std::string getContentType() const = 0;
 
     virtual VolumeControl* getVolumeControl() = 0;
     virtual MidiControl* getMidiControl() = 0;
+
+    // Incremented on the audio thread each time playback reaches the end of the media (END_OF_MEDIA)
+    virtual uint32_t getEndOfMediaCount() const { return 0; }
 };
 
 // --- 5. Bộ tổng hợp âm thanh Sonivox EAS Engine ---
-class J2ME_API SonivoxAudioEngine {
+// Shared sources that are not tied to a Player: Manager.playTone and live MIDI events.
+// playMidiData/stopMidi keep the old single-track C API working on top of MidiAudioPlayer.
+class J2ME_API SonivoxAudioEngine : public AudioSource {
 public:
     static SonivoxAudioEngine& instance();
 
-    bool initialize();
-    void shutdown();
-    bool isInitialized() const { return m_initialized; }
-
-    // Nạp phát file nhạc SMF / MIDI / OTA / iMelody từ bộ nhớ
     bool playMidiData(const uint8_t* data, size_t size, int loopCount = 1);
     void stopMidi();
     void pauseMidi();
@@ -107,25 +108,15 @@ public:
     int getMasterVolume() const { return m_volumePercent; }
     void playTone(int note, int durationMs, int volume);
 
-    // Xuất mẫu PCM 16-bit Stereo (resample 22050 -> 44100Hz)
-    size_t renderAudio44100(int16_t* outStereoPcm, size_t frameCount);
-
-    int64_t getMediaTimeMs() const;
-    int64_t getMediaDurationMs() const;
+    bool mixInto(int32_t* acc, size_t frameCount) override;
 
 private:
     SonivoxAudioEngine();
-    ~SonivoxAudioEngine();
+    void openLiveStreamLocked();
+    std::shared_ptr<AudioSource> selfRef();
 
-    bool m_initialized{false};
-    int m_volumePercent{80};
-    int m_loopCount{1};
     mutable std::mutex m_mutex;
-
-    void* m_easHandle{nullptr};        // EAS_DATA_HANDLE
-    void* m_streamHandle{nullptr};     // EAS_HANDLE (file)
-    void* m_midiStreamHandle{nullptr}; // EAS_HANDLE (interactive stream)
-    std::vector<uint8_t> m_currentMidiData;
+    std::atomic<int> m_volumePercent{100};
 
     // Máy phát Tone độc lập
     double m_tonePhase{0.0};
@@ -133,17 +124,23 @@ private:
     int m_toneFramesLeft{0};
     float m_toneVolume{0.8f};
 
-    // Bộ nhớ đệm mẫu thô 22050Hz từ EAS
-    std::vector<int16_t> m_raw22050Buffer;
-    int16_t m_lastSampleLeft{0};
-    int16_t m_lastSampleRight{0};
+    // Live MIDI: own EAS instance, rendered while events keep arriving
+    void* m_liveEas{nullptr};
+    void* m_liveStream{nullptr};
+    int64_t m_liveUntilMs{0};
+    std::vector<int16_t> m_liveOut;
+    size_t m_liveOutPos{0};
+    int16_t m_livePrevL{0};
+    int16_t m_livePrevR{0};
 
-    void closeStreamLocked();
-    void openMidiStreamLocked();
+    std::shared_ptr<Player> m_legacyPlayer;
 };
 
 // --- 6. Triển khai MidiAudioPlayer thực tế ---
-class J2ME_API MidiAudioPlayer : public Player, public VolumeControl, public MidiControl {
+// SMF / iMelody / RTTTL / OTA player backed by its own Sonivox instance, so any number of players can
+// play, pause and loop independently. Must be owned by a shared_ptr (MmapiManager::createPlayer).
+class J2ME_API MidiAudioPlayer : public Player, public VolumeControl, public MidiControl, public AudioSource,
+                                 public std::enable_shared_from_this<MidiAudioPlayer> {
 public:
     MidiAudioPlayer(const std::vector<uint8_t>& data, const std::string& contentType);
     explicit MidiAudioPlayer(const std::string& locator);
@@ -157,12 +154,13 @@ public:
     void deallocate() override;
     void close() override;
 
-    MmapiPlayerState getState() const override { return m_state; }
+    MmapiPlayerState getState() const override;
     void setLoopCount(int count) override;
     int64_t setMediaTime(int64_t nowUsec) override;
     int64_t getMediaTime() const override;
     int64_t getDuration() const override;
     std::string getContentType() const override { return m_contentType; }
+    uint32_t getEndOfMediaCount() const override { return m_endOfMedia.load(); }
 
     VolumeControl* getVolumeControl() override { return this; }
     MidiControl* getMidiControl() override { return this; }
@@ -179,14 +177,42 @@ public:
     void setProgram(int channel, int bank, int program) override;
     void setChannelVolume(int channel, int volume) override;
 
+    bool mixInto(int32_t* acc, size_t frameCount) override;
+
+    struct MemFile {
+        const uint8_t* data{nullptr};
+        int size{0};
+    };
+
 private:
+    bool openLocked();
+    void closeStreamLocked();
+    void releaseLocked();
+    bool renderChunkLocked();
+
     std::vector<uint8_t> m_data;
+    MemFile m_file;
     std::string m_contentType;
     std::string m_locator;
+
+    mutable std::mutex m_mutex;
     MmapiPlayerState m_state{PLAYER_UNREALIZED};
     int m_loopCount{1};
-    int m_volume{80};
-    bool m_muted{false};
+    int m_loopsLeft{1};
+    std::atomic<int> m_volume{100};
+    std::atomic<bool> m_muted{false};
+    std::atomic<uint32_t> m_endOfMedia{0};
+
+    void* m_eas{nullptr};      // EAS_DATA_HANDLE
+    void* m_stream{nullptr};   // EAS_HANDLE
+    bool m_streamDone{false};  // parser reached the end; the output FIFO still holds the tail
+    bool m_atEnd{false};       // finished; the next start() rewinds
+    int64_t m_durationMs{-1};
+
+    std::vector<int16_t> m_out; // 44.1 kHz stereo produced from the last 128-frame EAS chunk
+    size_t m_outPos{0};
+    int16_t m_prevL{0};
+    int16_t m_prevR{0};
 };
 
 // --- 7. Bộ quản lý MMAPI Manager ---

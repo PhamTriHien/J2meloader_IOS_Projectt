@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <vector>
 #include <atomic>
+#include <mutex>
 #include <string>
 
 namespace j2me {
@@ -30,6 +31,9 @@ public:
     void publishFrame();
     const uint32_t* lockDisplayFrame(int* outW, int* outH, bool* outDirty);
     void unlockDisplayFrame();
+    // Copies the display frame as RGBA8888 bytes with every pixel repeated scale x scale.
+    // Returns 1 when a frame was written, 0 when nothing changed since the last copy, -1 when dst is too small.
+    int copyDisplayRgba(uint8_t* dst, size_t cap, int scale, bool force, int* outW, int* outH);
 
     // --- 2D Rasterizer Primitives ---
     void clear(uint32_t argbColor);
@@ -63,6 +67,7 @@ private:
 
     std::atomic<bool> m_isDirty{false};
     std::atomic<bool> m_isDisplayLocked{false};
+    std::mutex m_displayMutex; // held by the UI while it reads the display buffer
 
     bool isPixelInClip(int x, int y) const {
         return (x >= m_clip.x && x < (m_clip.x + m_clip.w) &&

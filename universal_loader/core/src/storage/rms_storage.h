@@ -129,10 +129,13 @@ private:
     bool loadFromDisk();
 };
 
-// --- Quản lý toàn cục RMS (RmsManager) ---
+// --- Quản lý RMS (RmsManager): one per engine, so games running side by side never share open stores ---
 class J2ME_API RmsManager {
 public:
-    static RmsManager& instance();
+    RmsManager();
+    ~RmsManager();
+    RmsManager(const RmsManager&) = delete;
+    RmsManager& operator=(const RmsManager&) = delete;
 
     void setStorageRoot(const std::string& rootDir);
     const std::string& getStorageRoot() const { return m_rootDir; }
@@ -143,9 +146,6 @@ public:
     std::vector<std::string> listRecordStores(const std::string& suiteName);
 
 private:
-    RmsManager();
-    ~RmsManager();
-
     std::string m_rootDir{"./rms_data"};
     std::map<std::string, RecordStoreInstance*> m_openStores;
     std::recursive_mutex m_mutex;

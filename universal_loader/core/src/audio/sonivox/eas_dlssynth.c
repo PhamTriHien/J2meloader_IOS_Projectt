@@ -345,7 +345,7 @@ EAS_RESULT DLS_StartVoice (S_VOICE_MGR *pVoiceMgr, S_SYNTH *pSynth, S_SYNTH_VOIC
     pWTVoice->filter.z2 = 0;
 
     /* initialize the oscillator */
-    pWTVoice->phaseAccum = (EAS_U32) pSynth->pDLS->pDLSSamples + pSynth->pDLS->pDLSSampleOffsets[pDLSRegion->wtRegion.waveIndex];
+    pWTVoice->phaseAccum = (uintptr_t) pSynth->pDLS->pDLSSamples + pSynth->pDLS->pDLSSampleOffsets[pDLSRegion->wtRegion.waveIndex];
     if (pDLSRegion->wtRegion.region.keyGroupAndFlags & REGION_FLAG_IS_LOOPED)
     {
 #if defined (_8_BIT_SAMPLES)

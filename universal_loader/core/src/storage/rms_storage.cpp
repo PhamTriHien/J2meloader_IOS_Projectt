@@ -494,13 +494,8 @@ bool RecordStoreInstance::loadFromDisk() {
 }
 
 // ============================================================================
-// RmsManager Singleton Triển Khai
+// RmsManager Triển Khai
 // ============================================================================
-
-RmsManager& RmsManager::instance() {
-    static RmsManager s_inst;
-    return s_inst;
-}
 
 RmsManager::RmsManager() {}
 

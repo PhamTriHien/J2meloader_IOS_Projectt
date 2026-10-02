@@ -151,25 +151,30 @@ bool NetworkSocket::connect(const std::string& host, int port, int timeoutMs) {
     return true;
 }
 
+// send/recv only hold m_mutex to read the handle: a reader blocked in select() must not starve writers
 int NetworkSocket::send(const uint8_t* data, size_t length) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::unique_lock<std::mutex> lock(m_mutex);
     if (!m_connected.load() || !data || length == 0) return -1;
+    const auto sock = m_sock;
+    lock.unlock();
 
 #if defined(_WIN32) || defined(_WIN64)
-    SOCKET s = static_cast<SOCKET>(m_sock);
+    SOCKET s = static_cast<SOCKET>(sock);
     int res = ::send(s, reinterpret_cast<const char*>(data), (int)length, 0);
 #else
-    int res = ::send(m_sock, data, length, 0);
+    int res = ::send(sock, data, length, 0);
 #endif
     return res;
 }
 
 int NetworkSocket::recv(uint8_t* buffer, size_t maxLength, int timeoutMs) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::unique_lock<std::mutex> lock(m_mutex);
     if (!m_connected.load() || !buffer || maxLength == 0) return -1;
+    const auto sock = m_sock;
+    lock.unlock();
 
 #if defined(_WIN32) || defined(_WIN64)
-    SOCKET s = static_cast<SOCKET>(m_sock);
+    SOCKET s = static_cast<SOCKET>(sock);
     fd_set rs;
     FD_ZERO(&rs);
     FD_SET(s, &rs);
@@ -189,15 +194,15 @@ int NetworkSocket::recv(uint8_t* buffer, size_t maxLength, int timeoutMs) {
 #else
     fd_set rs;
     FD_ZERO(&rs);
-    FD_SET(m_sock, &rs);
+    FD_SET(sock, &rs);
     struct timeval tv;
     tv.tv_sec = timeoutMs / 1000;
     tv.tv_usec = (timeoutMs % 1000) * 1000;
 
-    int sel = select(m_sock + 1, &rs, nullptr, nullptr, &tv);
+    int sel = select(sock + 1, &rs, nullptr, nullptr, &tv);
     if (sel <= 0) return 0;
 
-    int bytes = ::recv(m_sock, buffer, maxLength, 0);
+    int bytes = ::recv(sock, buffer, maxLength, 0);
     if (bytes <= 0) {
         m_connected.store(false);
         return -1;

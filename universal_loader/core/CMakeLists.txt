@@ -7,9 +7,17 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Tối ưu hóa hiệu năng cao
 if(MSVC)
-    add_compile_options(/O2 /W3 /utf-8 /wd4251 /wd4275 /wd4996 /wd4244 /wd4267 /wd4146 /wd4018 /wd4311 /wd4312 /wd4101)
+    add_compile_options($<$<NOT:$<CONFIG:Debug>>:/O2> /W3 /utf-8 /wd4251 /wd4275 /wd4996 /wd4244 /wd4267 /wd4146 /wd4018 /wd4311 /wd4312 /wd4101)
+elseif(ANDROID)
+    add_compile_options(-O1 -g0 -mllvm -inline-threshold=0 -Wall -Wextra -Wno-unused-parameter)
+    set(CMAKE_CXX_FLAGS_RELEASE "-O1 -g0 -mllvm -inline-threshold=0 -DNDEBUG" CACHE STRING "" FORCE)
+    set(CMAKE_C_FLAGS_RELEASE "-O1 -g0 -DNDEBUG" CACHE STRING "" FORCE)
+    set(CMAKE_CXX_FLAGS_DEBUG "-O1 -g0 -mllvm -inline-threshold=0" CACHE STRING "" FORCE)
+    set(CMAKE_C_FLAGS_DEBUG "-O1 -g0" CACHE STRING "" FORCE)
+    set(CMAKE_CXX_FLAGS "-O1 -g0 -mllvm -inline-threshold=0" CACHE STRING "" FORCE)
+    set(CMAKE_C_FLAGS "-O1 -g0" CACHE STRING "" FORCE)
 else()
-    add_compile_options(-O3 -Wall -Wextra -Wno-unused-parameter)
+    add_compile_options(-O2 -Wall -Wextra -Wno-unused-parameter)
 endif()
 
 # Sonivox EAS definitions
@@ -81,8 +89,10 @@ set(CORE_SOURCES
     src/jvm/jar_reader.cpp
     src/storage/rms_storage.cpp
     src/network/gcf_network.cpp
+    src/network/http_bridge.cpp
     src/network/datagram_connection.cpp
     src/audio/mmapi_audio.cpp
+    src/audio/audio_output.cpp
     src/graphics3d/math3d.cpp
     src/graphics3d/micro3d_engine.cpp
     src/graphics3d/m3g_engine.cpp
@@ -134,6 +144,12 @@ set(CORE_SOURCES
     src/config/app_profile_config.cpp
     src/jvm/class_file.cpp
     src/jvm/cldc_vm.cpp
+    src/jvm/cldc_stdlib.cpp
+    src/jvm/cldc_stdlib_helpers.cpp
+    src/jvm/cldc_stdlib_lang.cpp
+    src/jvm/cldc_stdlib_coll.cpp
+    src/jvm/cldc_stdlib_net.cpp
+    src/jvm/cldc_stdlib_media.cpp
     src/lcdui/game/tiled_layer.cpp
     src/lcdui/game/layer_manager.cpp
     src/app/app_item.cpp
@@ -162,35 +178,55 @@ set(CORE_SOURCES
     src/comm/comm_connection.cpp
     src/security/secure_connection.cpp
     src/platform/platform_dialogs.cpp
+    src/platform/android_logcat.cpp
     ${SONIVOX_SOURCES}
 )
 
 # Build Shared Library
 add_library(j2me_core SHARED ${CORE_SOURCES})
 
+if(ANDROID)
+    set_source_files_properties(src/jvm/cldc_stdlib.cpp PROPERTIES COMPILE_FLAGS "-O1 -g0 -mllvm -inline-threshold=0")
+endif()
+
 target_compile_definitions(j2me_core PRIVATE J2ME_CORE_EXPORTS)
 
+find_package(Threads REQUIRED)
+target_link_libraries(j2me_core PRIVATE Threads::Threads)
+
 if(WIN32)
-    target_link_libraries(j2me_core PRIVATE ws2_32 comdlg32)
+    target_link_libraries(j2me_core PRIVATE ws2_32 comdlg32 winhttp winmm)
+    # j2me_core.dll; other platforms keep the lib prefix (libj2me_core.so / .dylib) that the Dart bindings open
+    set_target_properties(j2me_core PROPERTIES PREFIX "")
+elseif(ANDROID)
+    target_link_libraries(j2me_core PRIVATE OpenSLES log)
+elseif(APPLE)
+    target_link_libraries(j2me_core PRIVATE "-framework AudioToolbox")
 endif()
 
-set_target_properties(j2me_core PROPERTIES
-    OUTPUT_NAME "j2me_core"
-    PREFIX ""
-)
+set_target_properties(j2me_core PROPERTIES OUTPUT_NAME "j2me_core")
 
-# Test executable
-add_executable(test_core test_main.cpp)
-target_link_libraries(test_core PRIVATE j2me_core)
-if(WIN32)
-    target_link_libraries(test_core PRIVATE ws2_32 comdlg32)
+# Test executable (desktop only)
+option(J2ME_BUILD_TESTS "Build the test_core executable" ON)
+if(J2ME_BUILD_TESTS AND NOT ANDROID AND NOT IOS)
+    add_executable(test_core test_main.cpp)
+    target_link_libraries(test_core PRIVATE j2me_core)
+    if(MSVC)
+        target_compile_options(test_core PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(test_core PRIVATE -UNDEBUG)
+    endif()
+    if(WIN32)
+        target_link_libraries(test_core PRIVATE ws2_32 comdlg32)
+    endif()
 endif()
 
-# Export headers
-install(TARGETS j2me_core
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-)
-
-install(FILES include/j2me_core.h DESTINATION include)
+# Export headers (standalone builds only; the Flutter runners bundle the library themselves)
+if(PROJECT_IS_TOP_LEVEL)
+    install(TARGETS j2me_core
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+    )
+    install(FILES include/j2me_core.h DESTINATION include)
+endif()

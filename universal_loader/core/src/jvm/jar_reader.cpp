@@ -369,6 +369,20 @@ bool JarReader::extractEntry(const std::string& name, std::vector<uint8_t>& outD
     if (it == m_entries.end()) {
         it = m_entries.find(name);
     }
+    // Case-insensitive fallback for resources only: obfuscated jars ship classes that differ only by case
+    const bool isClass = norm.size() > 6 && norm.compare(norm.size() - 6, 6, ".class") == 0;
+    if (it == m_entries.end() && !isClass) {
+        std::string lowerNorm = norm;
+        std::transform(lowerNorm.begin(), lowerNorm.end(), lowerNorm.begin(), [](unsigned char c) { return std::tolower(c); });
+        for (auto entryIt = m_entries.begin(); entryIt != m_entries.end(); ++entryIt) {
+            std::string entryLower = entryIt->first;
+            std::transform(entryLower.begin(), entryLower.end(), entryLower.begin(), [](unsigned char c) { return std::tolower(c); });
+            if (entryLower == lowerNorm) {
+                it = entryIt;
+                break;
+            }
+        }
+    }
     if (it == m_entries.end()) return false;
 
     const ZipEntryInfo& entry = it->second;

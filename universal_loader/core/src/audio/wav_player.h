@@ -23,7 +23,8 @@ struct WavFormatInfo {
     size_t totalFrames{0};
 };
 
-class J2ME_API WavPlayer : public Player, public VolumeControl {
+class J2ME_API WavPlayer : public Player, public VolumeControl, public AudioSource,
+                           public std::enable_shared_from_this<WavPlayer> {
 public:
     static std::shared_ptr<WavPlayer> createFromMemory(const uint8_t* data, size_t size);
     static std::shared_ptr<WavPlayer> createFromFile(const std::string& path);
@@ -40,12 +41,13 @@ public:
     void deallocate() override;
     void close() override;
 
-    MmapiPlayerState getState() const override { return m_state; }
+    MmapiPlayerState getState() const override;
     void setLoopCount(int count) override;
     int64_t setMediaTime(int64_t nowUsec) override;
     int64_t getMediaTime() const override;
     int64_t getDuration() const override;
     std::string getContentType() const override { return "audio/x-wav"; }
+    uint32_t getEndOfMediaCount() const override { return m_endOfMedia.load(); }
 
     VolumeControl* getVolumeControl() override { return this; }
     MidiControl* getMidiControl() override { return nullptr; }
@@ -59,6 +61,7 @@ public:
     // Direct Audio Render (Resampled to 44.1kHz 16-bit Stereo PCM)
     size_t renderAudio44100(int16_t* outStereoPcm, size_t frameCount);
     size_t streamToRingBuffer(AudioRingBuffer& ringBuffer, size_t maxFrames);
+    bool mixInto(int32_t* acc, size_t frameCount) override;
 
     const WavFormatInfo& getFormatInfo() const { return m_format; }
     bool isValid() const { return m_valid; }
@@ -72,15 +75,18 @@ private:
     MmapiPlayerState m_state{PLAYER_UNREALIZED};
     int m_loopCount{1};
     int m_currentLoop{0};
-    int m_volume{80};
+    int m_volume{100};
     bool m_muted{false};
 
     double m_playbackFramePos{0.0};
+    std::atomic<uint32_t> m_endOfMedia{0};
     mutable std::mutex m_mutex;
 
     bool parseRiffHeader();
     void decodeSamplesToPcm16();
     void sampleAt(double frameIndex, int16_t& outLeft, int16_t& outRight) const;
+    // Advances playback by frameCount output frames; each frame is passed to emit(i, l, r) with volume applied
+    template <typename Emit> size_t renderLocked(size_t frameCount, Emit emit);
 };
 
 } // namespace j2me

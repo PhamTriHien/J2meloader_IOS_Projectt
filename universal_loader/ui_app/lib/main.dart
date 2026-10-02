@@ -1,12 +1,21 @@
+import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:ffi/ffi.dart';
+import 'bridge/http_bridge.dart';
 import 'bridge/j2me_ffi.dart';
+import 'bridge/platform_channel.dart';
+import 'sessions/game_session.dart';
 import 'views/emulator_screen.dart';
+import 'views/app_config_dialog.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await J2mePlatform.enterDataDir();
+  // Windows uses WinHTTP inside the core; mobile has no native TLS client there
+  if (Platform.isAndroid || Platform.isIOS) HostHttpBridge.install(J2meBindings.instance.library);
   runApp(const UniversalJ2meApp());
 }
 
@@ -16,24 +25,61 @@ class UniversalJ2meApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'J2ME-Loader',
+      title: 'J5Hienloader',
       debugShowCheckedModeBanner: false,
+      // Upstream values-night/colors.xml: primary #262e37, background #20272f, accent #0099ff
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF121212),
+        scaffoldBackgroundColor: const Color(0xFF20272F),
+        // Compact desktop density: smaller controls, text and dialog chrome
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        textTheme: Typography.englishLike2021
+            .merge(Typography.material2021(platform: TargetPlatform.windows).white)
+            .apply(fontSizeFactor: 0.88),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            foregroundColor: Colors.white,
+            textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+        ),
+        dialogTheme: const DialogThemeData(
+          backgroundColor: Color(0xFF262E37),
+          titleTextStyle: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w500),
+          contentTextStyle: TextStyle(color: Colors.white70, fontSize: 13),
+          insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        ),
+        listTileTheme: const ListTileThemeData(
+          dense: true,
+          titleTextStyle: TextStyle(color: Colors.white, fontSize: 14),
+          subtitleTextStyle: TextStyle(color: Colors.white60, fontSize: 12),
+        ),
+        inputDecorationTheme: const InputDecorationTheme(isDense: true),
+        snackBarTheme: const SnackBarThemeData(contentTextStyle: TextStyle(fontSize: 13)),
+        popupMenuTheme: const PopupMenuThemeData(
+          color: Color(0xFF262E37),
+          textStyle: TextStyle(color: Colors.white, fontSize: 14),
+        ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1F1F1F),
-          elevation: 1,
+          backgroundColor: Color(0xFF262E37),
+          elevation: 4,
+          toolbarHeight: 48,
           titleTextStyle: TextStyle(
             color: Colors.white,
-            fontSize: 19,
-            fontWeight: FontWeight.w600,
+            fontSize: 18,
+            fontWeight: FontWeight.w500,
           ),
           iconTheme: IconThemeData(color: Colors.white),
         ),
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF1E88E5),
-          surface: Color(0xFF1F1F1F),
+          primary: Color(0xFF0099FF),
+          secondary: Color(0xFF0099FF),
+          surface: Color(0xFF262E37),
+          onSurface: Colors.white,
         ),
       ),
       home: const GameLibraryScreen(),
@@ -41,13 +87,20 @@ class UniversalJ2meApp extends StatelessWidget {
   }
 }
 
+// Upstream pref_app_sort_entries: Name, Date, Vendor
+const List<String> kSortLabels = ["Tên", "Ngày tháng", "Vendor"];
+
 class GameItem {
   final int id;
   final String title;
   final String vendor;
   final String version;
   final String path;
+  final String imagePath;
   final String resolution;
+  final int installedTimestamp;
+  final int lastPlayedTimestamp;
+  final int playCount;
 
   GameItem({
     required this.id,
@@ -55,7 +108,11 @@ class GameItem {
     required this.vendor,
     required this.version,
     required this.path,
+    required this.imagePath,
     required this.resolution,
+    this.installedTimestamp = 0,
+    this.lastPlayedTimestamp = 0,
+    this.playCount = 0,
   });
 }
 
@@ -70,6 +127,12 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
   ffi.Pointer<ffi.Void>? _engine;
   late final J2meBindings _bindings;
   final List<GameItem> _games = [];
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = "";
+  int _sortVariant = 0;
+  bool _sortDescending = false;
+
   int _selectedLayout = 0;
   int _selectedFps = 60;
   int _selectedResolutionIndex = 5;
@@ -82,7 +145,16 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
     _engine = _bindings.coreCreate(storageDir);
     calloc.free(storageDir);
 
+    if (_engine != null) {
+      GameSessionManager.instance.setLibraryEngine(_engine!);
+    }
+    GameSessionManager.instance.addListener(_onSessionsChanged);
+
     _loadInstalledApps();
+  }
+
+  void _onSessionsChanged() {
+    if (mounted) setState(() {});
   }
 
   void _loadInstalledApps() {
@@ -98,6 +170,10 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
         final author = _arrayToString(infoPtr.ref.author, 128);
         final version = _arrayToString(infoPtr.ref.version, 32);
         final path = _arrayToString(infoPtr.ref.path, 128);
+        final imagePath = _arrayToString(infoPtr.ref.imagePath, 256);
+        final installedTimestamp = infoPtr.ref.installedTimestamp;
+        final lastPlayedTimestamp = infoPtr.ref.lastPlayedTimestamp;
+        final playCount = infoPtr.ref.playCount;
 
         _games.add(GameItem(
           id: infoPtr.ref.id,
@@ -105,12 +181,177 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
           vendor: author.isNotEmpty ? author : "J2ME",
           version: version.isNotEmpty ? version : "1.0",
           path: path,
+          imagePath: imagePath,
           resolution: "240x320",
+          installedTimestamp: installedTimestamp,
+          lastPlayedTimestamp: lastPlayedTimestamp,
+          playCount: playCount,
         ));
       }
     }
 
     calloc.free(infoPtr);
+  }
+
+  List<GameItem> get _filteredAndSortedGames {
+    var list = _games.where((g) {
+      if (_searchQuery.isEmpty) return true;
+      final q = _searchQuery.toLowerCase();
+      return g.title.toLowerCase().contains(q) ||
+             g.vendor.toLowerCase().contains(q) ||
+             g.path.toLowerCase().contains(q);
+    }).toList();
+
+    // Same orderings as upstream pref_app_sort_values; picking the active variant again flips the direction
+    final dir = _sortDescending ? -1 : 1;
+    int byTitle(GameItem a, GameItem b) => a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    int byVendor(GameItem a, GameItem b) => a.vendor.toLowerCase().compareTo(b.vendor.toLowerCase());
+    switch (_sortVariant) {
+      case 0:
+        list.sort((a, b) {
+          final c = byTitle(a, b) * dir;
+          return c != 0 ? c : byVendor(a, b);
+        });
+        break;
+      case 1:
+        list.sort((a, b) => a.id.compareTo(b.id) * dir);
+        break;
+      case 2:
+        list.sort((a, b) {
+          final c = byVendor(a, b) * dir;
+          return c != 0 ? c : byTitle(a, b);
+        });
+        break;
+    }
+    return list;
+  }
+
+  void _showSortDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text("Sắp xếp thứ tự ứng dụng"),
+        children: [
+          for (int i = 0; i < kSortLabels.length; ++i)
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(ctx);
+                setState(() {
+                  if (_sortVariant == i) {
+                    _sortDescending = !_sortDescending;
+                  } else {
+                    _sortVariant = i;
+                    _sortDescending = false;
+                  }
+                });
+              },
+              child: Row(
+                children: [
+                  Expanded(child: Text(kSortLabels[i], style: const TextStyle(fontSize: 16))),
+                  if (_sortVariant == i)
+                    Icon(_sortDescending ? Icons.arrow_upward : Icons.arrow_downward, size: 20),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showMessageDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(child: Text(message)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK")),
+        ],
+      ),
+    );
+  }
+
+  void _onOptionsItem(String item) {
+    switch (item) {
+      case 'about':
+        _showMessageDialog(
+          "J5Hienloader",
+          "Trình giả lập J2ME đa nền tảng tối ưu hiệu năng cao.\n"
+          "Hỗ trợ đồ họa LCDUI, M3G 3D, Mascot Capsule, âm thanh Sonivox MIDI/WAV, mạng kết nối Socket/HTTP và tính năng nhân bản game (Multi-Instance) chạy nền liên tục 24/7.\n\n"
+          "J5Hienloader v1.0.0",
+        );
+        break;
+      case 'settings':
+        _showGlobalSettingsDialog();
+        break;
+      case 'help':
+        _showMessageDialog(
+          "Trợ giúp",
+          "• Bật tính năng bộ lọc trong một số trường hợp có thể giảm đáng kể hiệu suất. "
+          "Tắt tùy chọn này nếu trò chơi quá chậm.\n"
+          "• Các vấn đề nhấp nháy hình ảnh có thể được khắc phục bằng cách bật tuỳ chọn "
+          "\"Chế độ xử lý ngay lập tức\" tuỳ chỉnh.",
+        );
+        break;
+      case 'exit':
+        GameSessionManager.instance.stopAll();
+        if (_engine != null) {
+          _bindings.coreDestroy(_engine!);
+          _engine = null;
+        }
+        exit(0);
+    }
+  }
+
+  void _showContextMenu(GameItem game, Offset position) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(position & const Size(1, 1), Offset.zero & overlay.size),
+      items: const [
+        PopupMenuItem(value: 'play', child: Text("Chạy game")),
+        PopupMenuItem(value: 'clone', child: Text("Nhân bản (Tạo bản sao mới)")),
+        PopupMenuItem(value: 'rename', child: Text("Đổi tên")),
+        PopupMenuItem(value: 'settings', child: Text("Thiết lập")),
+        PopupMenuItem(value: 'reinstall', child: Text("Cài đặt lại")),
+        PopupMenuItem(value: 'delete', child: Text("Xóa")),
+      ],
+    );
+    if (!mounted) return;
+    switch (selected) {
+      case 'play':
+        _launchGame(game, cloneSlot: 0);
+        break;
+      case 'clone':
+        final nextSlot = GameSessionManager.instance.getNextAvailableSlot(game.id);
+        _launchGame(game, cloneSlot: nextSlot);
+        break;
+      case 'rename':
+        _showRenameGameDialog(game);
+        break;
+      case 'settings':
+        showDialog(
+          context: context,
+          builder: (c) => AppConfigDialog(
+            appPath: game.path,
+            appTitle: game.title,
+            onSaved: () {
+              final active = GameSessionManager.instance.findSession(game.id, 0);
+              if (active != null) {
+                GameSessionManager.instance.stopSession(active);
+              }
+              setState(() {});
+            },
+          ),
+        );
+        break;
+      case 'reinstall':
+        _onAddGamePressed();
+        break;
+      case 'delete':
+        _deleteGame(game);
+        break;
+    }
   }
 
   String _arrayToString(ffi.Array<ffi.Uint8> arr, int maxLen) {
@@ -125,6 +366,9 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
 
   @override
   void dispose() {
+    GameSessionManager.instance.removeListener(_onSessionsChanged);
+    _searchController.dispose();
+    GameSessionManager.instance.stopAll();
     if (_engine != null) {
       _bindings.coreDestroy(_engine!);
       _engine = null;
@@ -132,17 +376,41 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
     super.dispose();
   }
 
-  void _launchGame(GameItem game) {
+  void _launchGame(GameItem game, {int cloneSlot = 0}) {
     if (_engine == null) return;
 
-    bool ok = false;
-    // 1. Nếu là ứng dụng đã cài đặt (id > 0), khởi chạy qua appLaunch (tự động cấu hình RMS, profile và app.jar)
-    if (game.id > 0) {
-      ok = _bindings.appLaunch(_engine!, game.id);
+    // 1. Kiểm tra xem phiên game (appId + cloneSlot) này đã đang chạy chưa
+    final existing = GameSessionManager.instance.findSession(game.id, cloneSlot);
+    if (existing != null) {
+      GameSessionManager.instance.setActiveSession(existing);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => EmulatorScreen(
+            initialSession: existing,
+            title: existing.displayName,
+            appPath: game.path,
+          ),
+        ),
+      ).then((_) {
+        if (mounted) setState(() => _loadInstalledApps());
+      });
+      return;
     }
 
-    // 2. Dự phòng: Nếu chưa chạy được, phân giải đường dẫn thực tế trên đĩa và nạp trực tiếp
-    if (!ok && game.path.isNotEmpty) {
+    // 2. Khởi tạo phiên game mới (hoặc bản sao độc lập)
+    GameSession? session;
+    if (game.id > 0) {
+      session = GameSessionManager.instance.launchOrActivate(
+        appId: game.id,
+        appPath: game.path,
+        title: game.title,
+        cloneSlot: cloneSlot,
+      );
+    }
+
+    // 3. Dự phòng: Nạp trực tiếp JAR nếu chưa có ID trong Repo
+    if (session == null && game.path.isNotEmpty) {
       String resolvedPath = game.path;
       if (!File(resolvedPath).existsSync()) {
         final candidates = [
@@ -160,33 +428,54 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
 
       if (File(resolvedPath).existsSync()) {
         final pathPtr = resolvedPath.toNativeUtf8();
-        ok = _bindings.coreLoadJarFile(_engine!, pathPtr);
+        final ok = _bindings.coreLoadJarFile(_engine!, pathPtr);
         calloc.free(pathPtr);
+        if (ok) {
+          final realTitlePtr = _bindings.coreGetAppTitle(_engine!);
+          final realTitle = realTitlePtr.toDartString();
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => EmulatorScreen(
+                engineInstance: _engine!,
+                title: realTitle.isNotEmpty ? realTitle : game.title,
+                appPath: game.path,
+              ),
+            ),
+          ).then((_) {
+            if (mounted) setState(() => _loadInstalledApps());
+          });
+          return;
+        }
       }
     }
 
-    if (!ok) {
+    if (session == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Không thể nạp tệp game: ${game.title}"),
+          content: Text("Không thể khởi chạy game: ${game.title}"),
           backgroundColor: Colors.redAccent,
         ),
       );
       return;
     }
 
-    final realTitlePtr = _bindings.coreGetAppTitle(_engine!);
-    final realTitle = realTitlePtr.toDartString();
-
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => EmulatorScreen(
-          engineInstance: _engine!,
-          title: realTitle.isNotEmpty ? realTitle : game.title,
+          initialSession: session,
+          title: session!.displayName,
+          appPath: game.path,
         ),
       ),
-    );
+    ).then((_) {
+      if (mounted) {
+        setState(() {
+          _loadInstalledApps();
+        });
+      }
+    });
   }
 
   void _installJarPath(String path) {
@@ -250,8 +539,35 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
       return;
     }
 
-    // 2. Trên Android, iOS hoặc duyệt thư mục bộ nhớ trên thiết bị:
+    // 2. Trên Android / iOS: trình chọn tài liệu của hệ điều hành
+    if (J2mePlatform.isMobile) {
+      _pickJarMobile();
+      return;
+    }
+
     _showDeviceStorageBrowser();
+  }
+
+  Future<void> _pickJarMobile() async {
+    String? picked;
+    try {
+      picked = await J2mePlatform.pickJar();
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Không mở được tệp: ${e.message ?? e.code}"), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
+    if (picked == null || !mounted) return;
+    final lower = picked.toLowerCase();
+    if (!lower.endsWith('.jar') && !lower.endsWith('.jad')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Hãy chọn tệp .jar hoặc .jad"), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
+    _installJarPath(picked);
   }
 
   void _showDeviceStorageBrowser() {
@@ -265,96 +581,120 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
     );
   }
 
-  void _showSettingsDialog() {
+  void _showGlobalSettingsDialog() {
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1F1F1F),
-          title: const Text("Thiết lập", style: TextStyle(color: Colors.white, fontSize: 16)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("Bố cục phím (KeyMapper):", style: TextStyle(color: Color(0xFF64B5F6), fontSize: 13, fontWeight: FontWeight.bold)),
-                DropdownButton<int>(
-                  value: _selectedLayout,
-                  dropdownColor: const Color(0xFF1F1F1F),
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(value: 0, child: Text("Nokia / Sony Ericsson (Mặc định)", style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 1, child: Text("Siemens Layout", style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 2, child: Text("Motorola Layout", style: TextStyle(color: Colors.white))),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) {
-                      setDialogState(() => _selectedLayout = val);
-                      setState(() => _selectedLayout = val);
-                      _bindings.coreKeymapSetLayout(val);
-                    }
-                  },
-                ),
-                const SizedBox(height: 16),
-                const Text("Giới hạn FPS:", style: TextStyle(color: Color(0xFF64B5F6), fontSize: 13, fontWeight: FontWeight.bold)),
-                DropdownButton<int>(
-                  value: _selectedFps,
-                  dropdownColor: const Color(0xFF1F1F1F),
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(value: 30, child: Text("30 FPS", style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 50, child: Text("50 FPS", style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 60, child: Text("60 FPS", style: TextStyle(color: Colors.white))),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) {
-                      setDialogState(() => _selectedFps = val);
-                      setState(() => _selectedFps = val);
-                      if (_engine != null) {
-                        _bindings.coreSetFpsLimit(_engine!, val);
+          backgroundColor: const Color(0xFF131B2E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          titlePadding: const EdgeInsets.fromLTRB(14, 12, 10, 4),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          title: const Row(
+            children: [
+              Icon(Icons.settings, color: Color(0xFF38BDF8), size: 18),
+              SizedBox(width: 8),
+              Text("Thiết lập chung", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Bố cục phím mặc định (KeyMapper):", style: TextStyle(color: Color(0xFF90CAF9), fontSize: 11.5, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 2),
+                  DropdownButton<int>(
+                    value: _selectedLayout,
+                    dropdownColor: const Color(0xFF1E293B),
+                    isExpanded: true,
+                    isDense: true,
+                    items: const [
+                      DropdownMenuItem(value: 0, child: Text("Nokia / Sony Ericsson (Mặc định)", style: TextStyle(color: Colors.white, fontSize: 11.5))),
+                      DropdownMenuItem(value: 1, child: Text("Siemens Layout", style: TextStyle(color: Colors.white, fontSize: 11.5))),
+                      DropdownMenuItem(value: 2, child: Text("Motorola Layout", style: TextStyle(color: Colors.white, fontSize: 11.5))),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDialogState(() => _selectedLayout = val);
+                        setState(() => _selectedLayout = val);
+                        _bindings.coreKeymapSetLayout(val);
                       }
-                    }
-                  },
-                ),
-                const SizedBox(height: 16),
-                const Text("Độ phân giải màn hình:", style: TextStyle(color: Color(0xFF64B5F6), fontSize: 13, fontWeight: FontWeight.bold)),
-                DropdownButton<int>(
-                  value: _selectedResolutionIndex,
-                  dropdownColor: const Color(0xFF1F1F1F),
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(value: 0, child: Text("128 x 128", style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 1, child: Text("128 x 160", style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 3, child: Text("176 x 220", style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 5, child: Text("240 x 320", style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(value: 6, child: Text("320 x 240", style: TextStyle(color: Colors.white))),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) {
-                      setDialogState(() => _selectedResolutionIndex = val);
-                      setState(() => _selectedResolutionIndex = val);
-                      if (_engine != null) {
-                        final outW = calloc<ffi.Int32>();
-                        final outH = calloc<ffi.Int32>();
-                        final outName = calloc<ffi.Uint8>(64).cast<Utf8>();
-                        if (_bindings.coreGetPresetResolution(val, outW, outH, outName, 64)) {
-                          _bindings.coreSetScreenDimensions(_engine!, outW.value, outH.value);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  const Text("Giới hạn FPS:", style: TextStyle(color: Color(0xFF90CAF9), fontSize: 11.5, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 2),
+                  DropdownButton<int>(
+                    value: _selectedFps,
+                    dropdownColor: const Color(0xFF1E293B),
+                    isExpanded: true,
+                    isDense: true,
+                    items: const [
+                      DropdownMenuItem(value: 30, child: Text("30 FPS", style: TextStyle(color: Colors.white, fontSize: 11.5))),
+                      DropdownMenuItem(value: 50, child: Text("50 FPS", style: TextStyle(color: Colors.white, fontSize: 11.5))),
+                      DropdownMenuItem(value: 60, child: Text("60 FPS", style: TextStyle(color: Colors.white, fontSize: 11.5))),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDialogState(() => _selectedFps = val);
+                        setState(() => _selectedFps = val);
+                        if (_engine != null) {
+                          _bindings.coreSetFpsLimit(_engine!, val);
                         }
-                        calloc.free(outW);
-                        calloc.free(outH);
-                        calloc.free(outName);
                       }
-                    }
-                  },
-                ),
-              ],
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  const Text("Độ phân giải màn hình:", style: TextStyle(color: Color(0xFF90CAF9), fontSize: 11.5, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 2),
+                  DropdownButton<int>(
+                    value: _selectedResolutionIndex,
+                    dropdownColor: const Color(0xFF1E293B),
+                    isExpanded: true,
+                    isDense: true,
+                    items: const [
+                      DropdownMenuItem(value: 0, child: Text("128 x 128", style: TextStyle(color: Colors.white, fontSize: 11.5))),
+                      DropdownMenuItem(value: 1, child: Text("128 x 160", style: TextStyle(color: Colors.white, fontSize: 11.5))),
+                      DropdownMenuItem(value: 3, child: Text("176 x 220", style: TextStyle(color: Colors.white, fontSize: 11.5))),
+                      DropdownMenuItem(value: 5, child: Text("240 x 320", style: TextStyle(color: Colors.white, fontSize: 11.5))),
+                      DropdownMenuItem(value: 6, child: Text("320 x 240", style: TextStyle(color: Colors.white, fontSize: 11.5))),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDialogState(() => _selectedResolutionIndex = val);
+                        setState(() => _selectedResolutionIndex = val);
+                        if (_engine != null) {
+                          final outW = calloc<ffi.Int32>();
+                          final outH = calloc<ffi.Int32>();
+                          final outName = calloc<ffi.Uint8>(64).cast<Utf8>();
+                          if (_bindings.coreGetPresetResolution(val, outW, outH, outName, 64)) {
+                            _bindings.coreSetScreenDimensions(_engine!, outW.value, outH.value);
+                          }
+                          calloc.free(outW);
+                          calloc.free(outH);
+                          calloc.free(outName);
+                        }
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
+          actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
           actions: [
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E88E5)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0284C7),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                visualDensity: VisualDensity.compact,
+              ),
               onPressed: () => Navigator.pop(ctx),
-              child: const Text("Đóng"),
+              child: const Text("Đóng", style: TextStyle(fontSize: 12)),
             ),
           ],
         ),
@@ -362,203 +702,421 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
     );
   }
 
-  void _showRenameGameDialog(int index) {
-    final game = _games[index];
+  void _showRenameGameDialog(GameItem game) {
     final controller = TextEditingController(text: game.title);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F1F1F),
-        title: const Text("Đổi tên", style: TextStyle(color: Colors.white, fontSize: 16)),
+        title: const Text("Đổi tên"),
         content: TextField(
           controller: controller,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: "Nhập tên mới...",
-            hintStyle: TextStyle(color: Colors.white38),
-            filled: true,
-            fillColor: Color(0xFF141414),
-            border: OutlineInputBorder(),
-          ),
+          autofocus: true,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Hủy", style: TextStyle(color: Colors.white60)),
+            child: const Text("Hủy"),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E88E5)),
+          TextButton(
             onPressed: () {
               final newName = controller.text.trim();
               if (newName.isNotEmpty) {
-                setState(() {
-                  _games[index] = GameItem(
-                    id: game.id,
-                    title: newName,
-                    vendor: game.vendor,
-                    version: game.version,
-                    path: game.path,
-                    resolution: game.resolution,
-                  );
-                });
+                final dbFile = File('./universal_rms/apps/apps_db.json');
+                if (dbFile.existsSync()) {
+                  try {
+                    final json = jsonDecode(dbFile.readAsStringSync()) as Map<String, dynamic>;
+                    final apps = json['apps'] as List<dynamic>?;
+                    if (apps != null) {
+                      for (final item in apps) {
+                        if (item is Map<String, dynamic> && (item['id'] == game.id || item['path'] == game.path)) {
+                          item['title'] = newName;
+                          break;
+                        }
+                      }
+                      dbFile.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(json));
+                    }
+                  } catch (_) {}
+                }
                 Navigator.pop(ctx);
+                setState(() {
+                  _loadInstalledApps();
+                });
               }
             },
-            child: const Text("Lưu"),
+            child: const Text("OK"),
           ),
         ],
       ),
     );
   }
 
-  void _deleteGame(int index) {
-    final game = _games[index];
+  void _deleteGame(GameItem game) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F1F1F),
-        title: const Text("Xóa", style: TextStyle(color: Colors.white, fontSize: 16)),
-        content: Text(
-          "Bạn thực sự muốn xoá ứng dụng '${game.title}'?",
-          style: const TextStyle(color: Colors.white70),
-        ),
+        title: const Text("Chú ý"),
+        content: const Text("Bạn thực sự muốn xoá ứng dụng này?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Hủy", style: TextStyle(color: Colors.white60)),
+            child: const Text("Hủy"),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+          TextButton(
             onPressed: () {
               if (_engine != null && game.id > 0) {
                 _bindings.appRepoDelete(_engine!, game.id);
               }
+              try {
+                final appDir = Directory('./universal_rms/apps/${game.path}');
+                if (appDir.existsSync()) appDir.deleteSync(recursive: true);
+                final dataDir = Directory('./universal_rms/data/${game.path}');
+                if (dataDir.existsSync()) dataDir.deleteSync(recursive: true);
+                final configDir = Directory('./universal_rms/configs/${game.path}');
+                if (configDir.existsSync()) configDir.deleteSync(recursive: true);
+              } catch (_) {}
+
+              Navigator.pop(ctx);
               setState(() {
                 _loadInstalledApps();
               });
-              Navigator.pop(ctx);
             },
-            child: const Text("Xóa"),
+            child: const Text("OK"),
           ),
         ],
       ),
     );
   }
 
+  File _resolveGameIconFile(GameItem game) {
+    if (game.imagePath.isNotEmpty) {
+      final fileDirect = File(game.imagePath);
+      if (fileDirect.existsSync()) return fileDirect;
+
+      final fileInAppDir = File('./universal_rms/apps/${game.path}/${game.imagePath}');
+      if (fileInAppDir.existsSync()) return fileInAppDir;
+
+      final fileInAppDir2 = File('universal_rms/apps/${game.path}/${game.imagePath}');
+      if (fileInAppDir2.existsSync()) return fileInAppDir2;
+    }
+    final defaultIconFile = File('./universal_rms/apps/${game.path}/icon.png');
+    if (defaultIconFile.existsSync()) return defaultIconFile;
+
+    return File('universal_rms/apps/${game.path}/icon.png');
+  }
+
+  Widget _buildGameIcon(GameItem game) {
+    final iconFile = _resolveGameIconFile(game);
+    if (iconFile.existsSync()) {
+      return Image.file(
+        iconFile,
+        width: 36,
+        height: 36,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (context, error, stackTrace) => const Icon(Icons.android, size: 36),
+      );
+    }
+    return const Icon(Icons.android, size: 36);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final filteredGames = _filteredAndSortedGames;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("J2ME-Loader"),
+        // Search collapses back like upstream's SearchView action view
+        leading: _isSearching
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  setState(() {
+                    _isSearching = false;
+                    _searchController.clear();
+                    _searchQuery = "";
+                  });
+                },
+              )
+            : null,
+        title: _isSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+                decoration: const InputDecoration(
+                  hintText: "Tìm kiếm",
+                  hintStyle: TextStyle(color: Colors.white54),
+                  border: InputBorder.none,
+                ),
+                onChanged: (val) {
+                  setState(() {
+                    _searchQuery = val;
+                  });
+                },
+              )
+            : const FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text("J5Hienloader", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
         actions: [
+          if (!_isSearching)
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: "Tìm kiếm",
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: () {
+                setState(() {
+                  _isSearching = true;
+                });
+              },
+            ),
           IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: "Thiết lập",
-            onPressed: _showSettingsDialog,
+            icon: const Icon(Icons.sort),
+            tooltip: "Sắp xếp thứ tự ứng dụng",
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            onPressed: _showSortDialog,
+          ),
+          PopupMenuButton<String>(
+            padding: EdgeInsets.zero,
+            iconSize: 20,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            onSelected: _onOptionsItem,
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'about', child: Text("Giới thiệu")),
+              PopupMenuItem(value: 'settings', child: Text("Thiết lập")),
+              PopupMenuItem(value: 'help', child: Text("Trợ giúp")),
+              PopupMenuItem(value: 'exit', child: Text("Thoát")),
+            ],
           ),
         ],
       ),
-      body: _games.isEmpty
-          ? const Center(
-              child: Text(
-                "Không có dữ liệu",
-                style: TextStyle(fontSize: 16, color: Colors.white54),
-              ),
-            )
-          : ListView.separated(
-              itemCount: _games.length,
-              separatorBuilder: (context, index) => const Divider(
-                height: 1,
-                thickness: 1,
-                color: Color(0xFF262626),
-              ),
-              itemBuilder: (context, index) {
-                return _buildGameRow(index: index, game: _games[index]);
-              },
-            ),
+      body: Column(
+        children: [
+          _buildActiveSessionsPanel(),
+          Expanded(
+            child: filteredGames.isEmpty
+                ? const Align(
+                    alignment: Alignment.topCenter,
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 10),
+                      child: Text("Không có dữ liệu", style: TextStyle(fontSize: 14)),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: filteredGames.length,
+                    itemBuilder: (context, index) {
+                      return _buildGameRow(game: filteredGames[index]);
+                    },
+                  ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF1E88E5),
-        tooltip: "Chọn tệp JAR",
+        backgroundColor: const Color(0xFF0099FF),
         onPressed: _onAddGamePressed,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildGameRow({
-    required int index,
-    required GameItem game,
-  }) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      onTap: () => _launchGame(game),
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: const Color(0xFF262626),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        alignment: Alignment.center,
-        child: const Icon(Icons.sports_esports, color: Color(0xFF1E88E5), size: 22),
+  Widget _buildActiveSessionsPanel() {
+    final sessions = GameSessionManager.instance.sessions;
+    if (sessions.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131B2E),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.6), width: 1.2),
       ),
-      title: Text(
-        game.title,
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 2),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                game.vendor,
-                style: const TextStyle(fontSize: 12, color: Colors.white60),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF22C55E),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Flexible(
+                      child: Text(
+                        "GAME ĐANG CHẠY NỀN",
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Color(0xFF38BDF8),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0284C7),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  "${sessions.length} game",
+                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final s in sessions)
+                  Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    child: InkWell(
+                      onTap: () {
+                        GameSessionManager.instance.setActiveSession(s);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => EmulatorScreen(
+                              initialSession: s,
+                              title: s.displayName,
+                              appPath: s.appPath,
+                            ),
+                          ),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E293B),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF334155)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.sports_esports, color: Color(0xFF38BDF8), size: 16),
+                            const SizedBox(width: 6),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 130),
+                              child: Text(
+                                s.title,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: s.cloneSlot == 0 ? const Color(0xFF0284C7) : const Color(0xFFEAB308),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                s.slotLabel,
+                                style: TextStyle(
+                                  color: s.cloneSlot == 0 ? Colors.white : Colors.black,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Tooltip(
+                              message: "Dừng game này",
+                              child: InkWell(
+                                onTap: () => GameSessionManager.instance.stopSession(s),
+                                borderRadius: BorderRadius.circular(12),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(2),
+                                  child: Icon(Icons.close, color: Colors.redAccent, size: 14),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            Text(
-              game.version,
-              style: const TextStyle(fontSize: 12, color: Colors.white60),
-            ),
-          ],
-        ),
-      ),
-      trailing: PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert, color: Colors.white70),
-        color: const Color(0xFF262626),
-        onSelected: (val) {
-          if (val == 'run') {
-            _launchGame(game);
-          } else if (val == 'config') {
-            _showSettingsDialog();
-          } else if (val == 'rename') {
-            _showRenameGameDialog(index);
-          } else if (val == 'delete') {
-            _deleteGame(index);
-          }
-        },
-        itemBuilder: (context) => [
-          const PopupMenuItem(
-            value: 'run',
-            child: Text("Khởi chạy"),
-          ),
-          const PopupMenuItem(
-            value: 'config',
-            child: Text("Thiết lập"),
-          ),
-          const PopupMenuItem(
-            value: 'rename',
-            child: Text("Đổi tên"),
-          ),
-          const PopupMenuItem(
-            value: 'delete',
-            child: Text("Xóa"),
           ),
         ],
+      ),
+    );
+  }
+
+  // Mirrors upstream list_row_jar.xml: 10dp padding, 36dip icon, bold 15sp title, 12sp author / version
+  Widget _buildGameRow({
+    required GameItem game,
+  }) {
+    return InkWell(
+      onTap: () => _launchGame(game),
+      onSecondaryTapDown: (details) => _showContextMenu(game, details.globalPosition),
+      child: GestureDetector(
+        onLongPressStart: (details) => _showContextMenu(game, details.globalPosition),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            children: [
+              SizedBox(width: 36, height: 36, child: _buildGameIcon(game)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      game.title,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            game.vendor,
+                            style: const TextStyle(fontSize: 12, color: Color(0xFFDEDEDE)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (game.version.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            game.version,
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

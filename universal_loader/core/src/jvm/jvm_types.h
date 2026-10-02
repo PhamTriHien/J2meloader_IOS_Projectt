@@ -6,6 +6,7 @@
 #include <vector>
 #include <memory>
 #include <stdexcept>
+#include <thread>
 
 namespace universal_loader::jvm {
 
@@ -31,12 +32,24 @@ struct JavaValue {
         JavaObject* ref;
     };
 
-    JavaValue() : type(JavaValueType::INT), i(0) {}
+    // Zero the full 64-bit union so a default value also reads as a null ref / 0L / 0.0
+    JavaValue() : type(JavaValueType::INT), l(0) {}
     explicit JavaValue(int32_t val) : type(JavaValueType::INT), i(val) {}
     explicit JavaValue(float val) : type(JavaValueType::FLOAT), f(val) {}
     explicit JavaValue(int64_t val) : type(JavaValueType::LONG), l(val) {}
     explicit JavaValue(double val) : type(JavaValueType::DOUBLE), d(val) {}
-    explicit JavaValue(JavaObject* val) : type(JavaValueType::REF), ref(val) {}
+    explicit JavaValue(JavaObject* val) : type(JavaValueType::REF), l(0) { ref = val; }
+
+    // Category-2 values (long/double) occupy two JVM slots
+    bool isWide() const { return type == JavaValueType::LONG || type == JavaValueType::DOUBLE; }
+};
+
+// Base for native (C++) state attached to instances of system classes
+// such as StringBuffer, Vector or Hashtable.
+struct NativePayload {
+    virtual ~NativePayload() = default;
+    // Reports Java objects referenced from native state (for the garbage collector)
+    virtual void trace(std::vector<JavaObject*>&) const {}
 };
 
 class JavaObject {
@@ -44,6 +57,17 @@ public:
     JavaClass* clazz{nullptr};
     std::vector<JavaValue> fields;
     void* nativeHandle{nullptr};
+    // Class name for instances of system classes that have no bytecode (clazz == nullptr)
+    std::string nativeClassName;
+    // Detail message for java/lang/Throwable instances
+    std::string throwableMessage;
+    std::string throwableTrace; // frames unwound before the exception was caught
+    std::shared_ptr<NativePayload> payload;
+    // Monitor state; only touched while holding the VM's GIL
+    std::thread::id monitorOwner{};
+    int32_t monitorCount{0};
+    uint32_t notifyGen{0};
+    bool gcMark{false};
 
     JavaObject(JavaClass* c = nullptr) : clazz(c) {}
     virtual ~JavaObject() = default;
@@ -59,19 +83,39 @@ public:
     std::vector<JavaValue> elements;
 
     JavaArray(char typeCode, int32_t len)
-        : elementTypeCode(typeCode), length(len), elements(len > 0 ? len : 0) {}
+        : elementTypeCode(typeCode), length(len), elements(len > 0 ? len : 0) {
+        JavaValue init;
+        if (typeCode == 'J') init = JavaValue(int64_t(0));
+        else if (typeCode == 'D') init = JavaValue(0.0);
+        else if (typeCode == 'F') init = JavaValue(0.0f);
+        else if (typeCode == 'L' || typeCode == '[') init = JavaValue(static_cast<JavaObject*>(nullptr));
+        for (auto& e : elements) e = init;
+    }
 
     bool isArray() const override { return true; }
 };
 
 class JavaString : public JavaObject {
 public:
-    std::string value;
+    std::string value; // UTF-8
+
+    // Lazily built UTF-16 view used for Java index semantics (charAt, length, substring)
+    std::u16string utf16Cache;
+    bool utf16Valid{false};
 
     JavaString(const std::string& str = "") : value(str) {}
 
+    void setValue(const std::string& str) {
+        value = str;
+        utf16Valid = false;
+    }
+
     bool isString() const override { return true; }
 };
+
+inline void gcTraceValue(const JavaValue& v, std::vector<JavaObject*>& out) {
+    if (v.type == JavaValueType::REF && v.ref) out.push_back(v.ref);
+}
 
 struct StackFrame {
     JavaMethod* method{nullptr};

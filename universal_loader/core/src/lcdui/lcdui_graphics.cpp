@@ -1,8 +1,12 @@
+#include <cstdio>
+#include <cstdlib>
 #include "lcdui_graphics.h"
 #include "font.h"
+#include "../jvm/jar_reader.h"
 #include <cstring>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -89,11 +93,178 @@ std::shared_ptr<LcduiImage> LcduiImage::createRGBImage(const uint32_t* rgb, int 
     return img;
 }
 
+static inline uint8_t pngPaethPredictor(int a, int b, int c) {
+    int p = a + b - c;
+    int pa = std::abs(p - a);
+    int pb = std::abs(p - b);
+    int pc = std::abs(p - c);
+    if (pa <= pb && pa <= pc) return static_cast<uint8_t>(a);
+    if (pb <= pc) return static_cast<uint8_t>(b);
+    return static_cast<uint8_t>(c);
+}
+
+// Reverses the PNG scanline filters of one (sub)image in place. Returns false on a bad filter type.
+static bool pngUnfilter(uint8_t* data, size_t rows, size_t rowBytes, size_t bytesPerPixel) {
+    const uint8_t* prev = nullptr;
+    for (size_t y = 0; y < rows; ++y) {
+        uint8_t filter = data[0];
+        uint8_t* row = data + 1;
+        for (size_t x = 0; x < rowBytes; ++x) {
+            int a = x >= bytesPerPixel ? row[x - bytesPerPixel] : 0;
+            int b = prev ? prev[x] : 0;
+            int c = (prev && x >= bytesPerPixel) ? prev[x - bytesPerPixel] : 0;
+            switch (filter) {
+                case 0: break;
+                case 1: row[x] = static_cast<uint8_t>(row[x] + a); break;
+                case 2: row[x] = static_cast<uint8_t>(row[x] + b); break;
+                case 3: row[x] = static_cast<uint8_t>(row[x] + ((a + b) >> 1)); break;
+                case 4: row[x] = static_cast<uint8_t>(row[x] + pngPaethPredictor(a, b, c)); break;
+                default: return false;
+            }
+        }
+        prev = row;
+        data += 1 + rowBytes;
+    }
+    return true;
+}
+
+// Full PNG decoder: all color types, bit depths 1-16, tRNS and Adam7 interlacing.
+// Returns nullptr for data it cannot decode; callers raise the Java exception MIDP requires.
 std::shared_ptr<LcduiImage> LcduiImage::createImage(const uint8_t* rawData, size_t size) {
-    if (!rawData || size == 0) return nullptr;
-    // Tạo ảnh mặc định fallback (sẽ được tích hợp PNG parser)
-    auto img = std::make_shared<LcduiImage>(16, 16, false);
-    std::fill(img->m_pixels.begin(), img->m_pixels.end(), 0xFFFFFFFF);
+    static const uint8_t kMagic[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    if (!rawData || size < 8 || std::memcmp(rawData, kMagic, 8) != 0) {
+        if (rawData && size >= 4 && std::getenv("J2ME_TRACE")) {
+            std::fprintf(stderr, "[J2ME TRACE] image decode failed, %zu bytes, head %02X %02X %02X %02X\n", size,
+                         rawData[0], rawData[1], rawData[2], rawData[3]);
+        }
+        return nullptr;
+    }
+
+    auto be32 = [](const uint8_t* p) {
+        return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
+               (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
+    };
+
+    uint32_t width = 0, height = 0;
+    uint8_t bitDepth = 8, colorType = 6, interlace = 0;
+    std::vector<uint8_t> palette, trns, idat;
+    for (size_t offset = 8; offset + 8 <= size;) {
+        uint32_t len = be32(rawData + offset);
+        std::string type(reinterpret_cast<const char*>(rawData + offset + 4), 4);
+        const uint8_t* body = rawData + offset + 8;
+        if (len > size - offset - 8) break;
+        if (type == "IHDR" && len >= 13) {
+            width = be32(body);
+            height = be32(body + 4);
+            bitDepth = body[8];
+            colorType = body[9];
+            interlace = body[12];
+        } else if (type == "PLTE") {
+            palette.assign(body, body + len);
+        } else if (type == "tRNS") {
+            trns.assign(body, body + len);
+        } else if (type == "IDAT") {
+            idat.insert(idat.end(), body, body + len);
+        } else if (type == "IEND") {
+            break;
+        }
+        offset += 12 + static_cast<size_t>(len);
+    }
+
+    size_t channels = 0;
+    switch (colorType) {
+        case 0: channels = 1; break; // gray
+        case 2: channels = 3; break; // RGB
+        case 3: channels = 1; break; // indexed
+        case 4: channels = 2; break; // gray + alpha
+        case 6: channels = 4; break; // RGBA
+        default: return nullptr;
+    }
+    if (width == 0 || height == 0 || width > 8192 || height > 8192 || idat.size() < 2) return nullptr;
+    if (bitDepth != 1 && bitDepth != 2 && bitDepth != 4 && bitDepth != 8 && bitDepth != 16) return nullptr;
+    const size_t bitsPerPixel = channels * bitDepth;
+    const size_t bytesPerPixel = std::max<size_t>(1, bitsPerPixel / 8);
+
+    // Adam7 passes (x0, y0, dx, dy); a non-interlaced image is a single pass
+    struct Pass { uint32_t x0, y0, dx, dy; };
+    static const Pass kAdam7[7] = {{0, 0, 8, 8}, {4, 0, 8, 8}, {0, 4, 4, 8}, {2, 0, 4, 4}, {0, 2, 2, 4}, {1, 0, 2, 2}, {0, 1, 1, 2}};
+    static const Pass kSingle[1] = {{0, 0, 1, 1}};
+    const Pass* passes = interlace ? kAdam7 : kSingle;
+    const int passCount = interlace ? 7 : 1;
+    auto passWidth = [&](const Pass& ps) -> size_t { return ps.x0 >= width ? 0 : (width - ps.x0 + ps.dx - 1) / ps.dx; };
+    auto passHeight = [&](const Pass& ps) -> size_t { return ps.y0 >= height ? 0 : (height - ps.y0 + ps.dy - 1) / ps.dy; };
+
+    size_t total = 0;
+    for (int i = 0; i < passCount; ++i) {
+        size_t pw = passWidth(passes[i]), ph = passHeight(passes[i]);
+        if (pw && ph) total += ph * (1 + (pw * bitsPerPixel + 7) / 8);
+    }
+    std::vector<uint8_t> raw(total, 0);
+    // Skip the 2-byte zlib header and inflate the raw deflate stream
+    if (!j2me::JarReader::inflateRaw(idat.data() + 2, idat.size() - 2, raw.data(), raw.size())) return nullptr;
+
+    // Transparent color key for gray / RGB images, compared at the image's own bit depth
+    const bool hasKey = (colorType == 0 && trns.size() >= 2) || (colorType == 2 && trns.size() >= 6);
+    auto key = [&](int i) -> uint32_t { return (static_cast<uint32_t>(trns[i * 2]) << 8) | trns[i * 2 + 1]; };
+    auto sample = [&](const uint8_t* row, size_t x, size_t ch) -> uint32_t {
+        if (bitDepth == 16) {
+            const uint8_t* p = row + (x * channels + ch) * 2;
+            return (static_cast<uint32_t>(p[0]) << 8) | p[1];
+        }
+        if (bitDepth == 8) return row[x * channels + ch];
+        size_t bit = x * bitDepth; // sub-byte depths only occur with a single channel
+        return (row[bit >> 3] >> (8 - bitDepth - (bit & 7))) & ((1u << bitDepth) - 1);
+    };
+    auto to8 = [&](uint32_t v) -> uint32_t {
+        switch (bitDepth) {
+            case 1: return v * 255;
+            case 2: return v * 85;
+            case 4: return v * 17;
+            case 16: return v >> 8;
+            default: return v;
+        }
+    };
+
+    auto img = std::make_shared<LcduiImage>(static_cast<int>(width), static_cast<int>(height), false);
+    uint32_t* pixels = img->getPixelsMutable();
+    uint8_t* data = raw.data();
+    for (int i = 0; i < passCount; ++i) {
+        const Pass& ps = passes[i];
+        size_t pw = passWidth(ps), ph = passHeight(ps);
+        if (!pw || !ph) continue;
+        size_t rowBytes = (pw * bitsPerPixel + 7) / 8;
+        if (!pngUnfilter(data, ph, rowBytes, bytesPerPixel)) return nullptr;
+        for (size_t py = 0; py < ph; ++py) {
+            const uint8_t* row = data + py * (1 + rowBytes) + 1;
+            for (size_t px = 0; px < pw; ++px) {
+                uint32_t r = 0, g = 0, b = 0, a = 255;
+                if (colorType == 3) {
+                    uint32_t idx = sample(row, px, 0);
+                    if (idx * 3 + 2 < palette.size()) {
+                        r = palette[idx * 3];
+                        g = palette[idx * 3 + 1];
+                        b = palette[idx * 3 + 2];
+                    }
+                    if (idx < trns.size()) a = trns[idx];
+                } else if (colorType == 0 || colorType == 4) {
+                    uint32_t v = sample(row, px, 0);
+                    if (hasKey && v == key(0)) a = 0;
+                    r = g = b = to8(v);
+                    if (colorType == 4) a = to8(sample(row, px, 1));
+                } else {
+                    uint32_t rv = sample(row, px, 0), gv = sample(row, px, 1), bv = sample(row, px, 2);
+                    if (hasKey && rv == key(0) && gv == key(1) && bv == key(2)) a = 0;
+                    r = to8(rv);
+                    g = to8(gv);
+                    b = to8(bv);
+                    if (colorType == 6) a = to8(sample(row, px, 3));
+                }
+                size_t x = ps.x0 + px * ps.dx, y = ps.y0 + py * ps.dy;
+                pixels[y * width + x] = (a << 24) | (r << 16) | (g << 8) | b;
+            }
+        }
+        data += ph * (1 + rowBytes);
+    }
     return img;
 }
 

@@ -27,6 +27,7 @@
 #include "lcdui/game/layer_manager.h"
 #include "lcdui/game/sprite_layer.h"
 #include "network/datagram_connection.h"
+#include "network/http_bridge.h"
 #include "graphics3d/keyframe_sequence.h"
 #include "graphics3d/animation_controller.h"
 #include "graphics3d/animation_track.h"
@@ -86,62 +87,52 @@
 #include <cstring>
 #include <iostream>
 #include <fstream>
-#include <algorithm>
+#include "engine_instance.h"
+#include "jvm/lcdui_screens.h"
 #include <cmath>
 
 struct J2meLayerWrapper {
     std::shared_ptr<universal_loader::lcdui::game::Layer> layer;
 };
 
-struct J2meEngineInstance {
-    std::string storageRoot;
-    std::string appTitle{"J2ME Application"};
-    std::string appVendor{"Unknown"};
-    std::string appVersion{"1.0.0"};
-    std::string mainClass;
-
-    universal_loader::config::ProfileModel profile;
-    universal_loader::config::ConfigDirs   configDirs;
-    universal_loader::jvm::CldcVirtualMachine vm;
-
-    std::shared_ptr<universal_loader::app::AppRepository> appRepo;
-    std::unique_ptr<universal_loader::app::AppInstaller>  appInstaller;
-
-    j2me::JarReader jarReader;
-    j2me::FrameBuffer frameBuffer{240, 320};
-
-    std::atomic<bool> isRunning{false};
-    std::atomic<bool> isPaused{false};
-    std::atomic<int>  fpsLimit{60};
-    std::atomic<int>  speedMultiplier{1};
-
-    std::thread gameThread;
-    std::mutex stateMutex;
-
-    // Key states (bitmask or array)
-    bool keyStates[256]{false};
-    bool specialKeyStates[64]{false};
-
-    bool isKeyPressed(int code) const {
-        if (code >= 0 && code < 256) return keyStates[code];
-        if (code < 0 && code >= -63) return specialKeyStates[-code];
-        return false;
-    }
-
-    // Canvas title or splash animation state
-    uint64_t frameCounter{0};
-
-    std::shared_ptr<j2me::LcduiFont> currentFont;
-};
+#ifdef _WIN32
+extern "C" __declspec(dllimport) unsigned int __stdcall timeBeginPeriod(unsigned int);
+extern "C" __declspec(dllimport) unsigned int __stdcall timeEndPeriod(unsigned int);
+#endif
 
 // Thread thực thi vòng lặp Game Loop của Core J2ME
 static void engine_game_loop(J2meEngineInstance* inst) {
+#ifdef _WIN32
+    // 1 ms timer resolution while a game runs, so Thread.sleep / frame pacing are accurate
+    timeBeginPeriod(1);
+    struct TimerPeriod { ~TimerPeriod() { timeEndPeriod(1); } } timerPeriod;
+#endif
     auto lastTick = std::chrono::steady_clock::now();
+    universal_loader::jvm::JavaGraphicsObject* screenGraphics = nullptr;
 
-    if (!inst->mainClass.empty()) {
-        try {
-            inst->vm.executeMethodByName(inst->mainClass, "startApp", "()V", {});
-        } catch (...) {}
+    // 1. Chuẩn hóa tên lớp MIDlet chính (chuyển dấu . thành /)
+    std::string normMain = inst->mainClass;
+    for (char& c : normMain) {
+        if (c == '.') c = '/';
+    }
+
+    // 2. Khởi tạo và kích hoạt vòng đời MIDlet thực tế
+    if (!normMain.empty()) {
+        auto mainClass = inst->vm.findClass(normMain);
+        if (mainClass) {
+            inst->currentMidletObject = inst->vm.allocateObject(mainClass.get());
+            try {
+                inst->vm.executeMethodByName(normMain, "<init>", "()V", {universal_loader::jvm::JavaValue(inst->currentMidletObject)});
+                inst->vm.executeMethodByName(normMain, "startApp", "()V", {universal_loader::jvm::JavaValue(inst->currentMidletObject)});
+            } catch (const universal_loader::jvm::JavaException& e) {
+                std::cerr << "[J2ME Core] Exception in startApp: " << e.what() << std::endl;
+                for (const auto& frame : e.trace) std::cerr << "    at " << frame << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[J2ME Core] Exception in startApp: " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[J2ME Core] Unknown exception in startApp" << std::endl;
+            }
+        }
     }
 
     while (inst->isRunning.load()) {
@@ -151,27 +142,62 @@ static void engine_game_loop(J2meEngineInstance* inst) {
         }
 
         int targetFps = inst->fpsLimit.load();
-        if (targetFps <= 0) targetFps = 60;
-        int mult = inst->speedMultiplier.load();
-        if (mult <= 0) mult = 1;
-        int frameIntervalMs = 1000 / (targetFps * mult);
+        // Speed-up is applied to the game clock, not the paint rate
+        int frameIntervalMs = targetFps > 0 ? 1000 / targetFps : 1;
         if (frameIntervalMs < 1) frameIntervalMs = 1;
 
         inst->frameCounter++;
 
-        // Render frame nền tảng LCDUI
         uint32_t customBg = inst->profile.screenBackgroundColor & 0x00FFFFFF;
         uint32_t bgColor = (customBg != 0xD0D0D0 && customBg != 0) ? (0xFF000000 | customBg) : 0xFF000000;
-        inst->frameBuffer.clear(bgColor);
 
-        auto currentDisplayable = universal_loader::lcdui::Display::instance().getCurrent();
-        if (currentDisplayable) {
-            j2me::LcduiGraphics g(inst->frameBuffer.getRawDrawBuffer(), inst->frameBuffer.getWidth(), inst->frameBuffer.getHeight());
-            currentDisplayable->paint(&g);
+        // Canvas paints only on request. Games that drive their own loop (repaint + serviceRepaints)
+        // paint on their thread; the engine only services requests left pending for a few frames,
+        // plus a slow refresh for games that never call repaint.
+        const int64_t nowMs = J2meEngineInstance::monoMillis();
+        const bool enginePaint = inst->repaintPending.load()
+            ? nowMs - inst->repaintRequestedMs.load() >= 3 * frameIntervalMs
+            : nowMs - inst->lastPaintMs.load() >= 500;
+        if (inst->currentJavaCanvas && inst->currentJavaCanvas->clazz && !enginePaint) {
+            // Nothing to paint this tick
+        } else if (inst->currentJavaCanvas && inst->currentJavaCanvas->clazz) {
+            // One Graphics object is reused across frames. It owns its LcduiGraphics so
+            // a game that keeps the reference never sees a dangling pointer.
+            universal_loader::jvm::CldcVirtualMachine::GilScope gil(&inst->vm);
+            // The game thread may have serviced the request while we waited for the GIL
+            const bool stillNeeded = inst->repaintPending.load() || nowMs - inst->lastPaintMs.load() >= 500;
+            if (!inst->painting && stillNeeded && inst->currentJavaCanvas && inst->currentJavaCanvas->clazz) {
+                inst->repaintPending.store(false);
+                inst->painting = true;
+                auto g = std::make_shared<j2me::LcduiGraphics>(inst->frameBuffer.getRawDrawBuffer(), inst->frameBuffer.getWidth(), inst->frameBuffer.getHeight());
+                if (!screenGraphics) {
+                    screenGraphics = inst->vm.allocateGraphics(g);
+                    inst->vm.pin(screenGraphics);
+                } else {
+                    screenGraphics->graphics = g;
+                    screenGraphics->rawGraphics = g.get();
+                }
+                auto* gObj = screenGraphics;
+                try {
+                    inst->vm.executeMethodByName(inst->currentJavaCanvas->clazz->thisClassName, "paint", "(Ljavax/microedition/lcdui/Graphics;)V", {universal_loader::jvm::JavaValue(inst->currentJavaCanvas), universal_loader::jvm::JavaValue(static_cast<universal_loader::jvm::JavaObject*>(gObj))});
+                } catch (...) {}
+                inst->painting = false;
+                inst->frameBuffer.publishFrame();
+                inst->lastPaintMs.store(J2meEngineInstance::monoMillis());
+                inst->notePaint(nowMs);
+            }
+        } else {
+            auto currentDisplayable = universal_loader::lcdui::Display::instance().getCurrent();
+            if (currentDisplayable) {
+                inst->frameBuffer.clear(bgColor);
+                j2me::LcduiGraphics g(inst->frameBuffer.getRawDrawBuffer(), inst->frameBuffer.getWidth(), inst->frameBuffer.getHeight());
+                currentDisplayable->paint(&g);
+                inst->frameBuffer.publishFrame();
+            } else {
+                inst->frameBuffer.clear(bgColor);
+                inst->frameBuffer.publishFrame();
+            }
         }
-
-        // Đẩy frame ra Display Buffer cho UI (Flutter / GPU Texture) lấy
-        inst->frameBuffer.publishFrame();
 
         // Giữ nhịp FPS chính xác
         auto now = std::chrono::steady_clock::now();
@@ -183,24 +209,106 @@ static void engine_game_loop(J2meEngineInstance* inst) {
     }
 }
 
-extern "C" {
+static std::mutex g_enginesMutex;
+static std::unordered_set<J2meEngineInstance*> g_activeEngines;
 
-J2ME_API J2meEngineInstance* j2me_core_create(const char* storage_root_dir) {
+static bool isValidEngine(J2meEngineInstance* inst) {
+    if (!inst) return false;
+    std::lock_guard<std::mutex> lock(g_enginesMutex);
+    return g_activeEngines.find(inst) != g_activeEngines.end();
+}
+
+static void registerEngine(J2meEngineInstance* inst) {
+    if (!inst) return;
+    std::lock_guard<std::mutex> lock(g_enginesMutex);
+    g_activeEngines.insert(inst);
+}
+
+static void unregisterEngine(J2meEngineInstance* inst) {
+    if (!inst) return;
+    std::lock_guard<std::mutex> lock(g_enginesMutex);
+    g_activeEngines.erase(inst);
+}
+
+// A null repo opens the one under storageRoot/apps
+static J2meEngineInstance* create_engine(const char* storage_root_dir, std::shared_ptr<universal_loader::app::AppRepository> repo) {
     auto* inst = new J2meEngineInstance();
+    inst->vm.setUserContext(inst);
     if (storage_root_dir && std::strlen(storage_root_dir) > 0) {
         inst->storageRoot = storage_root_dir;
     } else {
         inst->storageRoot = "./j2me_data";
     }
     inst->configDirs.init(inst->storageRoot);
-    j2me::RmsManager::instance().setStorageRoot(inst->storageRoot);
+    inst->rms.setStorageRoot(inst->storageRoot);
     universal_loader::file::FileSystemRegistry::instance().setBaseDirectory(inst->storageRoot);
 
-    std::string appsDir = (std::filesystem::path(inst->storageRoot) / "apps").string();
-    inst->appRepo = std::make_shared<universal_loader::app::AppRepository>(appsDir);
+    if (!repo) {
+        std::string appsDir = (std::filesystem::path(inst->storageRoot) / "apps").string();
+        repo = std::make_shared<universal_loader::app::AppRepository>(appsDir);
+    }
+    inst->appRepo = std::move(repo);
     inst->appInstaller = std::make_unique<universal_loader::app::AppInstaller>(inst->storageRoot, inst->appRepo);
     universal_loader::lcdui::Display::instance().setCurrent(nullptr);
+    registerEngine(inst);
     return inst;
+}
+
+extern "C" J2ME_API bool j2me_core_load_jar_file(J2meEngineInstance* inst, const char* jar_file_path);
+
+// Points the engine at an installed app's jar, save data and profile, loads it and records the play
+static bool launch_installed_app(J2meEngineInstance* engine, int app_id, int clone_slot) {
+    if (!engine || !engine->appRepo || !engine->appInstaller || clone_slot < 0) return false;
+    universal_loader::app::AppItem item;
+    if (!engine->appRepo->getById(app_id, item)) {
+        return false;
+    }
+
+    std::string appDir = engine->appInstaller->getAppDir(item.path);
+    std::string jarPath = (std::filesystem::path(appDir) / "app.jar").string();
+    if (!std::filesystem::exists(jarPath)) {
+        return false;
+    }
+
+    // Isolate RMS storage for this app (and for each clone of it)
+    std::filesystem::path dataDir = engine->appInstaller->getDataDir(item.path);
+    if (clone_slot > 0) dataDir = dataDir / "clones" / std::to_string(clone_slot);
+    engine->rms.setStorageRoot(dataDir.string());
+    universal_loader::file::FileSystemRegistry::instance().setBaseDirectory(dataDir.string());
+
+    // Load & apply configuration profile
+    std::string cfgDir = engine->appInstaller->getConfigDir(item.path);
+    std::string cfgFile = (std::filesystem::path(cfgDir) / "config.json").string();
+    if (std::filesystem::exists(cfgFile)) {
+        universal_loader::config::ProfileModel prof;
+        if (universal_loader::config::ProfilesManager::loadConfig(cfgFile, prof)) {
+            engine->profile = prof;
+            engine->fpsLimit.store(std::max(0, prof.fpsLimit));
+            engine->frameBuffer.resize(prof.screenWidth, prof.screenHeight);
+            universal_loader::input::KeyMapper::setLayout(static_cast<universal_loader::input::KeyLayoutType>(prof.keyCodesLayout));
+        }
+    }
+
+    // Load JAR
+    if (!j2me_core_load_jar_file(engine, jarPath.c_str())) {
+        return false;
+    }
+
+    // Update play stats
+    item.lastPlayedTimestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+    ).count();
+    item.playCount++;
+    engine->appRepo->update(item);
+    engine->appRepo->save();
+
+    return true;
+}
+
+extern "C" {
+
+J2ME_API J2meEngineInstance* j2me_core_create(const char* storage_root_dir) {
+    return create_engine(storage_root_dir, nullptr);
 }
 
 J2ME_API bool j2me_core_load_jar(J2meEngineInstance* inst, const uint8_t* jar_bytes, size_t jar_size) {
@@ -267,64 +375,110 @@ J2ME_API bool j2me_core_load_jar_file(J2meEngineInstance* inst, const char* jar_
 }
 
 J2ME_API void j2me_core_start(J2meEngineInstance* inst) {
-    if (!inst || inst->isRunning.load()) return;
+    if (!isValidEngine(inst) || inst->isRunning.load()) return;
 
+    inst->vm.requestTerminate(false);
     inst->isRunning.store(true);
     inst->isPaused.store(false);
     inst->gameThread = std::thread(engine_game_loop, inst);
 }
 
 J2ME_API void j2me_core_pause(J2meEngineInstance* inst) {
-    if (inst) inst->isPaused.store(true);
+    if (isValidEngine(inst)) inst->isPaused.store(true);
 }
 
 J2ME_API void j2me_core_resume(J2meEngineInstance* inst) {
-    if (inst) inst->isPaused.store(false);
+    if (isValidEngine(inst)) inst->isPaused.store(false);
 }
 
-J2ME_API void j2me_core_stop(J2meEngineInstance* inst) {
+static void stopEngineInternal(J2meEngineInstance* inst) {
     if (!inst) return;
     if (inst->isRunning.load()) {
         inst->isRunning.store(false);
+        inst->vm.requestTerminate(true);
         if (inst->gameThread.joinable()) {
-            inst->gameThread.join();
+            if (inst->gameThread.get_id() != std::this_thread::get_id()) {
+                inst->gameThread.join();
+            }
+        }
+        for (auto& t : inst->workerThreads) {
+            if (t.joinable()) {
+                if (t.get_id() != std::this_thread::get_id()) {
+                    t.join();
+                }
+            }
+        }
+        inst->workerThreads.clear();
+        // Detached Java threads (Thread.start, Timer) unwind on their next call or safepoint
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(150);
+        while (inst->vm.liveThreads() > 0 && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     }
 }
 
+J2ME_API void j2me_core_stop(J2meEngineInstance* inst) {
+    if (!isValidEngine(inst)) return;
+    stopEngineInternal(inst);
+}
+
 J2ME_API void j2me_core_destroy(J2meEngineInstance* inst) {
-    if (!inst) return;
-    j2me_core_stop(inst);
+    if (!isValidEngine(inst)) return;
+    unregisterEngine(inst);
+    stopEngineInternal(inst);
     universal_loader::lcdui::Display::instance().setCurrent(nullptr);
     delete inst;
 }
 
 J2ME_API const uint32_t* j2me_core_lock_framebuffer(J2meEngineInstance* inst, int* out_width, int* out_height, bool* out_dirty) {
-    if (!inst) {
+    if (!isValidEngine(inst)) {
         if (out_dirty) *out_dirty = false;
         return nullptr;
     }
     return inst->frameBuffer.lockDisplayFrame(out_width, out_height, out_dirty);
 }
 
+J2ME_API int j2me_core_copy_frame_rgba(J2meEngineInstance* inst, uint8_t* dst, size_t cap, int scale, bool force, int* out_width, int* out_height) {
+    if (!isValidEngine(inst)) return -1;
+    return inst->frameBuffer.copyDisplayRgba(dst, cap, scale, force, out_width, out_height);
+}
+
 J2ME_API void j2me_core_unlock_framebuffer(J2meEngineInstance* inst) {
-    if (inst) {
+    if (isValidEngine(inst)) {
         inst->frameBuffer.unlockDisplayFrame();
     }
 }
 
 J2ME_API void j2me_core_set_screen_dimensions(J2meEngineInstance* inst, int width, int height) {
-    if (inst && width > 0 && height > 0) {
+    if (isValidEngine(inst) && width > 0 && height > 0) {
         inst->frameBuffer.resize(width, height);
+        inst->profile.screenWidth = width;
+        inst->profile.screenHeight = height;
+        if (inst->currentJavaCanvas && inst->currentJavaCanvas->clazz && !inst->currentNativeScreen) {
+            try {
+                inst->vm.executeMethodByName(inst->currentJavaCanvas->clazz->thisClassName, "sizeChanged", "(II)V", {universal_loader::jvm::JavaValue(inst->currentJavaCanvas), universal_loader::jvm::JavaValue(width), universal_loader::jvm::JavaValue(height)});
+            } catch (...) {}
+        }
+        inst->requestRepaint();
     }
 }
 
 J2ME_API void j2me_core_send_key(J2meEngineInstance* inst, int key_code, bool is_pressed) {
-    if (!inst) return;
+    if (!isValidEngine(inst)) return;
     if (key_code >= 0 && key_code < 256) {
         inst->keyStates[key_code] = is_pressed;
     } else if (key_code < 0 && key_code >= -63) {
         inst->specialKeyStates[-key_code] = is_pressed;
+    }
+
+    if (inst->currentJavaCanvas && inst->currentJavaCanvas->clazz && !inst->currentNativeScreen) {
+        try {
+            if (is_pressed) {
+                inst->vm.executeMethodByName(inst->currentJavaCanvas->clazz->thisClassName, "keyPressed", "(I)V", {universal_loader::jvm::JavaValue(inst->currentJavaCanvas), universal_loader::jvm::JavaValue(key_code)});
+            } else {
+                inst->vm.executeMethodByName(inst->currentJavaCanvas->clazz->thisClassName, "keyReleased", "(I)V", {universal_loader::jvm::JavaValue(inst->currentJavaCanvas), universal_loader::jvm::JavaValue(key_code)});
+            }
+        } catch (...) {}
     }
 
     auto currentDisplayable = universal_loader::lcdui::Display::instance().getCurrent();
@@ -338,7 +492,21 @@ J2ME_API void j2me_core_send_key(J2meEngineInstance* inst, int key_code, bool is
 }
 
 J2ME_API void j2me_core_send_touch(J2meEngineInstance* inst, int action, int x, int y) {
-    if (!inst) return;
+    if (!isValidEngine(inst)) return;
+    if (inst->currentNativeScreen) return;
+
+    if (inst->currentJavaCanvas && inst->currentJavaCanvas->clazz) {
+        try {
+            if (action == 0) {
+                inst->vm.executeMethodByName(inst->currentJavaCanvas->clazz->thisClassName, "pointerPressed", "(II)V", {universal_loader::jvm::JavaValue(inst->currentJavaCanvas), universal_loader::jvm::JavaValue(x), universal_loader::jvm::JavaValue(y)});
+            } else if (action == 1) {
+                inst->vm.executeMethodByName(inst->currentJavaCanvas->clazz->thisClassName, "pointerReleased", "(II)V", {universal_loader::jvm::JavaValue(inst->currentJavaCanvas), universal_loader::jvm::JavaValue(x), universal_loader::jvm::JavaValue(y)});
+            } else if (action == 2) {
+                inst->vm.executeMethodByName(inst->currentJavaCanvas->clazz->thisClassName, "pointerDragged", "(II)V", {universal_loader::jvm::JavaValue(inst->currentJavaCanvas), universal_loader::jvm::JavaValue(x), universal_loader::jvm::JavaValue(y)});
+            }
+        } catch (...) {}
+    }
+
     auto currentDisplayable = universal_loader::lcdui::Display::instance().getCurrent();
     if (currentDisplayable) {
         if (action == 0) {
@@ -353,9 +521,8 @@ J2ME_API void j2me_core_send_touch(J2meEngineInstance* inst, int action, int x, 
 
 J2ME_API size_t j2me_core_render_audio(J2meEngineInstance* inst, int16_t* pcm_stereo_buffer, size_t sample_count) {
     if (!inst || !pcm_stereo_buffer || sample_count == 0) return 0;
-    // Mỗi khung hình stereo gồm 2 mẫu (L + R) -> frameCount = sample_count / 2
-    size_t frameCount = sample_count / 2;
-    j2me::SonivoxAudioEngine::instance().renderAudio44100(pcm_stereo_buffer, frameCount);
+    // Audio now plays through the core's own output device (audio/audio_output.cpp); nothing to pull here
+    std::memset(pcm_stereo_buffer, 0, sample_count * sizeof(int16_t));
     return sample_count;
 }
 
@@ -396,8 +563,9 @@ J2ME_API int j2me_core_get_fps_limit(J2meEngineInstance* inst) {
 }
 
 J2ME_API void j2me_core_set_fps_limit(J2meEngineInstance* inst, int fps) {
-    if (inst && fps > 0) {
+    if (inst && fps >= 0) {
         inst->fpsLimit.store(fps);
+        inst->profile.fpsLimit = fps;
     }
 }
 
@@ -524,6 +692,22 @@ J2ME_API int64_t j2me_core_fs_file_size(const char* url) {
 }
 
 // --- 10. JSR-120 WIRELESS MESSAGING API (SMS) ---
+J2ME_API void j2me_core_set_http_handler(j2me_http_handler_t handler) {
+    j2me::http_bridge::setHandler(handler);
+}
+
+J2ME_API size_t j2me_core_http_request_info(int64_t request_id, char* out_buf, size_t max_len) {
+    return j2me::http_bridge::requestInfo(request_id, out_buf, max_len);
+}
+
+J2ME_API size_t j2me_core_http_request_body(int64_t request_id, uint8_t* out_buf, size_t max_len) {
+    return j2me::http_bridge::requestBody(request_id, out_buf, max_len);
+}
+
+J2ME_API void j2me_core_http_complete(int64_t request_id, const char* head, const uint8_t* body, size_t body_len, const char* error) {
+    j2me::http_bridge::complete(request_id, head, body, body_len, error);
+}
+
 J2ME_API void j2me_core_sms_set_callback(j2me_sms_callback_t callback, void* user_data) {
     universal_loader::messaging::SmsMessageRouter::instance().setInterceptCallback(callback, user_data);
 }
@@ -831,7 +1015,7 @@ J2ME_API bool j2me_core_apply_profile(J2meEngineInstance* inst, uintptr_t profil
     auto* p = reinterpret_cast<universal_loader::config::ProfileModel*>(profile_handle);
     inst->profile = *p;
     inst->frameBuffer.resize(inst->profile.screenWidth, inst->profile.screenHeight);
-    inst->fpsLimit.store(inst->profile.fpsLimit > 0 ? inst->profile.fpsLimit : 60);
+    inst->fpsLimit.store(std::max(0, inst->profile.fpsLimit));
     universal_loader::input::KeyMapper::setLayout(static_cast<universal_loader::input::KeyLayoutType>(inst->profile.keyCodesLayout));
     return true;
 }
@@ -1039,7 +1223,7 @@ J2ME_API void j2me_core_set_speed_multiplier(J2meEngineInstance* inst, int multi
     if (!inst) return;
     if (multiplier < 1) multiplier = 1;
     if (multiplier > 16) multiplier = 16;
-    inst->speedMultiplier.store(multiplier);
+    inst->setSpeed(multiplier);
 }
 
 J2ME_API int j2me_core_get_speed_multiplier(J2meEngineInstance* inst) {
@@ -1874,50 +2058,19 @@ J2ME_API bool j2me_core_app_installer_uninstall(J2meEngineInstance* engine, int 
 }
 
 J2ME_API bool j2me_core_app_launch(J2meEngineInstance* engine, int app_id) {
-    if (!engine || !engine->appRepo || !engine->appInstaller) return false;
-    universal_loader::app::AppItem item;
-    if (!engine->appRepo->getById(app_id, item)) {
-        return false;
+    return launch_installed_app(engine, app_id, 0);
+}
+
+J2ME_API J2meEngineInstance* j2me_core_app_spawn(J2meEngineInstance* library, int app_id, int clone_slot) {
+    if (!library || !library->appRepo || clone_slot < 0) return nullptr;
+    J2meEngineInstance* inst = create_engine(library->storageRoot.c_str(), library->appRepo);
+    inst->fpsLimit.store(library->fpsLimit.load());
+    inst->frameBuffer.resize(library->frameBuffer.getWidth(), library->frameBuffer.getHeight());
+    if (!launch_installed_app(inst, app_id, clone_slot)) {
+        j2me_core_destroy(inst);
+        return nullptr;
     }
-
-    std::string appDir = engine->appInstaller->getAppDir(item.path);
-    std::string jarPath = (std::filesystem::path(appDir) / "app.jar").string();
-    if (!std::filesystem::exists(jarPath)) {
-        return false;
-    }
-
-    // Isolate RMS storage for this app
-    std::string dataDir = engine->appInstaller->getDataDir(item.path);
-    j2me::RmsManager::instance().setStorageRoot(dataDir);
-    universal_loader::file::FileSystemRegistry::instance().setBaseDirectory(dataDir);
-
-    // Load & apply configuration profile
-    std::string cfgDir = engine->appInstaller->getConfigDir(item.path);
-    std::string cfgFile = (std::filesystem::path(cfgDir) / "config.json").string();
-    if (std::filesystem::exists(cfgFile)) {
-        universal_loader::config::ProfileModel prof;
-        if (universal_loader::config::ProfilesManager::loadConfig(cfgFile, prof)) {
-            engine->profile = prof;
-            engine->fpsLimit.store(prof.fpsLimit > 0 ? prof.fpsLimit : 60);
-            engine->frameBuffer.resize(prof.screenWidth, prof.screenHeight);
-            universal_loader::input::KeyMapper::setLayout(static_cast<universal_loader::input::KeyLayoutType>(prof.keyCodesLayout));
-        }
-    }
-
-    // Load JAR
-    if (!j2me_core_load_jar_file(engine, jarPath.c_str())) {
-        return false;
-    }
-
-    // Update play stats
-    item.lastPlayedTimestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch()
-    ).count();
-    item.playCount++;
-    engine->appRepo->update(item);
-    engine->appRepo->save();
-
-    return true;
+    return inst;
 }
 
 // --- 22. JSR-82 MOBILE BLUETOOTH & RFCOMM/L2CAP MULTIPLAYER ---
@@ -3596,7 +3749,7 @@ J2ME_API bool j2me_core_system_get_property(const char* key, char* out_buf, size
     if (!key || !out_buf || cap == 0) return false;
     if (!j2me::SystemPropertiesManager::instance().hasProperty(key)) return false;
     std::string val = j2me::SystemPropertiesManager::instance().getProperty(key);
-    strncpy_s(out_buf, cap, val.c_str(), _TRUNCATE);
+    std::snprintf(out_buf, cap, "%s", val.c_str());
     return true;
 }
 
@@ -3706,3 +3859,329 @@ J2ME_API void j2me_core_wav_destroy(uintptr_t player_handle) {
 }
 
 } // extern "C"
+
+// ---- High-level LCDUI (Form / TextBox / List / Alert) shown as a host dialog ----
+namespace {
+using namespace universal_loader::jvm;
+
+std::string u16ToUtf8(const std::u16string& s) {
+    std::string out;
+    for (size_t i = 0; i < s.size(); ++i) {
+        uint32_t c = s[i];
+        if (c >= 0xD800 && c < 0xDC00 && i + 1 < s.size()) c = 0x10000 + ((c - 0xD800) << 10) + (s[++i] - 0xDC00);
+        if (c < 0x80) out += char(c);
+        else if (c < 0x800) { out += char(0xC0 | (c >> 6)); out += char(0x80 | (c & 0x3F)); }
+        else if (c < 0x10000) { out += char(0xE0 | (c >> 12)); out += char(0x80 | ((c >> 6) & 0x3F)); out += char(0x80 | (c & 0x3F)); }
+        else { out += char(0xF0 | (c >> 18)); out += char(0x80 | ((c >> 12) & 0x3F)); out += char(0x80 | ((c >> 6) & 0x3F)); out += char(0x80 | (c & 0x3F)); }
+    }
+    return out;
+}
+
+std::u16string utf8ToU16(const std::string& s) {
+    std::u16string out;
+    for (size_t i = 0; i < s.size();) {
+        unsigned char b = s[i];
+        uint32_t c; int n;
+        if (b < 0x80) { c = b; n = 1; } else if (b < 0xE0) { c = b & 0x1F; n = 2; } else if (b < 0xF0) { c = b & 0x0F; n = 3; } else { c = b & 0x07; n = 4; }
+        for (int k = 1; k < n && i + k < s.size(); ++k) c = (c << 6) | (s[i + k] & 0x3F);
+        i += n;
+        if (c >= 0x10000) { c -= 0x10000; out += char16_t(0xD800 + (c >> 10)); out += char16_t(0xDC00 + (c & 0x3FF)); }
+        else out += char16_t(c);
+    }
+    return out;
+}
+
+void jsonStr(std::string& out, const std::u16string& s) {
+    out += '"';
+    for (char ch : u16ToUtf8(s)) {
+        if (ch == '"' || ch == '\\') { out += '\\'; out += ch; }
+        else if (static_cast<unsigned char>(ch) < 0x20) { char buf[8]; snprintf(buf, sizeof buf, "\\u%04x", ch); out += buf; }
+        else out += ch;
+    }
+    out += '"';
+}
+
+void jsonCommands(std::string& j, const std::vector<JavaObject*>& cmds) {
+    j += '[';
+    for (size_t i = 0; i < cmds.size(); ++i) {
+        auto* c = cmds[i] ? dynamic_cast<LcduiCommandPayload*>(cmds[i]->payload.get()) : nullptr;
+        if (i) j += ',';
+        j += "{\"label\":";
+        jsonStr(j, c ? c->label : u"");
+        j += ",\"type\":" + std::to_string(c ? c->type : 1) + ",\"priority\":" + std::to_string(c ? c->priority : 0) + "}";
+    }
+    j += ']';
+}
+
+void jsonChoice(std::string& j, const LcduiChoice& c) {
+    j += ",\"choiceType\":" + std::to_string(c.type) + ",\"options\":[";
+    for (size_t i = 0; i < c.strings.size(); ++i) {
+        if (i) j += ',';
+        jsonStr(j, c.strings[i]);
+    }
+    j += "],\"selected\":[";
+    for (size_t i = 0; i < c.selected.size(); ++i) j += i ? (c.selected[i] ? ",true" : ",false") : (c.selected[i] ? "true" : "false");
+    j += ']';
+}
+
+const char* kindName(LcduiItemKind k) {
+    switch (k) {
+        case LcduiItemKind::Text: return "text";
+        case LcduiItemKind::Choice: return "choice";
+        case LcduiItemKind::Gauge: return "gauge";
+        case LcduiItemKind::Date: return "date";
+        case LcduiItemKind::Spacer: return "spacer";
+        case LcduiItemKind::Image: return "image";
+        default: return "string";
+    }
+}
+
+void jsonItem(std::string& j, const LcduiItemPayload& t) {
+    j += "{\"kind\":\"";
+    j += kindName(t.kind);
+    j += "\",\"label\":";
+    jsonStr(j, t.label);
+    j += ",\"text\":";
+    jsonStr(j, t.text);
+    j += ",\"maxSize\":" + std::to_string(t.maxSize) + ",\"constraints\":" + std::to_string(t.constraints) +
+         ",\"appearance\":" + std::to_string(t.appearance);
+    if (t.kind == LcduiItemKind::Choice) jsonChoice(j, t.choice);
+    if (t.kind == LcduiItemKind::Gauge) {
+        j += ",\"interactive\":" + std::string(t.interactive ? "true" : "false") + ",\"max\":" + std::to_string(t.maxValue) +
+             ",\"value\":" + std::to_string(t.value);
+    }
+    if (t.kind == LcduiItemKind::Date) {
+        j += ",\"dateMode\":" + std::to_string(t.dateMode) + ",\"date\":" + (t.hasDate ? std::to_string(t.date) : std::string("null"));
+    }
+    j += ",\"commands\":";
+    jsonCommands(j, t.commands);
+    j += '}';
+}
+
+LcduiScreenPayload* currentScreen(J2meEngineInstance* inst) {
+    JavaObject* o = inst->currentNativeScreen;
+    return o ? dynamic_cast<LcduiScreenPayload*>(o->payload.get()) : nullptr;
+}
+
+void fireCommand(J2meEngineInstance* inst, JavaObject* listener, JavaObject* cmd, JavaObject* displayable) {
+    if (!listener || !listener->clazz || !cmd) return;
+    try {
+        inst->vm.executeMethodByName(listener->clazz->thisClassName, "commandAction",
+            "(Ljavax/microedition/lcdui/Command;Ljavax/microedition/lcdui/Displayable;)V",
+            {JavaValue(listener), JavaValue(cmd), JavaValue(displayable)});
+    } catch (...) {}
+}
+
+// Stores one submitted value into an item; returns true if it changed
+bool applyValue(LcduiItemPayload& t, const std::string& v) {
+    switch (t.kind) {
+        case LcduiItemKind::Text: {
+            if (t.constraints & 0x20000) return false; // UNEDITABLE
+            std::u16string s = utf8ToU16(v);
+            if (t.maxSize > 0 && s.size() > size_t(t.maxSize)) s.resize(t.maxSize);
+            if (s == t.text) return false;
+            t.text = s;
+            return true;
+        }
+        case LcduiItemKind::Choice: {
+            bool changed = false;
+            for (size_t i = 0; i < t.choice.selected.size() && i < v.size(); ++i) {
+                bool on = v[i] == '1';
+                changed |= t.choice.selected[i] != on;
+                t.choice.selected[i] = on;
+            }
+            return changed;
+        }
+        case LcduiItemKind::Gauge: {
+            if (!t.interactive || v.empty()) return false;
+            int32_t n = std::atoi(v.c_str());
+            if (n == t.value) return false;
+            t.value = n;
+            return true;
+        }
+        case LcduiItemKind::Date: {
+            bool has = !v.empty();
+            int64_t d = has ? std::atoll(v.c_str()) : 0;
+            if (has == t.hasDate && d == t.date) return false;
+            t.hasDate = has;
+            t.date = d;
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+// Return from an Alert to the screen it interrupted (or tell its listener)
+void dismissAlert(J2meEngineInstance* inst, JavaObject* alert, LcduiScreenPayload& s, JavaObject* cmd) {
+    if (s.listener) {
+        fireCommand(inst, s.listener, cmd ? cmd : lcduiDismissCommand(&inst->vm), alert);
+        return;
+    }
+    JavaObject* next = s.alertNext;
+    if (next && next != alert) {
+        lcduiSetCurrent(&inst->vm, next);
+    } else if (inst->currentNativeScreen == alert) {
+        inst->currentNativeScreen = nullptr;
+        inst->nativeScreenSerial.fetch_add(1);
+    }
+}
+} // namespace
+
+J2ME_API int j2me_core_screen_serial(J2meEngineInstance* inst) {
+    return isValidEngine(inst) ? inst->nativeScreenSerial.load() : 0;
+}
+
+J2ME_API bool j2me_core_screen_get(J2meEngineInstance* inst, char* out, size_t max_len) {
+    if (!isValidEngine(inst) || !out || max_len == 0) return false;
+    CldcVirtualMachine::GilScope gil(&inst->vm);
+    auto* scr = currentScreen(inst);
+    if (!scr) return false;
+    static const char* kTypes[] = {"canvas", "form", "textbox", "list", "alert"};
+    std::string j = "{\"type\":\"";
+    j += kTypes[static_cast<int>(scr->kind)];
+    j += "\",\"title\":";
+    jsonStr(j, scr->title);
+    j += ",\"items\":[";
+    switch (scr->kind) {
+        case LcduiScreenKind::TextBox:
+            jsonItem(j, scr->box);
+            break;
+        case LcduiScreenKind::List: {
+            LcduiItemPayload listItem;
+            listItem.kind = LcduiItemKind::Choice;
+            listItem.choice = scr->list;
+            jsonItem(j, listItem);
+            break;
+        }
+        case LcduiScreenKind::Form: {
+            bool first = true;
+            for (JavaObject* item : scr->items) {
+                auto* t = item ? dynamic_cast<LcduiItemPayload*>(item->payload.get()) : nullptr;
+                if (!first) j += ',';
+                first = false;
+                if (t) {
+                    jsonItem(j, *t);
+                } else {
+                    j += "{\"kind\":\"spacer\",\"label\":\"\",\"text\":\"\",\"commands\":[]}";
+                }
+            }
+            break;
+        }
+        default:
+            break;
+    }
+    j += "],\"text\":";
+    jsonStr(j, scr->alertText);
+    j += ",\"timeout\":" + std::to_string(scr->alertTimeout) + ",\"alertType\":" + std::to_string(scr->alertType);
+    j += ",\"hasListener\":" + std::string(scr->listener ? "true" : "false");
+    j += ",\"commands\":";
+    jsonCommands(j, scr->commands);
+    j += '}';
+    if (j.size() + 1 > max_len) return false;
+    memcpy(out, j.c_str(), j.size() + 1);
+    return true;
+}
+
+// values: one UTF-8 value per item (same order as screen_get), separated by 0x1F.
+//   text: the text; choice: '0'/'1' per option; gauge: value; date: epoch ms or empty.
+// action: >= 0 screen command index; -1 only store values; -2 dismiss (Alert timeout / close);
+//         -3 List SELECT_COMMAND; 1000 + item * 100 + n: command n of Form item `item`.
+J2ME_API void j2me_core_screen_submit(J2meEngineInstance* inst, int action, const char* values) {
+    if (!isValidEngine(inst)) return;
+    CldcVirtualMachine::GilScope gil(&inst->vm);
+    JavaObject* screen = inst->currentNativeScreen;
+    auto* scr = currentScreen(inst);
+    if (!scr) return;
+
+    std::vector<std::string> vals;
+    if (values) {
+        std::string cur;
+        for (const char* p = values; *p; ++p) {
+            if (*p == '\x1f') { vals.push_back(cur); cur.clear(); } else cur += *p;
+        }
+        vals.push_back(cur);
+    }
+
+    std::vector<JavaObject*> changedItems;
+    if (scr->kind == LcduiScreenKind::TextBox) {
+        if (!vals.empty()) applyValue(scr->box, vals[0]);
+    } else if (scr->kind == LcduiScreenKind::List) {
+        if (!vals.empty()) {
+            LcduiItemPayload tmp;
+            tmp.kind = LcduiItemKind::Choice;
+            tmp.choice = scr->list;
+            applyValue(tmp, vals[0]);
+            scr->list.selected = tmp.choice.selected;
+        }
+    } else if (scr->kind == LcduiScreenKind::Form) {
+        for (size_t i = 0; i < scr->items.size() && i < vals.size(); ++i) {
+            auto* t = scr->items[i] ? dynamic_cast<LcduiItemPayload*>(scr->items[i]->payload.get()) : nullptr;
+            if (t && applyValue(*t, vals[i])) changedItems.push_back(scr->items[i]);
+        }
+    }
+    JavaObject* stateListener = scr->itemStateListener;
+    if (stateListener && stateListener->clazz) {
+        for (JavaObject* item : changedItems) {
+            try {
+                inst->vm.executeMethodByName(stateListener->clazz->thisClassName, "itemStateChanged",
+                    "(Ljavax/microedition/lcdui/Item;)V", {JavaValue(stateListener), JavaValue(item)});
+            } catch (...) {}
+        }
+    }
+
+    if (action == -1) return;
+    if (action == -2) {
+        if (scr->kind == LcduiScreenKind::Alert) dismissAlert(inst, screen, *scr, nullptr);
+        return;
+    }
+    if (action == -3) {
+        if (scr->kind != LcduiScreenKind::List || scr->list.type != 3) return;
+        JavaObject* cmd = scr->customSelectCommand ? scr->selectCommand : lcduiSelectCommand(&inst->vm);
+        fireCommand(inst, scr->listener, cmd, screen);
+        return;
+    }
+    if (action >= 1000) {
+        size_t itemIndex = size_t(action - 1000) / 100, cmdIndex = size_t(action - 1000) % 100;
+        if (scr->kind != LcduiScreenKind::Form || itemIndex >= scr->items.size()) return;
+        JavaObject* item = scr->items[itemIndex];
+        auto* t = item ? dynamic_cast<LcduiItemPayload*>(item->payload.get()) : nullptr;
+        if (!t || cmdIndex >= t->commands.size() || !t->commandListener || !t->commandListener->clazz) return;
+        try {
+            inst->vm.executeMethodByName(t->commandListener->clazz->thisClassName, "commandAction",
+                "(Ljavax/microedition/lcdui/Command;Ljavax/microedition/lcdui/Item;)V",
+                {JavaValue(t->commandListener), JavaValue(t->commands[cmdIndex]), JavaValue(item)});
+        } catch (...) {}
+        return;
+    }
+    if (size_t(action) >= scr->commands.size()) return;
+    JavaObject* cmd = scr->commands[action];
+    if (scr->kind == LcduiScreenKind::Alert) dismissAlert(inst, screen, *scr, cmd);
+    else fireCommand(inst, scr->listener, cmd, screen);
+}
+
+// ---- Commands added to the current Canvas (shown in the emulator toolbar) ----
+J2ME_API int j2me_core_canvas_commands_version(J2meEngineInstance* inst) {
+    return isValidEngine(inst) ? g_lcduiCommandsVersion.load() : 0;
+}
+
+J2ME_API bool j2me_core_canvas_commands(J2meEngineInstance* inst, char* out, size_t max_len) {
+    if (!isValidEngine(inst) || !out || max_len == 0) return false;
+    CldcVirtualMachine::GilScope gil(&inst->vm);
+    JavaObject* c = inst->currentJavaCanvas;
+    auto* d = c ? dynamic_cast<LcduiScreenPayload*>(c->payload.get()) : nullptr;
+    std::string j;
+    jsonCommands(j, d ? d->commands : std::vector<JavaObject*>());
+    if (j.size() + 1 > max_len) return false;
+    memcpy(out, j.c_str(), j.size() + 1);
+    return true;
+}
+
+J2ME_API void j2me_core_canvas_command(J2meEngineInstance* inst, int index) {
+    if (!isValidEngine(inst)) return;
+    CldcVirtualMachine::GilScope gil(&inst->vm);
+    JavaObject* c = inst->currentJavaCanvas;
+    auto* d = c ? dynamic_cast<LcduiScreenPayload*>(c->payload.get()) : nullptr;
+    if (!d || index < 0 || size_t(index) >= d->commands.size()) return;
+    fireCommand(inst, d->listener, d->commands[index], c);
+}

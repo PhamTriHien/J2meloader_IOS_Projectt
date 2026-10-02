@@ -200,12 +200,25 @@ bool AppInstaller::installFromJar(const std::string& jarPath, bool forceUpdate, 
         }
 
         bool hasIcon = false;
-        if (!iconResource.empty() && loader.hasResource(iconResource)) {
-            auto iconBytes = loader.getResourceBytes(iconResource);
-            if (!iconBytes.empty()) {
-                std::ofstream ifs(fs::path(tmpDir) / "icon.png", std::ios::binary);
-                ifs.write(reinterpret_cast<const char*>(iconBytes.data()), iconBytes.size());
-                hasIcon = true;
+        std::vector<std::string> iconCandidates;
+        if (!iconResource.empty()) {
+            iconCandidates.push_back(iconResource);
+        }
+        iconCandidates.push_back("icon.png");
+        iconCandidates.push_back("i.png");
+        iconCandidates.push_back("icons/icon.png");
+        iconCandidates.push_back("res/icon.png");
+        iconCandidates.push_back("icon.gif");
+
+        for (const auto& candidate : iconCandidates) {
+            if (loader.hasResource(candidate)) {
+                auto iconBytes = loader.getResourceBytes(candidate);
+                if (!iconBytes.empty()) {
+                    std::ofstream ifs(fs::path(tmpDir) / "icon.png", std::ios::binary);
+                    ifs.write(reinterpret_cast<const char*>(iconBytes.data()), iconBytes.size());
+                    hasIcon = true;
+                    break;
+                }
             }
         }
 

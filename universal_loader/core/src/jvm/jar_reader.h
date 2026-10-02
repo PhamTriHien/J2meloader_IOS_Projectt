@@ -34,6 +34,8 @@ public:
     std::map<std::string, std::string> parseManifest() const;
     std::string getManifestProperty(const std::string& key) const;
     std::string getMainMidletClass() const;
+    // Decompression helper
+    static bool inflateRaw(const uint8_t* compressed, size_t compLen, uint8_t* decompressed, size_t decompLen);
 
 private:
     std::vector<uint8_t> m_rawJarData;
@@ -41,7 +43,6 @@ private:
     std::map<std::string, std::string> m_manifest;
 
     bool parseCentralDirectory();
-    static bool inflateRaw(const uint8_t* compressed, size_t compLen, uint8_t* decompressed, size_t decompLen);
 };
 
 } // namespace j2me
