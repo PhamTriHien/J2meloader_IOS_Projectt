@@ -57,7 +57,10 @@ enum J2meTouchAction {
 J2ME_API J2meEngineInstance* j2me_core_create(const char* storage_root_dir);
 J2ME_API bool                j2me_core_load_jar(J2meEngineInstance* inst, const uint8_t* jar_bytes, size_t jar_size);
 J2ME_API bool                j2me_core_load_jar_file(J2meEngineInstance* inst, const char* jar_file_path);
+// Start preserves a pause set before launch.
 J2ME_API void                j2me_core_start(J2meEngineInstance* inst);
+// Bit 0: running, bit 1: paused. A stopped or invalid engine returns zero.
+J2ME_API int                 j2me_core_get_state(J2meEngineInstance* inst);
 J2ME_API void                j2me_core_pause(J2meEngineInstance* inst);
 J2ME_API void                j2me_core_set_background(J2meEngineInstance* inst, bool background);
 J2ME_API void                j2me_core_resume(J2meEngineInstance* inst);

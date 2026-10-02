@@ -15,6 +15,13 @@ HTTP transport and OS lifecycle integration.
   applied from the same profile on every platform.
 - FPS limit 0 disables the FPS cap; the core retains a minimum 1 ms loop sleep.
 - Restart applies dimensions before startApp and preserves pause and speed state.
+- Restart also preserves the current FPS setting and applies pause before startup.
+- Closing clone slots remain reserved until native cleanup finishes. Pending
+  cleanup counts toward the session limit and memory-pressure recovery.
+- The session manager polls native running/pause state once per second so a
+  MIDlet that exits or pauses updates the foreground service count.
+- MIDlet notifyDestroyed terminates its Java workers. A naturally exited engine
+  joins its old thread before it can be started again.
 
 ## OS Integration
 

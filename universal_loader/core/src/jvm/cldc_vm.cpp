@@ -2487,6 +2487,7 @@ void CldcVirtualMachine::registerStandardNatives() {
     registerNative("javax/microedition/midlet/MIDlet", "notifyDestroyed", "()V", [](CldcVirtualMachine* vm, const std::vector<JavaValue>&) {
         auto* inst = static_cast<J2meEngineInstance*>(vm->getUserContext());
         if (inst) inst->isRunning.store(false);
+        vm->requestTerminate(true);
         return JavaValue();
     });
 

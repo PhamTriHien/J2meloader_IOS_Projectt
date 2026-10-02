@@ -5605,6 +5605,26 @@ int main() {
     j2me_core_unlock_framebuffer(survivor);
     j2me_core_destroy(survivor);
 
+    // Pause applied before start must prevent even the first engine tick.
+    auto* pausedStart = j2me_core_create("./test_rms_paused_start");
+    j2me_core_pause(pausedStart);
+    j2me_core_start(pausedStart);
+    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    assert(pausedStart->isPaused.load());
+    assert(j2me_core_get_state(pausedStart) == 3);
+    assert(pausedStart->frameCounter == 0);
+    j2me_core_destroy(pausedStart);
+    assert(j2me_core_get_state(nullptr) == 0);
+
+    // A naturally exited loop remains joinable and must be joined before reuse.
+    auto* exited = j2me_core_create("./test_rms_natural_exit");
+    j2me_core_start(exited);
+    exited->isRunning.store(false);
+    j2me_core_start(exited);
+    assert(exited->isRunning.load());
+    assert(j2me_core_get_state(exited) == 1);
+    j2me_core_destroy(exited);
+
     std::cout << "[SUCCESS] 100% Tat ca Unit Tests (31/31 Mo Dun) da vuot qua hoan hao!" << std::endl;
     return 0;
 }

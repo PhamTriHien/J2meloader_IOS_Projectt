@@ -1206,6 +1206,7 @@ class J2meBindings {
   late final J2meActionDart corePause;
   late final J2meActionDart coreResume;
   late final J2meActionDart coreStop;
+  late final J2meGetFpsDart coreGetState;
 
   // Framebuffer
   late final J2meLockFBDart coreLockFramebuffer;
@@ -1718,6 +1719,7 @@ class J2meBindings {
     corePause = _dylib.lookupFunction<J2meActionC, J2meActionDart>('j2me_core_pause');
     coreResume = _dylib.lookupFunction<J2meActionC, J2meActionDart>('j2me_core_resume');
     coreStop = _dylib.lookupFunction<J2meActionC, J2meActionDart>('j2me_core_stop');
+    coreGetState = _dylib.lookupFunction<J2meGetFpsC, J2meGetFpsDart>('j2me_core_get_state');
 
     coreLockFramebuffer = _dylib.lookupFunction<J2meLockFBC, J2meLockFBDart>('j2me_core_lock_framebuffer');
     coreUnlockFramebuffer = _dylib.lookupFunction<J2meActionC, J2meActionDart>('j2me_core_unlock_framebuffer');

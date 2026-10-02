@@ -102,6 +102,10 @@ extern "C" __declspec(dllimport) unsigned int __stdcall timeEndPeriod(unsigned i
 
 // Thread thực thi vòng lặp Game Loop của Core J2ME
 static void engine_game_loop(J2meEngineInstance* inst) {
+    while (inst->isRunning.load() && inst->isPaused.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (!inst->isRunning.load()) return;
 #ifdef _WIN32
     // 1 ms timer resolution while a game runs, so Thread.sleep / frame pacing are accurate
     timeBeginPeriod(1);
@@ -124,6 +128,8 @@ static void engine_game_loop(J2meEngineInstance* inst) {
             try {
                 inst->vm.executeMethodByName(normMain, "<init>", "()V", {universal_loader::jvm::JavaValue(inst->currentMidletObject)});
                 inst->vm.executeMethodByName(normMain, "startApp", "()V", {universal_loader::jvm::JavaValue(inst->currentMidletObject)});
+            } catch (const universal_loader::jvm::VmTerminated&) {
+                return;
             } catch (const universal_loader::jvm::JavaException& e) {
                 std::cerr << "[J2ME Core] Exception in startApp: " << e.what() << std::endl;
                 for (const auto& frame : e.trace) std::cerr << "    at " << frame << std::endl;
@@ -380,17 +386,25 @@ J2ME_API bool j2me_core_load_jar_file(J2meEngineInstance* inst, const char* jar_
     return true;
 }
 
+static void stopEngineInternal(J2meEngineInstance* inst);
+
 J2ME_API void j2me_core_start(J2meEngineInstance* inst) {
     if (!isValidEngine(inst) || inst->isRunning.load()) return;
-
+    // A MIDlet can exit without the host explicitly stopping its joinable thread.
+    if (inst->gameThread.joinable() && inst->gameThread.get_id() == std::this_thread::get_id()) return;
+    stopEngineInternal(inst);
     inst->vm.requestTerminate(false);
     inst->isRunning.store(true);
-    inst->isPaused.store(false);
     inst->gameThread = std::thread(engine_game_loop, inst);
 }
 
 J2ME_API void j2me_core_pause(J2meEngineInstance* inst) {
     if (isValidEngine(inst)) inst->isPaused.store(true);
+}
+
+J2ME_API int j2me_core_get_state(J2meEngineInstance* inst) {
+    if (!isValidEngine(inst) || !inst->isRunning.load()) return 0;
+    return 1 | (inst->isPaused.load() ? 2 : 0);
 }
 
 J2ME_API void j2me_core_resume(J2meEngineInstance* inst) {

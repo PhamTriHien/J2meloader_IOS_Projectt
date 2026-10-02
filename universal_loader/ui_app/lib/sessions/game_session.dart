@@ -1,4 +1,5 @@
 import 'dart:ffi' as ffi;
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/widgets.dart';
 import '../bridge/j2me_ffi.dart';
@@ -42,15 +43,37 @@ class GameSession {
 
 class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
   static final GameSessionManager instance = GameSessionManager._internal();
-  GameSessionManager._internal() {
-    WidgetsBinding.instance.addObserver(this);
+  GameSessionManager._internal({J2meBindings? bindings, bool? isIOS,
+      bool? isMobile, void Function(int, String)? backgroundUpdater,
+      this._observeLifecycle = true})
+      : _bindings = bindings ?? J2meBindings.instance,
+        _isIOS = isIOS ?? Platform.isIOS,
+        _isMobile = isMobile ?? J2mePlatform.isMobile,
+        _backgroundUpdater = backgroundUpdater ?? J2mePlatform.updateBackgroundRunning {
+    if (_observeLifecycle) {
+      WidgetsBinding.instance.addObserver(this);
+      _stateTimer = Timer.periodic(const Duration(seconds: 1), (_) => refreshSessionStates());
+    }
   }
+
+  @visibleForTesting
+  GameSessionManager.testing({required J2meBindings bindings,
+      bool isIOS = false, bool isMobile = false,
+      required void Function(int, String) backgroundUpdater})
+      : this._internal(bindings: bindings, isIOS: isIOS, isMobile: isMobile,
+          backgroundUpdater: backgroundUpdater, observeLifecycle: false);
+
+  final bool _isIOS, _isMobile, _observeLifecycle;
+  final void Function(int, String) _backgroundUpdater;
+  final Set<(int, int)> _closingSlots = {};
+  bool _iosSuspended = false;
+  Timer? _stateTimer;
 
   final Set<String> _suspendedSessions = {};
   bool _appVisible = true;
   bool _memoryPressure = false;
   String? lastLaunchError;
-  int get sessionLimit => J2mePlatform.isMobile ? 8 : 16;
+  int get sessionLimit => _isMobile ? 8 : 16;
 
   void _updateRenderModes() {
     for (final session in _sessions) {
@@ -58,9 +81,27 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  void refreshSessionStates() {
+    bool changed = false;
+    for (final session in List<GameSession>.from(_sessions)) {
+      final state = _bindings.coreGetState(session.engineInstance);
+      if ((state & 1) == 0) {
+        stopSession(session);
+      } else if (session.isPaused != ((state & 2) != 0)) {
+        session.isPaused = (state & 2) != 0;
+        changed = true;
+      }
+    }
+    if (changed) {
+      _updateBackgroundService();
+      notifyListeners();
+    }
+  }
+
   @override
   void didHaveMemoryPressure() {
     _memoryPressure = true;
+    notifyListeners();
   }
 
   @override
@@ -68,8 +109,9 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
     // iOS suspends the process in the background; keep VM pause state consistent.
     _appVisible = state == AppLifecycleState.resumed;
     _updateRenderModes();
-    if (!Platform.isIOS) return;
-    if (state == AppLifecycleState.paused) {
+    if (!_isIOS) return;
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _iosSuspended = true;
       for (final session in _sessions) {
         if (!session.isPaused) {
           _suspendedSessions.add(session.id);
@@ -79,6 +121,7 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
       }
       notifyListeners();
     } else if (state == AppLifecycleState.resumed) {
+      _iosSuspended = false;
       for (final session in _sessions) {
         if (_suspendedSessions.remove(session.id)) {
           _bindings.coreResume(session.engineInstance);
@@ -90,8 +133,14 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void setPaused(GameSession session, bool paused) {
-    if (!_sessions.contains(session)) return;
+    final index = _sessions.indexWhere((s) => s.id == session.id);
+    if (index < 0) return;
+    session = _sessions[index];
     _suspendedSessions.remove(session.id);
+    if (!paused && _iosSuspended) {
+      _suspendedSessions.add(session.id);
+      paused = true;
+    }
     if (paused) {
       _bindings.corePause(session.engineInstance);
     } else {
@@ -105,7 +154,7 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
   final List<GameSession> _sessions = [];
   GameSession? _activeSession;
   ffi.Pointer<ffi.Void>? _libraryEngine;
-  final J2meBindings _bindings = J2meBindings.instance;
+  final J2meBindings _bindings;
 
   List<GameSession> get sessions => List.unmodifiable(_sessions);
   GameSession? get activeSession => _activeSession;
@@ -116,6 +165,11 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void setActiveSession(GameSession? session) {
+    if (session != null) {
+      final index = _sessions.indexWhere((s) => s.id == session!.id);
+      if (index < 0) return;
+      session = _sessions[index];
+    }
     if (_activeSession != session) {
       _activeSession = session;
       _updateRenderModes();
@@ -140,6 +194,7 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
         .where((s) => s.appId == appId)
         .map((s) => s.cloneSlot)
         .toSet();
+    existingSlots.addAll(_closingSlots.where((s) => s.$1 == appId).map((s) => s.$2));
     int slot = 1;
     while (existingSlots.contains(slot)) {
       slot++;
@@ -162,7 +217,11 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
       return existing;
     }
 
-    if (_sessions.length >= sessionLimit || _memoryPressure) {
+    if (_closingSlots.contains((appId, cloneSlot))) {
+      lastLaunchError = 'Phiên đang dừng. Vui lòng thử lại sau.';
+      return null;
+    }
+    if (_sessions.length + _closingSlots.length >= sessionLimit || _memoryPressure) {
       lastLaunchError = _memoryPressure
           ? 'Thiếu bộ nhớ. Đóng các phiên game rồi thử lại.'
           : 'Đã đạt giới hạn $sessionLimit phiên. Đóng một phiên để mở thêm.';
@@ -176,6 +235,8 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     // Khởi chạy vòng lặp game loop trên luồng nền của engine mới
+    _bindings.coreSetBackground(spawnedEngine, !_appVisible);
+    if (_iosSuspended) _bindings.corePause(spawnedEngine);
     _bindings.coreStart(spawnedEngine);
 
     final sessionId = "${appId}_slot_${cloneSlot}_${DateTime.now().millisecondsSinceEpoch}";
@@ -187,9 +248,11 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
       cloneSlot: cloneSlot,
       engineInstance: spawnedEngine,
       startedAt: DateTime.now(),
+      isPaused: _iosSuspended,
     );
 
     _sessions.add(session);
+    if (_iosSuspended) _suspendedSessions.add(session.id);
     _activeSession = session;
     _updateRenderModes();
     _updateBackgroundService();
@@ -208,11 +271,17 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   GameSession? restartSession(GameSession session, {int? screenWidth, int? screenHeight}) {
+    lastLaunchError = null;
     final idx = _sessions.indexWhere((s) => s.id == session.id);
     if (idx < 0) return null;
 
     final target = _sessions[idx];
+    if (_memoryPressure) {
+      lastLaunchError = 'Thiếu bộ nhớ. Đóng các phiên game rồi thử lại.';
+      return null;
+    }
     final speed = _bindings.coreGetSpeedMultiplier(target.engineInstance);
+    final fps = _bindings.coreGetFpsLimit(target.engineInstance);
     if (_libraryEngine == null) return null;
     final spawnedEngine = _bindings.appSpawn(_libraryEngine!, target.appId, target.cloneSlot);
     if (spawnedEngine == ffi.nullptr || spawnedEngine.address == 0) return null;
@@ -225,8 +294,10 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
       _bindings.coreSetScreenDimensions(spawnedEngine, screenWidth, screenHeight);
     }
     _bindings.coreSetSpeedMultiplier(spawnedEngine, speed);
-    _bindings.coreStart(spawnedEngine);
+    _bindings.coreSetFpsLimit(spawnedEngine, fps);
+    _bindings.coreSetBackground(spawnedEngine, !_appVisible || _activeSession?.id != target.id);
     if (target.isPaused) _bindings.corePause(spawnedEngine);
+    _bindings.coreStart(spawnedEngine);
 
     final newSession = GameSession(
       id: target.id,
@@ -252,53 +323,63 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
     if (idx < 0) return;
 
     final target = _sessions.removeAt(idx);
+    _closingSlots.add((target.appId, target.cloneSlot));
     _suspendedSessions.remove(target.id);
 
     if (_activeSession?.id == target.id) {
       _activeSession = _sessions.isNotEmpty ? _sessions.last : null;
     }
-    if (_sessions.isEmpty) _memoryPressure = false;
     _updateRenderModes();
 
     _updateBackgroundService();
     notifyListeners();
 
     // Dừng và giải phóng engine
-    Future.microtask(() {
-      try {
-        _bindings.coreStop(target.engineInstance);
-        _bindings.coreDestroy(target.engineInstance);
-      } catch (_) {}
-    });
+    _queueDestroy(target);
   }
 
   void stopAll() {
     final toStop = List<GameSession>.from(_sessions);
+    for (final session in toStop) {
+      _closingSlots.add((session.appId, session.cloneSlot));
+    }
     _sessions.clear();
     _suspendedSessions.clear();
     _activeSession = null;
-    _memoryPressure = false;
+    if (_closingSlots.isEmpty) _memoryPressure = false;
     _updateBackgroundService();
     notifyListeners();
 
+    for (final session in toStop) { _queueDestroy(session); }
+  }
+
+  void _queueDestroy(GameSession session) {
     Future.microtask(() {
-      for (final s in toStop) {
-        try {
-          _bindings.coreStop(s.engineInstance);
-          _bindings.coreDestroy(s.engineInstance);
-        } catch (_) {}
+      try {
+        _bindings.coreDestroy(session.engineInstance);
+        _closingSlots.remove((session.appId, session.cloneSlot));
+        if (_sessions.isEmpty && _closingSlots.isEmpty) _memoryPressure = false;
+      } catch (error) {
+        debugPrint('Session cleanup failed: $error');
       }
     });
   }
 
+  @override
+  void dispose() {
+    _stateTimer?.cancel();
+    if (_observeLifecycle) WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   void _updateBackgroundService() {
-    if (J2mePlatform.isMobile) {
+    if (_isMobile) {
       final running = _sessions.where((s) => !s.isPaused).toList();
       final count = running.length;
       final desc = count > 0
           ? running.map((s) => s.displayName).join(", ")
           : "";
-      J2mePlatform.updateBackgroundRunning(count, desc);
+      _backgroundUpdater(count, desc);
     }
   }
 }
