@@ -664,6 +664,17 @@ void startDetachedJavaThread(CldcVirtualMachine* vm, std::function<void()> body)
     pthread_attr_destroy(&attributes);
     if (error) throw std::system_error(error, std::generic_category());
     task.release();
+#elif defined(_WIN32)
+    auto task = std::make_unique<std::function<void()>>(std::move(work));
+    const uintptr_t thread = _beginthreadex(nullptr, 8 * 1024 * 1024,
+        [](void* context) -> unsigned int {
+            std::unique_ptr<std::function<void()>> work(static_cast<std::function<void()>*>(context));
+            (*work)();
+            return 0;
+        }, task.get(), STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+    if (!thread) throw std::system_error(errno, std::generic_category());
+    task.release();
+    CloseHandle(reinterpret_cast<HANDLE>(thread));
 #else
     std::thread(std::move(work)).detach();
 #endif

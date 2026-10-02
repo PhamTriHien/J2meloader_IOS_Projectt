@@ -20,6 +20,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <process.h>
 #include <winhttp.h>
 #endif
 
