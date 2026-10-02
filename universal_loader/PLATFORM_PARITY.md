@@ -21,7 +21,9 @@ HTTP transport and OS lifecycle integration.
 - Android runs background sessions with a foreground service.
   Its timed wake lock is renewed every five minutes while unpaused sessions exist.
   Process termination requires a user restart; a service notification cannot restore a VM.
-- Hidden sessions render at most once per second without changing their configured FPS.
+- Hidden sessions publish at most one frame per second without changing their configured FPS.
+  Canvas paint callbacks are throttled; games that draw directly through GameCanvas
+  can still perform internal drawing at their own rate.
   New sessions are limited to eight on mobile and sixteen on desktop, and blocked
   after a memory pressure notification until all sessions are closed.
 - The VM begins garbage collection at 100,000 objects instead of 400,000,
