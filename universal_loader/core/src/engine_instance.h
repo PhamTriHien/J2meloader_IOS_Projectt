@@ -42,6 +42,7 @@ struct J2meEngineInstance {
 
     std::atomic<bool> isRunning{false};
     std::atomic<bool> isPaused{false};
+    std::atomic<bool> isBackground{false};
     std::atomic<int>  fpsLimit{60};
     std::atomic<int>  speedMultiplier{1};
 
@@ -79,6 +80,7 @@ struct J2meEngineInstance {
     }
 
     std::thread gameThread;
+    const std::thread::id hostThreadId{std::this_thread::get_id()};
     std::vector<std::thread> workerThreads;
     std::mutex stateMutex;
 
@@ -130,6 +132,9 @@ struct J2meEngineInstance {
     }
     void requestRepaint() {
         if (!repaintPending.exchange(true)) repaintRequestedMs.store(monoMillis());
+    }
+    bool shouldSkipBackgroundPaint() const {
+        return isBackground.load() && monoMillis() - lastPaintMs.load() < 1000;
     }
 };
 

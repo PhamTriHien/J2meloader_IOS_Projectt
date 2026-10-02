@@ -37,6 +37,8 @@ private:
 #endif
     std::atomic<bool> m_connected{false};
     mutable std::mutex m_mutex;
+    std::mutex m_readMutex;
+    std::mutex m_writeMutex;
 
     static void ensurePlatformNetInit();
 };

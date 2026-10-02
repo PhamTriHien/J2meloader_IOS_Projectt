@@ -11,10 +11,19 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 
 class J2meBackgroundService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val renewWakeLock = object : Runnable {
+        override fun run() {
+            wakeLock?.acquire(15 * 60 * 1000L)
+            handler.postDelayed(this, 5 * 60 * 1000L)
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -25,6 +34,11 @@ class J2meBackgroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // A restarted service cannot restore the native VMs lost with the process.
+        if (intent == null) {
+            stopForegroundService()
+            return START_NOT_STICKY
+        }
         val action = intent?.getStringExtra(EXTRA_ACTION) ?: ACTION_UPDATE
         if (action == ACTION_STOP) {
             stopForegroundService()
@@ -52,7 +66,7 @@ class J2meBackgroundService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun buildNotification(description: String): Notification {
@@ -104,12 +118,14 @@ class J2meBackgroundService : Service() {
                 "J2ME:GameExecutionWakeLock"
             )?.apply {
                 setReferenceCounted(false)
-                acquire(10 * 60 * 1000L /* 10 hours max safety timeout */)
+                acquire(15 * 60 * 1000L)
             }
+            handler.postDelayed(renewWakeLock, 5 * 60 * 1000L)
         }
     }
 
     private fun releaseWakeLock() {
+        handler.removeCallbacks(renewWakeLock)
         try {
             wakeLock?.let {
                 if (it.isHeld) {

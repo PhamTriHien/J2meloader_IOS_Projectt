@@ -215,6 +215,9 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
       ]);
     }
     _sessionManager.removeListener(_onSessionsChanged);
+    if (_sessionManager.activeSession?.id == _loadedSessionId) {
+      _sessionManager.setActiveSession(null);
+    }
     _commandsTimer?.cancel();
     _focusNode.dispose();
     super.dispose();

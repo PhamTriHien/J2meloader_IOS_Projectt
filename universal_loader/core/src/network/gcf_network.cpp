@@ -5,10 +5,14 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#include <limits>
+#include <cerrno>
+#include <stdexcept>
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <mstcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 #else
 #include <sys/socket.h>
@@ -46,6 +50,7 @@ NetworkSocket::~NetworkSocket() {
 }
 
 void NetworkSocket::close() {
+    std::scoped_lock operations(m_readMutex, m_writeMutex);
     std::lock_guard<std::mutex> lock(m_mutex);
 #if defined(_WIN32) || defined(_WIN64)
     if (m_sock != static_cast<uintptr_t>(~0)) {
@@ -138,6 +143,9 @@ bool NetworkSocket::connect(const std::string& host, int port, int timeoutMs) {
     int one = 1;
     setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (const char*)&one, sizeof(one));
     setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (const char*)&one, sizeof(one));
+    tcp_keepalive keepalive{1, 60000, 10000};
+    DWORD returned = 0;
+    WSAIoctl(sock, SIO_KEEPALIVE_VALS, &keepalive, sizeof(keepalive), nullptr, 0, &returned, nullptr, nullptr);
 #else
     if (sock < 0) return false;
     m_sock = sock;
@@ -145,6 +153,23 @@ bool NetworkSocket::connect(const std::string& host, int port, int timeoutMs) {
     int one = 1;
     setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
+#ifdef SO_NOSIGPIPE
+    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+#endif
+    int idle = 60;
+    int interval = 10;
+    int probes = 3;
+#ifdef TCP_KEEPIDLE
+    setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
+#elif defined(TCP_KEEPALIVE)
+    setsockopt(sock, IPPROTO_TCP, TCP_KEEPALIVE, &idle, sizeof(idle));
+#endif
+#ifdef TCP_KEEPINTVL
+    setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
+#endif
+#ifdef TCP_KEEPCNT
+    setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &probes, sizeof(probes));
+#endif
 #endif
 
     m_connected.store(true);
@@ -153,21 +178,48 @@ bool NetworkSocket::connect(const std::string& host, int port, int timeoutMs) {
 
 // send/recv only hold m_mutex to read the handle: a reader blocked in select() must not starve writers
 int NetworkSocket::send(const uint8_t* data, size_t length) {
+    std::lock_guard<std::mutex> writer(m_writeMutex);
     std::unique_lock<std::mutex> lock(m_mutex);
     if (!m_connected.load() || !data || length == 0) return -1;
     const auto sock = m_sock;
     lock.unlock();
 
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    const int count = static_cast<int>((std::min)(length, static_cast<size_t>((std::numeric_limits<int>::max)())));
+    for (;;) {
 #if defined(_WIN32) || defined(_WIN64)
-    SOCKET s = static_cast<SOCKET>(sock);
-    int res = ::send(s, reinterpret_cast<const char*>(data), (int)length, 0);
+        const SOCKET s = static_cast<SOCKET>(sock);
+        int result = ::send(s, reinterpret_cast<const char*>(data), count, 0);
+        const int error = result < 0 ? WSAGetLastError() : 0;
+        const bool retry = error == WSAEWOULDBLOCK || error == WSAEINTR;
 #else
-    int res = ::send(sock, data, length, 0);
+        const int s = sock;
+#ifdef MSG_NOSIGNAL
+        int result = ::send(s, data, count, MSG_NOSIGNAL);
+#else
+        int result = ::send(s, data, count, 0);
 #endif
-    return res;
+        const bool retry = result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR);
+#endif
+        if (result > 0) return result;
+        if (!retry || std::chrono::steady_clock::now() >= deadline) {
+            m_connected.store(false);
+            return -1;
+        }
+        fd_set writable;
+        FD_ZERO(&writable);
+        FD_SET(s, &writable);
+        timeval timeout{0, 50000};
+#if defined(_WIN32) || defined(_WIN64)
+        select(0, nullptr, &writable, nullptr, &timeout);
+#else
+        select(s + 1, nullptr, &writable, nullptr, &timeout);
+#endif
+    }
 }
 
 int NetworkSocket::recv(uint8_t* buffer, size_t maxLength, int timeoutMs) {
+    std::lock_guard<std::mutex> reader(m_readMutex);
     std::unique_lock<std::mutex> lock(m_mutex);
     if (!m_connected.load() || !buffer || maxLength == 0) return -1;
     const auto sock = m_sock;
@@ -183,9 +235,11 @@ int NetworkSocket::recv(uint8_t* buffer, size_t maxLength, int timeoutMs) {
     tv.tv_usec = (timeoutMs % 1000) * 1000;
 
     int sel = select(0, &rs, nullptr, nullptr, &tv);
-    if (sel <= 0) return 0; // Timeout hoặc không có dữ liệu
+    if (sel == 0 || (sel < 0 && WSAGetLastError() == WSAEINTR)) return 0;
+    if (sel < 0) { m_connected.store(false); return -1; }
 
-    int bytes = ::recv(s, reinterpret_cast<char*>(buffer), (int)maxLength, 0);
+    int bytes = ::recv(s, reinterpret_cast<char*>(buffer), static_cast<int>((std::min)(maxLength, static_cast<size_t>((std::numeric_limits<int>::max)()))), 0);
+    if (bytes < 0 && (WSAGetLastError() == WSAEWOULDBLOCK || WSAGetLastError() == WSAEINTR)) return 0;
     if (bytes <= 0) {
         m_connected.store(false);
         return -1;
@@ -200,9 +254,11 @@ int NetworkSocket::recv(uint8_t* buffer, size_t maxLength, int timeoutMs) {
     tv.tv_usec = (timeoutMs % 1000) * 1000;
 
     int sel = select(sock + 1, &rs, nullptr, nullptr, &tv);
-    if (sel <= 0) return 0;
+    if (sel == 0 || (sel < 0 && errno == EINTR)) return 0;
+    if (sel < 0) { m_connected.store(false); return -1; }
 
     int bytes = ::recv(sock, buffer, maxLength, 0);
+    if (bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) return 0;
     if (bytes <= 0) {
         m_connected.store(false);
         return -1;
@@ -286,12 +342,17 @@ SocketOutputStream::SocketOutputStream(std::shared_ptr<NetworkSocket> socket)
     : m_socket(socket) {}
 
 void SocketOutputStream::write(uint8_t b) {
-    if (m_socket) m_socket->send(&b, 1);
+    write(&b, 0, 1);
 }
 
 void SocketOutputStream::write(const uint8_t* b, size_t offset, size_t length) {
     if (m_socket && b && length > 0) {
-        m_socket->send(b + offset, length);
+        size_t sent = 0;
+        while (sent < length) {
+            const int count = m_socket->send(b + offset + sent, length - sent);
+            if (count <= 0) throw std::runtime_error("Socket write failed");
+            sent += static_cast<size_t>(count);
+        }
     }
 }
 

@@ -1230,6 +1230,7 @@ class J2meBindings {
   late final J2meGetStringDart coreGetAppVersion;
   late final J2meGetFpsDart coreGetFpsLimit;
   late final J2meSetFpsDart coreSetFpsLimit;
+  late final void Function(ffi.Pointer<ffi.Void>, bool) coreSetBackground;
 
   // Audio & Haptics
   late final J2mePlayToneDart corePlayTone;
@@ -1709,6 +1710,7 @@ class J2meBindings {
     }
 
     coreCreate = _dylib.lookupFunction<J2meCreateC, J2meCreateDart>('j2me_core_create');
+    coreSetBackground = _dylib.lookupFunction<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Bool), void Function(ffi.Pointer<ffi.Void>, bool)>('j2me_core_set_background');
     coreDestroy = _dylib.lookupFunction<J2meDestroyC, J2meDestroyDart>('j2me_core_destroy');
     coreLoadJar = _dylib.lookupFunction<J2meLoadJarC, J2meLoadJarDart>('j2me_core_load_jar');
     coreLoadJarFile = _dylib.lookupFunction<J2meLoadJarFileC, J2meLoadJarFileDart>('j2me_core_load_jar_file');

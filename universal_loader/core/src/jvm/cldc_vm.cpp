@@ -792,6 +792,14 @@ CldcVirtualMachine::BlockingRegion::~BlockingRegion() {
 
 void CldcVirtualMachine::safepoint() {
     checkTerminate();
+    auto* inst = static_cast<J2meEngineInstance*>(getUserContext());
+    if (inst && inst->isPaused.load() && std::this_thread::get_id() != inst->hostThreadId) {
+        BlockingRegion region(this);
+        while (inst->isPaused.load() && !terminating()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+    checkTerminate();
     if (m_gilWaiters.load() == 0 || m_gilOwner.load() != std::this_thread::get_id()) return;
     // std::mutex is not fair: wait until a waiter actually took the lock (or a short timeout)
     uint64_t handoffs = m_gilHandoffs.load();
@@ -2643,7 +2651,7 @@ void CldcVirtualMachine::registerStandardNatives() {
     registerNative("javax/microedition/lcdui/Canvas", "serviceRepaints", "()V", [](CldcVirtualMachine* vm, const std::vector<JavaValue>&) {
         // Paints a pending repaint synchronously on the calling (game) thread
         auto* inst = static_cast<J2meEngineInstance*>(vm->getUserContext());
-        if (!inst || inst->painting || !inst->repaintPending.load()) return JavaValue();
+        if (!inst || inst->painting || !inst->repaintPending.load() || inst->shouldSkipBackgroundPaint()) return JavaValue();
         if (inst->currentJavaCanvas && inst->currentJavaCanvas->clazz) {
             inst->repaintPending.store(false);
             inst->painting = true;
@@ -3416,7 +3424,7 @@ void CldcVirtualMachine::registerStandardNatives() {
     registerNative("com/nokia/mid/ui/FullCanvas", "serviceRepaints", "()V", [](CldcVirtualMachine* vm, const std::vector<JavaValue>&) {
         auto* inst = static_cast<J2meEngineInstance*>(vm->getUserContext());
         if (!inst || !inst->currentJavaCanvas || !inst->currentJavaCanvas->clazz) return JavaValue();
-        if (inst->painting) return JavaValue();
+        if (inst->painting || inst->shouldSkipBackgroundPaint()) return JavaValue();
         inst->painting = true;
         auto g = std::make_shared<j2me::LcduiGraphics>(inst->frameBuffer.getRawDrawBuffer(), inst->frameBuffer.getWidth(), inst->frameBuffer.getHeight());
         auto* gObj = vm->allocateGraphics(g);
@@ -3425,6 +3433,7 @@ void CldcVirtualMachine::registerStandardNatives() {
         } catch (...) {}
         inst->painting = false;
         inst->frameBuffer.publishFrame();
+        inst->lastPaintMs.store(J2meEngineInstance::monoMillis());
         return JavaValue();
     });
 

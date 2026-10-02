@@ -59,6 +59,7 @@ J2ME_API bool                j2me_core_load_jar(J2meEngineInstance* inst, const 
 J2ME_API bool                j2me_core_load_jar_file(J2meEngineInstance* inst, const char* jar_file_path);
 J2ME_API void                j2me_core_start(J2meEngineInstance* inst);
 J2ME_API void                j2me_core_pause(J2meEngineInstance* inst);
+J2ME_API void                j2me_core_set_background(J2meEngineInstance* inst, bool background);
 J2ME_API void                j2me_core_resume(J2meEngineInstance* inst);
 J2ME_API void                j2me_core_stop(J2meEngineInstance* inst);
 J2ME_API void                j2me_core_destroy(J2meEngineInstance* inst);

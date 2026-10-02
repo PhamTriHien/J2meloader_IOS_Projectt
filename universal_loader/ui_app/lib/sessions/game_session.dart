@@ -47,10 +47,27 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   final Set<String> _suspendedSessions = {};
+  bool _appVisible = true;
+  bool _memoryPressure = false;
+  String? lastLaunchError;
+  int get sessionLimit => J2mePlatform.isMobile ? 8 : 16;
+
+  void _updateRenderModes() {
+    for (final session in _sessions) {
+      _bindings.coreSetBackground(session.engineInstance, !_appVisible || session != _activeSession);
+    }
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    _memoryPressure = true;
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // iOS suspends the process in the background; keep VM pause state consistent.
+    _appVisible = state == AppLifecycleState.resumed;
+    _updateRenderModes();
     if (!Platform.isIOS) return;
     if (state == AppLifecycleState.paused) {
       for (final session in _sessions) {
@@ -81,6 +98,7 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
       _bindings.coreResume(session.engineInstance);
     }
     session.isPaused = paused;
+    _updateBackgroundService();
     notifyListeners();
   }
 
@@ -100,6 +118,7 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
   void setActiveSession(GameSession? session) {
     if (_activeSession != session) {
       _activeSession = session;
+      _updateRenderModes();
       notifyListeners();
     }
   }
@@ -134,13 +153,21 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
     required String title,
     int cloneSlot = 0,
   }) {
+    lastLaunchError = null;
     final existing = findSession(appId, cloneSlot);
     if (existing != null) {
       _activeSession = existing;
+      _updateRenderModes();
       notifyListeners();
       return existing;
     }
 
+    if (_sessions.length >= sessionLimit || _memoryPressure) {
+      lastLaunchError = _memoryPressure
+          ? 'Thiếu bộ nhớ. Đóng các phiên game rồi thử lại.'
+          : 'Đã đạt giới hạn $sessionLimit phiên. Đóng một phiên để mở thêm.';
+      return null;
+    }
     if (_libraryEngine == null) return null;
 
     final spawnedEngine = _bindings.appSpawn(_libraryEngine!, appId, cloneSlot);
@@ -164,6 +191,7 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
 
     _sessions.add(session);
     _activeSession = session;
+    _updateRenderModes();
     _updateBackgroundService();
     notifyListeners();
     return session;
@@ -213,6 +241,7 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
 
     _sessions[idx] = newSession;
     if (_activeSession?.id == target.id) _activeSession = newSession;
+    _updateRenderModes();
     _updateBackgroundService();
     notifyListeners();
     return newSession;
@@ -228,6 +257,8 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
     if (_activeSession?.id == target.id) {
       _activeSession = _sessions.isNotEmpty ? _sessions.last : null;
     }
+    if (_sessions.isEmpty) _memoryPressure = false;
+    _updateRenderModes();
 
     _updateBackgroundService();
     notifyListeners();
@@ -246,6 +277,7 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
     _sessions.clear();
     _suspendedSessions.clear();
     _activeSession = null;
+    _memoryPressure = false;
     _updateBackgroundService();
     notifyListeners();
 
@@ -261,9 +293,10 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
 
   void _updateBackgroundService() {
     if (J2mePlatform.isMobile) {
-      final count = _sessions.length;
+      final running = _sessions.where((s) => !s.isPaused).toList();
+      final count = running.length;
       final desc = count > 0
-          ? _sessions.map((s) => s.displayName).join(", ")
+          ? running.map((s) => s.displayName).join(", ")
           : "";
       J2mePlatform.updateBackgroundRunning(count, desc);
     }

@@ -1,4 +1,5 @@
 #include "include/j2me_core.h"
+#include "src/engine_instance.h"
 #include "src/storage/rms_storage.h"
 #include "src/lcdui/lcdui_graphics.h"
 #include "src/network/gcf_network.h"
@@ -5536,6 +5537,14 @@ int main() {
     std::cout << "[TEST] 3. Thiet lap cau hinh man hinh 240x320 & FPS 60..." << std::endl;
     j2me_core_set_screen_dimensions(engine, 240, 320);
     j2me_core_set_fps_limit(engine, 60);
+    j2me_core_set_background(engine, true);
+    engine->lastPaintMs.store(J2meEngineInstance::monoMillis());
+    assert(engine->shouldSkipBackgroundPaint());
+    engine->lastPaintMs.store(J2meEngineInstance::monoMillis() - 1100);
+    assert(!engine->shouldSkipBackgroundPaint());
+    j2me_core_set_background(engine, false);
+    assert(!engine->shouldSkipBackgroundPaint());
+    assert(j2me_core_get_fps_limit(engine) == 60);
 
     std::cout << "[TEST] 4. Khoi chay Engine (Game Loop Thread)..." << std::endl;
     j2me_core_start(engine);
@@ -5556,7 +5565,32 @@ int main() {
     j2me_core_send_key(engine, J2ME_KEY_NUM5, false);
 
     std::cout << "[TEST] 7. Dung Engine & Huy Instance..." << std::endl;
+    j2me_core_pause(engine);
+    std::atomic<bool> enteredPause{false}, resumedWorker{false};
+    std::thread pausedWorker([&] {
+        universal_loader::jvm::CldcVirtualMachine::GilScope gil(&engine->vm);
+        enteredPause.store(true);
+        engine->vm.safepoint();
+        resumedWorker.store(true);
+    });
+    while (!enteredPause.load()) std::this_thread::yield();
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    assert(!resumedWorker.load());
+    j2me_core_resume(engine);
+    pausedWorker.join();
+    assert(resumedWorker.load());
     j2me_core_stop(engine);
+    // Even an already stopped engine must retain its VM until worker cleanup ends.
+    engine->vm.threadEnter();
+    std::atomic<bool> cleaned{false};
+    std::thread cleanup([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(220));
+        cleaned.store(true);
+        engine->vm.threadExit();
+    });
+    j2me_core_stop(engine);
+    assert(cleaned.load());
+    cleanup.join();
     j2me_core_destroy(engine);
 
     std::cout << "[SUCCESS] 100% Tat ca Unit Tests (31/31 Mo Dun) da vuot qua hoan hao!" << std::endl;

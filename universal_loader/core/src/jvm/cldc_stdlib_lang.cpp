@@ -1153,7 +1153,7 @@ void registerLangMisc(CldcVirtualMachine* vm) {
         p.alive->store(true);
         auto alive = p.alive;
         vm->pin(threadObj);
-        try { startDetachedJavaThread([vm, threadObj, alive]() {
+        try { startDetachedJavaThread(vm, [vm, threadObj, alive]() {
             // Thread.run() either is overridden in bytecode or delegates to the Runnable
             runJavaThread(vm, [&] { runJavaRunnable(vm, threadObj, "thread"); });
             alive->store(false);

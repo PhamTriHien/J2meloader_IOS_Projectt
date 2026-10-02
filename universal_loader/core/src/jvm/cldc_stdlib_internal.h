@@ -127,7 +127,7 @@ struct SocketPayload : NativePayload { // java.net.Socket
     std::string host;
     int32_t port{0};
     int32_t soTimeout{0}; // 0 = block forever
-    bool closed{false};
+    std::atomic<bool> closed{false};
     int32_t gcfOpen{-1};
     bool gcfConnClosed{false};
     std::vector<uint8_t> rbuf;
@@ -345,13 +345,11 @@ int32_t calendarGet(int64_t millis, int32_t field);
 int64_t calendarSet(int64_t millis, int32_t field, int32_t value);
 
 void runJavaRunnable(CldcVirtualMachine* vm, JavaObject* target, const char* context);
-void startDetachedJavaThread(std::function<void()> body);
+void startDetachedJavaThread(CldcVirtualMachine* vm, std::function<void()> body);
 
 template <typename F>
 void runJavaThread(CldcVirtualMachine* vm, F&& body) {
-    vm->threadEnter();
     try { body(); } catch (...) {}
-    vm->threadExit();
 }
 
 inline void registerFor(CldcVirtualMachine* vm, std::initializer_list<const char*> classes, const std::string& name,

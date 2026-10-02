@@ -19,9 +19,19 @@ HTTP transport and OS lifecycle integration.
 ## OS Integration
 
 - Android runs background sessions with a foreground service.
+  Its timed wake lock is renewed every five minutes while unpaused sessions exist.
+  Process termination requires a user restart; a service notification cannot restore a VM.
+- Hidden sessions render at most once per second without changing their configured FPS.
+  New sessions are limited to eight on mobile and sixteen on desktop, and blocked
+  after a memory pressure notification until all sessions are closed.
+- TCP uses keepalive, transient send retries and complete writes. Server disconnects
+  still require the game's own reconnect/login handling; no protocol packets are replayed.
 - Windows runs sessions while the process remains open.
 - iOS pauses running sessions when the app enters the background and resumes
   only those sessions on return. Manually paused sessions remain paused.
+  iOS suspension prevents continuous background game execution and may expire sockets.
+- These safeguards do not establish 24-hour stability. Long-duration multi-session
+  tests and physical Android battery/Doze tests are still required.
 - Mobile JAR and screenshot export uses the OS document picker. Cancelling
   export leaves the source intact. Desktop export keeps the existing path behavior.
 

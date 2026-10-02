@@ -455,7 +455,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
     }
 
     // 3. Dự phòng: Nạp trực tiếp JAR nếu chưa có ID trong Repo
-    if (session == null && game.path.isNotEmpty) {
+    if (game.id <= 0 && session == null && game.path.isNotEmpty) {
       String resolvedPath = game.path;
       if (!File(resolvedPath).existsSync()) {
         final candidates = [
@@ -498,7 +498,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
     if (session == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Không thể khởi chạy game: ${game.title}"),
+          content: Text(GameSessionManager.instance.lastLaunchError ?? "Không thể khởi chạy game: ${game.title}"),
           backgroundColor: Colors.redAccent,
         ),
       );

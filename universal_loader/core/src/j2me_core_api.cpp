@@ -142,6 +142,7 @@ static void engine_game_loop(J2meEngineInstance* inst) {
         }
 
         int targetFps = inst->fpsLimit.load();
+        if (inst->isBackground.load()) targetFps = 1;
         // Speed-up is applied to the game clock, not the paint rate
         int frameIntervalMs = targetFps > 0 ? 1000 / targetFps : 1;
         if (frameIntervalMs < 1) frameIntervalMs = 1;
@@ -158,6 +159,10 @@ static void engine_game_loop(J2meEngineInstance* inst) {
         const bool enginePaint = inst->repaintPending.load()
             ? nowMs - inst->repaintRequestedMs.load() >= 3 * frameIntervalMs
             : nowMs - inst->lastPaintMs.load() >= 500;
+        if (inst->shouldSkipBackgroundPaint()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            continue;
+        }
         if (inst->currentJavaCanvas && inst->currentJavaCanvas->clazz && !enginePaint) {
             // Nothing to paint this tick
         } else if (inst->currentJavaCanvas && inst->currentJavaCanvas->clazz) {
@@ -221,6 +226,8 @@ static bool isValidEngine(J2meEngineInstance* inst) {
 static void registerEngine(J2meEngineInstance* inst) {
     if (!inst) return;
     std::lock_guard<std::mutex> lock(g_enginesMutex);
+    // Legacy native LCDUI state is reset only when no other session owns it.
+    if (g_activeEngines.empty()) universal_loader::lcdui::Display::instance().setCurrent(nullptr);
     g_activeEngines.insert(inst);
 }
 
@@ -249,7 +256,6 @@ static J2meEngineInstance* create_engine(const char* storage_root_dir, std::shar
     }
     inst->appRepo = std::move(repo);
     inst->appInstaller = std::make_unique<universal_loader::app::AppInstaller>(inst->storageRoot, inst->appRepo);
-    universal_loader::lcdui::Display::instance().setCurrent(nullptr);
     registerEngine(inst);
     return inst;
 }
@@ -391,9 +397,15 @@ J2ME_API void j2me_core_resume(J2meEngineInstance* inst) {
     if (isValidEngine(inst)) inst->isPaused.store(false);
 }
 
+J2ME_API void j2me_core_set_background(J2meEngineInstance* inst, bool background) {
+    if (!isValidEngine(inst)) return;
+    inst->isBackground.store(background);
+    if (!background) inst->requestRepaint();
+}
+
 static void stopEngineInternal(J2meEngineInstance* inst) {
     if (!inst) return;
-    if (inst->isRunning.load()) {
+    {
         inst->isRunning.store(false);
         inst->vm.requestTerminate(true);
         if (inst->gameThread.joinable()) {
@@ -410,8 +422,7 @@ static void stopEngineInternal(J2meEngineInstance* inst) {
         }
         inst->workerThreads.clear();
         // Detached Java threads (Thread.start, Timer) unwind on their next call or safepoint
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(150);
-        while (inst->vm.liveThreads() > 0 && std::chrono::steady_clock::now() < deadline) {
+        while (inst->vm.liveThreads() > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     }
@@ -426,7 +437,6 @@ J2ME_API void j2me_core_destroy(J2meEngineInstance* inst) {
     if (!isValidEngine(inst)) return;
     unregisterEngine(inst);
     stopEngineInternal(inst);
-    universal_loader::lcdui::Display::instance().setCurrent(nullptr);
     delete inst;
 }
 

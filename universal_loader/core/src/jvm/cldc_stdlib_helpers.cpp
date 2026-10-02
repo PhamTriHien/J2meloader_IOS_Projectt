@@ -498,6 +498,7 @@ void streamWriteBlock(CldcVirtualMachine* vm, JavaObject* s, const uint8_t* data
         CldcVirtualMachine::BlockingRegion region(vm);
         size_t sent = 0;
         while (sent < n) {
+            if (vm->terminating() || !engineRunning(vm)) break;
             int r = sp.sock->send(data + sent, n - sent);
             if (r <= 0) break;
             sent += static_cast<size_t>(r);
@@ -637,10 +638,16 @@ bool enginePaused(CldcVirtualMachine* vm) {
     return inst && inst->isPaused.load();
 }
 
-void startDetachedJavaThread(std::function<void()> body) {
+void startDetachedJavaThread(CldcVirtualMachine* vm, std::function<void()> body) {
+    vm->threadEnter();
+    auto work = [vm, body = std::move(body)]() {
+        try { body(); } catch (...) {}
+        vm->threadExit();
+    };
+    try {
 #if defined(__APPLE__)
     // The recursive interpreter exceeds Apple's small default worker stack.
-    auto task = std::make_unique<std::function<void()>>(std::move(body));
+    auto task = std::make_unique<std::function<void()>>(std::move(work));
     pthread_attr_t attributes;
     int error = pthread_attr_init(&attributes);
     if (error) throw std::system_error(error, std::generic_category());
@@ -658,8 +665,12 @@ void startDetachedJavaThread(std::function<void()> body) {
     if (error) throw std::system_error(error, std::generic_category());
     task.release();
 #else
-    std::thread(std::move(body)).detach();
+    std::thread(std::move(work)).detach();
 #endif
+    } catch (...) {
+        vm->threadExit();
+        throw;
+    }
 }
 
 void runJavaRunnable(CldcVirtualMachine* vm, JavaObject* target, const char* context) {
