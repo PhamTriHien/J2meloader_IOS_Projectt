@@ -112,6 +112,8 @@ class GameSessionManager extends ChangeNotifier with WidgetsBindingObserver {
     if (!_isIOS) return;
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
       _iosSuspended = true;
+      // Observe a MIDlet's own pause before deciding which sessions may auto-resume.
+      refreshSessionStates();
       for (final session in _sessions) {
         if (!session.isPaused) {
           _suspendedSessions.add(session.id);

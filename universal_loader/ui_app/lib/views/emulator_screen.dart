@@ -306,6 +306,8 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
             duration: const Duration(milliseconds: 1000),
           ),
         );
+      } else {
+        _showRestartFailure();
       }
     } else if (needsRestart) {
       final eng = _currentEngine;
@@ -353,8 +355,10 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
     final session = _currentSession;
     if (session != null) {
       // Some MIDlets cache Canvas dimensions in startApp, so resize before start.
-      _sessionManager.restartSession(session,
-          screenWidth: width, screenHeight: height);
+      if (_sessionManager.restartSession(session,
+          screenWidth: width, screenHeight: height) == null) {
+        return;
+      }
     } else {
       _bindings.coreSetScreenDimensions(_currentEngine, width, height);
     }
@@ -624,6 +628,8 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
         );
         return;
       }
+      _showRestartFailure();
+      return;
     }
     final eng = _currentEngine;
     if (eng == ffi.nullptr || eng.address == 0) return;
@@ -637,6 +643,12 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
         duration: Duration(milliseconds: 900),
       ),
     );
+  }
+
+  void _showRestartFailure() {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(_sessionManager.lastLaunchError ?? 'Không thể khởi động lại game.'),
+    ));
   }
 
   void _stopCurrentSession() {

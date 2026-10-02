@@ -24,9 +24,15 @@ class FakeBindings implements J2meBindings {
   @override
   J2meDestroyDart get coreDestroy => (p) => calls.add('destroy:${p.address}');
   @override
-  J2meActionDart get corePause => (p) => calls.add('pause:${p.address}');
+  J2meActionDart get corePause => (p) {
+    calls.add('pause:${p.address}');
+    states[p.address] = 3;
+  };
   @override
-  J2meActionDart get coreResume => (p) => calls.add('resume:${p.address}');
+  J2meActionDart get coreResume => (p) {
+    calls.add('resume:${p.address}');
+    states[p.address] = 1;
+  };
   @override
   void Function(ffi.Pointer<ffi.Void>, bool) get coreSetBackground =>
       (p, background) => calls.add('background:${p.address}:$background');
@@ -164,5 +170,14 @@ void main() {
     manager.refreshSessionStates();
     expect(session.isPaused, isTrue);
     expect(serviceCounts.last, 0);
+  });
+
+  test('iOS does not auto-resume a MIDlet pause that arrived before polling', () {
+    final session = launch();
+    bindings.states[session.engineInstance.address] = 3;
+    manager.didChangeAppLifecycleState(AppLifecycleState.hidden);
+    manager.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    expect(session.isPaused, isTrue);
+    expect(bindings.calls, isNot(contains('resume:10')));
   });
 }
