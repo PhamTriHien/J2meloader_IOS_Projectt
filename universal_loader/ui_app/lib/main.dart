@@ -151,6 +151,39 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
     GameSessionManager.instance.addListener(_onSessionsChanged);
 
     _loadInstalledApps();
+    _installBundledGame();
+  }
+
+  Future<void> _installBundledGame() async {
+    final marker = File('./universal_rms/.bundled_dragonboy_v1');
+    if (_engine == null || _engine == ffi.nullptr || marker.existsSync()) return;
+    try {
+      final data = await rootBundle.load('assets/games/DragonBoy.jar');
+      if (!mounted || _engine == null) return;
+      final directory = await Directory('./universal_rms/bundled').create(recursive: true);
+      final jar = File('${directory.path}/DragonBoy.jar');
+      await jar.writeAsBytes(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes), flush: true);
+      if (!mounted || _engine == null) return;
+      final path = jar.absolute.path.toNativeUtf8();
+      final error = calloc<ffi.Uint8>(512).cast<Utf8>();
+      try {
+        final status = _bindings.appInstallerCheckJar(
+          _engine!, path, ffi.nullptr, 0, ffi.nullptr, 0, ffi.nullptr, 0,
+        );
+        // Existing equal or newer versions keep their files and saved data.
+        if (status != 0 && status != -1) {
+          final id = _bindings.appInstallerInstall(_engine!, path, false, error, 512);
+          if (id <= 0) throw StateError(error.toDartString());
+        }
+      } finally {
+        calloc.free(path);
+        calloc.free(error);
+      }
+      await marker.writeAsString('installed', flush: true);
+      if (mounted) setState(_loadInstalledApps);
+    } catch (error) {
+      debugPrint('Bundled game installation failed: $error');
+    }
   }
 
   void _onSessionsChanged() {
