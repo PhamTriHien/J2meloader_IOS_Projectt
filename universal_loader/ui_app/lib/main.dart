@@ -152,6 +152,18 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
 
     _loadInstalledApps();
     _installBundledGame();
+    if (const bool.fromEnvironment('J2ME_SMOKE_GAME')) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        for (var attempt = 0; attempt < 30 && mounted; attempt++) {
+          final games = _games.where((game) => game.title == 'DragonBoy');
+          if (games.isNotEmpty) {
+            _launchGame(games.first);
+            return;
+          }
+          await Future<void>.delayed(const Duration(seconds: 1));
+        }
+      });
+    }
   }
 
   Future<void> _installBundledGame() async {

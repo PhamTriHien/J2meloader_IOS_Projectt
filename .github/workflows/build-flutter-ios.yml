@@ -37,7 +37,7 @@ jobs:
           cd build/unsigned
           zip -qr ../J5Hienloader-unsigned.ipa Payload
       - name: Build simulator app
-        run: flutter build ios --simulator --debug --no-tree-shake-icons
+        run: flutter build ios --simulator --debug --no-tree-shake-icons --dart-define=J2ME_SMOKE_GAME=true
       - name: Package simulator app for Appetize
         run: |
           cd build/ios/iphonesimulator
@@ -59,7 +59,7 @@ jobs:
             fi
             sleep 10
           done
-          sleep 15
+          sleep 60
           xcrun simctl io "$DEVICE" screenshot build/ios-smoke/startup.png || true
           xcrun simctl spawn "$DEVICE" log show --last 5m --style compact --predicate 'process == "Runner" OR process == "SpringBoard" OR process == "runningboardd"' > build/ios-smoke/system.log || true
           cp -R "$HOME/Library/Logs/DiagnosticReports" build/ios-smoke/crashes || true
