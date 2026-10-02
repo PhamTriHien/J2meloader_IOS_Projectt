@@ -2744,13 +2744,19 @@ void CldcVirtualMachine::registerStandardNatives() {
 
     registerNative("javax/microedition/lcdui/game/GameCanvas", "flushGraphics", "()V", [](CldcVirtualMachine* vm, const std::vector<JavaValue>&) {
         auto* inst = static_cast<J2meEngineInstance*>(vm->getUserContext());
-        if (inst) inst->frameBuffer.publishFrame();
+        if (inst && !inst->shouldSkipBackgroundPaint()) {
+            inst->frameBuffer.publishFrame();
+            inst->lastPaintMs.store(J2meEngineInstance::monoMillis());
+        }
         return JavaValue();
     });
 
     registerNative("javax/microedition/lcdui/game/GameCanvas", "flushGraphics", "(IIII)V", [](CldcVirtualMachine* vm, const std::vector<JavaValue>&) {
         auto* inst = static_cast<J2meEngineInstance*>(vm->getUserContext());
-        if (inst) inst->frameBuffer.publishFrame();
+        if (inst && !inst->shouldSkipBackgroundPaint()) {
+            inst->frameBuffer.publishFrame();
+            inst->lastPaintMs.store(J2meEngineInstance::monoMillis());
+        }
         return JavaValue();
     });
 

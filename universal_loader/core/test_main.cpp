@@ -5568,7 +5568,6 @@ int main() {
     j2me_core_pause(engine);
     std::atomic<bool> enteredPause{false}, resumedWorker{false};
     std::thread pausedWorker([&] {
-        universal_loader::jvm::CldcVirtualMachine::GilScope gil(&engine->vm);
         enteredPause.store(true);
         engine->vm.safepoint();
         resumedWorker.store(true);

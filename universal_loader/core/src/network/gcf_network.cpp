@@ -50,6 +50,16 @@ NetworkSocket::~NetworkSocket() {
 }
 
 void NetworkSocket::close() {
+    // Wake blocked operations before waiting for them; close the descriptor only afterwards.
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_connected.store(false);
+#if defined(_WIN32) || defined(_WIN64)
+        if (m_sock != static_cast<uintptr_t>(~0)) ::shutdown(static_cast<SOCKET>(m_sock), SD_BOTH);
+#else
+        if (m_sock >= 0) ::shutdown(m_sock, SHUT_RDWR);
+#endif
+    }
     std::scoped_lock operations(m_readMutex, m_writeMutex);
     std::lock_guard<std::mutex> lock(m_mutex);
 #if defined(_WIN32) || defined(_WIN64)
@@ -111,6 +121,7 @@ bool NetworkSocket::connect(const std::string& host, int port, int timeoutMs) {
         sock = INVALID_SOCKET;
 #else
         if (sock < 0) continue;
+        if (sock >= FD_SETSIZE) { ::close(sock); sock = -1; continue; }
         int fl = fcntl(sock, F_GETFL, 0);
         fcntl(sock, F_SETFL, fl | O_NONBLOCK);
         int rc = ::connect(sock, ai->ai_addr, ai->ai_addrlen);
@@ -187,6 +198,7 @@ int NetworkSocket::send(const uint8_t* data, size_t length) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     const int count = static_cast<int>((std::min)(length, static_cast<size_t>((std::numeric_limits<int>::max)())));
     for (;;) {
+        if (!m_connected.load()) return -1;
 #if defined(_WIN32) || defined(_WIN64)
         const SOCKET s = static_cast<SOCKET>(sock);
         int result = ::send(s, reinterpret_cast<const char*>(data), count, 0);
