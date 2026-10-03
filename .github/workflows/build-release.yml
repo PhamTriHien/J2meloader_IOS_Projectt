@@ -44,6 +44,18 @@ jobs:
       - name: Build Windows release
         if: matrix.platform == 'windows'
         run: flutter build windows --release --no-tree-shake-icons
+      - name: Package ChromeOS APKs
+        if: matrix.platform == 'android'
+        run: |
+          mkdir -p build/chromeos
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk build/chromeos/J5Hienloader-ChromeOS-x86_64.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/chromeos/J5Hienloader-ChromeOS-arm64.apk
+      - uses: actions/upload-artifact@v4
+        if: matrix.platform == 'android'
+        with:
+          name: J5Hienloader-release-chromeos
+          if-no-files-found: error
+          path: universal_loader/ui_app/build/chromeos/*.apk
       - name: Build unsigned iOS release
         if: matrix.platform == 'ios'
         run: |
